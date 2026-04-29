@@ -1,28 +1,22 @@
 package io.g3tech.axetrader.brokers.capital;
 
 public enum Constants {
-    CAP_APP_KEY("X-CAP-API-KEY"),
-    CLIENT_SSO_TOKEN_NAME("CST"),
-    ACCOUNT_SSO_TOKEN_NAME("X-SECURITY-TOKEN"),
+    X_CAP_API_KEY("X-CAP-API-KEY"),
+    CLIENT_SSO_TOKEN("CST"),
+    X_SECURITY_TOKEN("X-SECURITY-TOKEN"),
 
     API("/api"),
     V_1("/v1"),
     API_V1(API.value.concat(V_1.value)),
 
-    SESSION("/session"),
-    ACCOUNTS("/accounts"),
-    MARKET_NAVIGATION("/marketnavigation"),
-    MARKETS("/markets"),
-    POSITIONS("/positions"),
-    ORDERS("/workingorders"),
-    CONNECT("/connect"),
+    CONNECT("connect"),
 
-    API_V1_SESSION(API_V1.value.concat(SESSION.value)),
-    API_V1_ACCOUNTS(API_V1.value.concat(ACCOUNTS.value)),
-    API_V1_MARKET_NAVIGATION(API_V1.value.concat(MARKET_NAVIGATION.value)),
-    API_V1_MARKETS(API_V1.value.concat(MARKETS.value)),
-    API_V1_POSITIONS(API_V1.value.concat(POSITIONS.value)),
-    API_V1_ORDERS(API_V1.value.concat(ORDERS.value)),
+    API_V1_SESSION(API_V1.value.concat("/session")),
+    API_V1_ACCOUNTS(API_V1.value.concat("/accounts")),
+    API_V1_MARKET_NAVIGATION(API_V1.value.concat("/marketnavigation")),
+    API_V1_MARKETS(API_V1.value.concat("/markets")),
+    API_V1_POSITIONS(API_V1.value.concat("/positions")),
+    API_V1_ORDERS(API_V1.value.concat("/workingorders")),
     API_V1_CONFIRMS(API_V1.value.concat("/confirms")),
     API_V1_TIME(API_V1.value.concat("/time")),
     API_V1_CLIENTSENTIMENT(API_V1.value.concat("/clientsentiment")),

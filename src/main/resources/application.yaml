@@ -1,12 +1,21 @@
 spring:
   application:
-    name: axe-trader
+    group: @project.groupId@
+    name: @project.name@
+    version: @project.version@
   jackson:
     deserialization:
       fail-on-unknown-properties: false
 
-
 brokers:
   capital:
     api:
-      key: ${CAPITAL_API_KEY}
+      url: https://demo-api-capital.backend-capital.com
+      user:
+        login: ${CAPITAL_API_USER}
+        password: ${CAPITAL_API_PASSWORD}
+        apiKey: ${CAPITAL_API_KEY}
+
+logging:
+  level:
+    io.g3tech: trace

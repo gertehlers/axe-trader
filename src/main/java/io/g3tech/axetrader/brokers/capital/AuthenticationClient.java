@@ -1,15 +1,22 @@
 package io.g3tech.axetrader.brokers.capital;
 
+import io.g3tech.axetrader.brokers.capital.domain.CapitalUserConfig;
 import io.g3tech.axetrader.brokers.capital.dto.session.CreateSessionRequest;
+import io.g3tech.axetrader.brokers.capital.dto.session.CreateSessionResponse;
+import io.g3tech.axetrader.brokers.capital.dto.session.GetEncryptionKeySessionResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.KeyFactory;
@@ -17,17 +24,63 @@ import java.security.NoSuchAlgorithmException;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
+import java.util.List;
+
+import static io.g3tech.axetrader.brokers.capital.Constants.X_SECURITY_TOKEN;
+import static io.g3tech.axetrader.brokers.capital.Constants.API_V1_SESSION;
+import static io.g3tech.axetrader.brokers.capital.Constants.API_V1_SESSION_ENCRYPTION_KEY;
+import static io.g3tech.axetrader.brokers.capital.Constants.CLIENT_SSO_TOKEN;
+import static io.g3tech.axetrader.brokers.capital.Constants.X_CAP_API_KEY;
 
 @Service
 public class AuthenticationClient {
 
     Logger logger = LoggerFactory.getLogger(AuthenticationClient.class);
 
-    public ConversationContext createSession(CreateSessionRequest createSessionRequest, @Value("${brokers.capital.api.key}") String apiKey) {
-        var conversationContext = new ConversationContext(apiKey, null, null, null);
+    private final RestClient restClient;
+    private final CapitalUserConfig capitalUserConfig;
 
+    public AuthenticationClient(@Value("${brokers.capital.api.url}") String baseUrl, CapitalUserConfig capitalUserConfig) {
+        this.restClient = RestClient.builder().baseUrl(URI.create(baseUrl)).build();
+        this.capitalUserConfig = capitalUserConfig;
+    }
 
-        return null;
+    public ConversationContext createSession() {
+        logger.debug("Creating session...");
+        var encryptionKeySessionResponse = restClient.get()
+                .uri(API_V1_SESSION_ENCRYPTION_KEY.value())
+                .headers(this::appendHttpHeaders)
+                .retrieve()
+                .body(GetEncryptionKeySessionResponse.class);
+
+        logger.debug("Encryption key: {}", encryptionKeySessionResponse.encryptionKey());
+        var encryptedPassword = encryptPassword(encryptionKeySessionResponse.encryptionKey(), encryptionKeySessionResponse.timeStamp(), capitalUserConfig.password());
+        var createSessionRequest = new CreateSessionRequest(capitalUserConfig.login(), encryptedPassword, true);
+
+        logger.debug("Sending create session request: {}", createSessionRequest);
+        var createSessionResponse = restClient.post()
+                .uri(API_V1_SESSION.value())
+                .headers(this::appendHttpHeaders)
+                .body(createSessionRequest)
+                .retrieve()
+                .toEntity(CreateSessionResponse.class);
+
+        var responseHeaders = createSessionResponse.getHeaders();
+        var responseBody = createSessionResponse.getBody();
+
+        logger.debug("Session created: {}", responseBody);
+        return new ConversationContext(
+                capitalUserConfig.apiKey(),
+                responseHeaders.getFirst(CLIENT_SSO_TOKEN.value()),
+                responseHeaders.getFirst(X_SECURITY_TOKEN.value()),
+                responseBody.streamingHost()
+        );
+    }
+
+    private void appendHttpHeaders(HttpHeaders httpHeaders) {
+        httpHeaders.setAccept(List.of(MediaType.APPLICATION_JSON));
+        httpHeaders.setContentType(MediaType.APPLICATION_JSON);
+        httpHeaders.set(X_CAP_API_KEY.value(), capitalUserConfig.apiKey());
     }
 
     private String encryptPassword(String encryptionKey, Long timestamp, String password) {

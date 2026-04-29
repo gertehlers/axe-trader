@@ -6,6 +6,7 @@ import io.g3tech.axetrader.brokers.capital.dto.ws.market.MarketDataSubscribe;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketHttpHeaders;
@@ -24,9 +25,10 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-public class WsClient implements AutoCloseable {
+@Service
+public class WsClient {
 
-    private static final Logger logger = LoggerFactory.getLogger(WsClient.class);
+    Logger logger = LoggerFactory.getLogger(WsClient.class);
 
     private final ObjectMapper objectMapper;
     private final WebSocketClient webSocketClient;
@@ -35,8 +37,8 @@ public class WsClient implements AutoCloseable {
     private WebSocketSession session;
     private URI wsUrl;
 
-    public WsClient(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
+    public WsClient() {
+        this.objectMapper = new ObjectMapper();
         this.webSocketClient = new StandardWebSocketClient();
     }
 
@@ -72,12 +74,12 @@ public class WsClient implements AutoCloseable {
         }
 
         logger.info("Connecting websocket to {}", wsUrl);
+
         try {
             return webSocketClient.execute(new ClientHandler(), new WebSocketHttpHeaders(), wsUrl).get(15, TimeUnit.SECONDS);
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-
             var connectException = new ConnectException("Interrupted while connecting to websocket: %s".formatted(e.getMessage()));
             connectException.initCause(e);
             throw connectException;
@@ -103,7 +105,6 @@ public class WsClient implements AutoCloseable {
         getSession().sendMessage(new TextMessage(message));
     }
 
-    @Override
     public synchronized void close() throws IOException {
         if (session != null && session.isOpen()) {
             session.close();
@@ -114,7 +115,7 @@ public class WsClient implements AutoCloseable {
 
         @Override
         public void afterConnectionEstablished(WebSocketSession session) {
-            logger.info("Websocket connected: {}", session.getUri());
+            logger.info("Websocket connected: {}", session.getRemoteAddress());
         }
 
         @Override
@@ -122,7 +123,7 @@ public class WsClient implements AutoCloseable {
             var response = objectMapper.readValue(message.getPayload(), Response.class);
 
             if ("ping".equals(response.destination())) {
-                logger.debug("Received websocket ping response: {}", response.correlationId());
+                logger.debug("Received websocket ping response: {} {}", response.status(), response.payload());
                 return;
             }
 
@@ -137,6 +138,7 @@ public class WsClient implements AutoCloseable {
 
         @Override
         public void afterConnectionClosed(@NonNull WebSocketSession session, CloseStatus status) {
+            logger.info("Websocket connection closed: {}", session.getRemoteAddress());
             logger.info("Websocket closed: code={}, reason={}", status.getCode(), status.getReason());
         }
     }
