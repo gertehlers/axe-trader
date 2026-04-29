@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: axe-trader
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+
+
+brokers:
+  capital:
+    api:
+      key: ${CAPITAL_API_KEY}
