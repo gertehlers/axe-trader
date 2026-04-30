@@ -20,7 +20,7 @@ public record ConfluenceSettings(
                 0.70,
                 0.30,
                 1.5,
-                1.25
+                10.0
         );
     }
 }
