@@ -5,6 +5,7 @@ import io.g3tech.axetrader.brokers.capital.AuthenticationClient;
 import io.g3tech.axetrader.brokers.capital.ConversationContext;
 import io.g3tech.axetrader.brokers.capital.WsClient;
 import io.g3tech.axetrader.brokers.capital.domain.MarketDataPreferences;
+import io.g3tech.axetrader.config.AxeTraderMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,31 +25,35 @@ public class AxeTraderRunner {
     private final ApiClient apiClient;
     private final AuthenticationClient authenticationClient;
     private final WsClient wsClient;
-    private final boolean enabled;
+    private final AxeTraderMode mode;
     private final MarketDataPreferences marketDataPreferences;
 
     public AxeTraderRunner(
             ApiClient apiClient,
             AuthenticationClient authenticationClient,
             WsClient wsClient,
-            @Value("${axe-trader.enabled:true}") boolean enabled,
+            @Value("${axe-trader.mode:monitor}") String mode,
             MarketDataPreferences marketDataPreferences
     ) {
         this.apiClient = apiClient;
         this.authenticationClient = authenticationClient;
         this.wsClient = wsClient;
-        this.enabled = enabled;
+        this.mode = AxeTraderMode.from(mode);
         this.marketDataPreferences = marketDataPreferences;
     }
 
     @EventListener(ApplicationReadyEvent.class)
     public void run() {
-        if (!enabled) {
-            logger.info("AxeTrader runner is disabled");
+        if (!mode.isLiveMarketMode()) {
+            logger.info("AxeTrader live runner is disabled because mode is {}", mode);
             return;
         }
 
-        logger.debug("Application is ready. Starting AxeTrader...");
+        if (mode == AxeTraderMode.TRADE) {
+            throw new IllegalStateException("TRADE mode is not implemented yet. Use MONITOR mode until order execution and risk controls are built.");
+        }
+
+        logger.info("Application is ready. Starting AxeTrader in {} mode.", mode);
 
         ConversationContext conversationContext = authenticationClient.createSession();
 
@@ -72,7 +77,7 @@ public class AxeTraderRunner {
 
     @Scheduled(fixedDelay = 30000, initialDelay = 10000)
     public void ping() {
-        if (!enabled) {
+        if (!mode.isLiveMarketMode()) {
             return;
         }
 

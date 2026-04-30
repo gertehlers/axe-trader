@@ -34,6 +34,7 @@ class ConfluenceBacktesterTests {
         assertThat(result.signalsDetected()).isGreaterThan(0);
         assertThat(result.events()).allSatisfy(event -> assertThat(event.candleIndex()).isGreaterThanOrEqualTo(59));
         assertThat(result.events().getLast().signal().direction()).isEqualTo(Direction.LONG);
+        assertThat(result.signalEvaluations()).isNotEmpty();
     }
 
     @Test
@@ -54,6 +55,12 @@ class ConfluenceBacktesterTests {
         assertThat(result.trades().getFirst().exitReason()).isEqualTo(ExitReason.TARGET_HIT);
         assertThat(result.trades().getFirst().riskMultiple()).isEqualTo(1.0);
         assertThat(result.totalRiskMultiple()).isGreaterThanOrEqualTo(1.0);
+        assertThat(result.correctSignals()).isGreaterThan(0);
+        assertThat(result.accuracy()).isGreaterThan(0);
+        assertThat(result.longAccuracy()).isGreaterThan(0);
+        assertThat(result.signalEvaluations().getFirst().outcome()).isEqualTo(SignalOutcome.TARGET_HIT);
+        assertThat(result.signalEvaluations().getFirst().candlesToResolution()).isGreaterThanOrEqualTo(1);
+        assertThat(result.signalEvaluations().getFirst().maximumFavorableExcursion()).isGreaterThan(0);
     }
 
     private List<Candle> trendingCandles(double start, double step, Direction direction) {

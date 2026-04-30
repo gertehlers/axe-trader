@@ -19,9 +19,38 @@ brokers:
         apiKey: ${CAPITAL_API_KEY}
 
 axe-trader:
-  enabled: true
+  mode: backtest
   database:
     path: data/axe-trader.sqlite
+  strategy:
+    minimum-candles: 60
+    structure-lookback: 10
+    minimum-score: 8
+    minimum-adx: 20.0
+    bullish-close-location: 0.70
+    bearish-close-location: 0.30
+    stop-atr-multiple: 1.5
+    max-atr-extension-from-fast-ema: 10.0
+    indicators:
+      fast-ema-period: 20
+      slow-ema-period: 50
+      rsi-period: 14
+      atr-period: 14
+      adx-period: 14
+  backtest:
+    enabled: true
+    data-source: capital
+    epic: US500
+    resolution: MINUTE_5
+    from: 2026-01-01T00:00:00Z
+    to: 2026-04-30T08:00:00Z
+    max: 1000
+    chunk-size: 500
+    minimum-candles: 60
+    target-risk-multiple: 1.0
+    sweep:
+      target-risk-multiples: 1.0
+      stop-atr-multiples: 1.0,1.25,1.5,1.75,2.0,2.5,3.0
   market:
     epics: US500
     resolutions: MINUTE

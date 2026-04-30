@@ -29,7 +29,7 @@ class BulkBacktestRunnerTests {
         );
         HistoricalCandleSource source = new FakeHistoricalCandleSource()::load;
         var store = new SQLiteBacktestStore(new BacktestPersistenceSettings(tempDir.resolve("bulk.sqlite").toString()));
-        var runner = new BulkBacktestRunner(source, detector, store);
+        var runner = new BulkBacktestRunner(source, detector, new IndicatorCalculator(), store);
         var request = new HistoricalPriceRequest(
                 "US500",
                 "MINUTE_5",
@@ -46,6 +46,18 @@ class BulkBacktestRunnerTests {
         assertThat(report.candlesProcessed()).isGreaterThanOrEqualTo(90);
         assertThat(report.signalsDetected()).isGreaterThan(0);
         assertThat(report.tradesClosed()).isGreaterThan(0);
+        assertThat(report.resolvedSignals()).isGreaterThan(0);
+        assertThat(report.correctSignals()).isGreaterThanOrEqualTo(0);
+        assertThat(report.accuracy()).isBetween(0.0, 1.0);
+        assertThat(report.accuracyByDirection()).isNotEmpty();
+        assertThat(report.accuracyByVolatilityRegime()).isNotEmpty();
+        assertThat(report.accuracyByTrendRegime()).isNotEmpty();
+        assertThat(report.candidateGate()).isNotNull();
+        assertThat(report.candidateGate().requiredAccuracy()).isEqualTo(0.75);
+        assertThat(report.candidateGate().candidateStrategy())
+                .isEqualTo(report.candidateGate().meetsAccuracyGate()
+                        && report.candidateGate().meetsProfitGate()
+                        && report.candidateGate().meetsSampleSizeGate());
         assertThat(report.exitReasons()).isNotEmpty();
     }
 }

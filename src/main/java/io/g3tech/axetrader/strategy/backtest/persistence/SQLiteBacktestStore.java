@@ -3,7 +3,9 @@ package io.g3tech.axetrader.strategy.backtest.persistence;
 import io.g3tech.axetrader.strategy.EntrySignal;
 import io.g3tech.axetrader.strategy.backtest.BacktestEvent;
 import io.g3tech.axetrader.strategy.backtest.BacktestResult;
+import io.g3tech.axetrader.strategy.backtest.BacktestSettings;
 import io.g3tech.axetrader.strategy.backtest.BacktestTrade;
+import io.g3tech.axetrader.strategy.backtest.SignalEvaluation;
 import io.g3tech.axetrader.strategy.backtest.data.HistoricalPriceRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,19 +37,22 @@ public class SQLiteBacktestStore {
         this.settings = settings;
     }
 
-    public long save(HistoricalPriceRequest request, BacktestResult result) {
+    public long save(HistoricalPriceRequest request, BacktestSettings settings, BacktestResult result) {
         ensureParentDirectory();
 
         try (var connection = openConnection()) {
             connection.setAutoCommit(false);
             createSchema(connection);
 
-            var runId = insertRun(connection, request, result);
+            var runId = insertRun(connection, request, settings, result);
             for (var event : result.events()) {
                 insertSignal(connection, runId, event);
             }
             for (var trade : result.trades()) {
                 insertTrade(connection, runId, trade);
+            }
+            for (var evaluation : result.signalEvaluations()) {
+                insertSignalEvaluation(connection, runId, evaluation);
             }
 
             connection.commit();
@@ -84,6 +89,8 @@ public class SQLiteBacktestStore {
                         requested_from text,
                         requested_to text,
                         requested_max integer not null,
+                        target_r real not null default 0,
+                        stop_atr real not null default 0,
                         candles_processed integer not null,
                         warmup_candles integer not null,
                         signals_detected integer not null,
@@ -93,6 +100,8 @@ public class SQLiteBacktestStore {
                         created_at text not null
                     )
                     """);
+            addColumnIfMissing(connection, "backtest_run", "target_r", "real not null default 0");
+            addColumnIfMissing(connection, "backtest_run", "stop_atr", "real not null default 0");
             statement.execute("""
                     create table if not exists backtest_signal (
                         id integer primary key autoincrement,
@@ -132,15 +141,47 @@ public class SQLiteBacktestStore {
                         risk_multiple real not null
                     )
                     """);
+            statement.execute("""
+                    create table if not exists backtest_signal_evaluation (
+                        id integer primary key autoincrement,
+                        run_id integer not null references backtest_run(id),
+                        entry_index integer not null,
+                        candle_time text not null,
+                        direction text not null,
+                        outcome text not null,
+                        volatility_regime text not null,
+                        trend_regime text not null,
+                        candles_to_resolution integer not null,
+                        maximum_favorable_excursion real not null,
+                        maximum_adverse_excursion real not null
+                    )
+                    """);
         }
     }
 
-    private long insertRun(Connection connection, HistoricalPriceRequest request, BacktestResult result) throws SQLException {
+    private void addColumnIfMissing(Connection connection, String tableName, String columnName, String definition) throws SQLException {
+        try (var resultSet = connection.getMetaData().getColumns(null, null, tableName, columnName)) {
+            if (resultSet.next()) {
+                return;
+            }
+        }
+
+        try (var statement = connection.createStatement()) {
+            statement.execute("alter table " + tableName + " add column " + columnName + " " + definition);
+        }
+    }
+
+    private long insertRun(
+            Connection connection,
+            HistoricalPriceRequest request,
+            BacktestSettings settings,
+            BacktestResult result
+    ) throws SQLException {
         var sql = """
                 insert into backtest_run (
-                    epic, resolution, requested_from, requested_to, requested_max, candles_processed,
+                    epic, resolution, requested_from, requested_to, requested_max, target_r, stop_atr, candles_processed,
                     warmup_candles, signals_detected, trades_closed, win_rate, total_r, created_at
-                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """;
 
         try (var statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -149,13 +190,15 @@ public class SQLiteBacktestStore {
             setInstant(statement, 3, request.from());
             setInstant(statement, 4, request.to());
             statement.setInt(5, request.max());
-            statement.setInt(6, result.candlesProcessed());
-            statement.setInt(7, result.warmupCandles());
-            statement.setInt(8, result.signalsDetected());
-            statement.setInt(9, result.tradesClosed());
-            statement.setDouble(10, result.winRate());
-            statement.setDouble(11, result.totalRiskMultiple());
-            statement.setString(12, Instant.now().toString());
+            statement.setDouble(6, settings.targetRiskMultiple());
+            statement.setDouble(7, settings.stopAtrMultiple());
+            statement.setInt(8, result.candlesProcessed());
+            statement.setInt(9, result.warmupCandles());
+            statement.setInt(10, result.signalsDetected());
+            statement.setInt(11, result.tradesClosed());
+            statement.setDouble(12, result.winRate());
+            statement.setDouble(13, result.totalRiskMultiple());
+            statement.setString(14, Instant.now().toString());
             statement.executeUpdate();
 
             try (var keys = statement.getGeneratedKeys()) {
@@ -221,6 +264,30 @@ public class SQLiteBacktestStore {
             statement.setString(10, decimal(trade.exitPrice()));
             statement.setString(11, trade.exitReason().name());
             statement.setDouble(12, trade.riskMultiple());
+            statement.executeUpdate();
+        }
+    }
+
+    private void insertSignalEvaluation(Connection connection, long runId, SignalEvaluation evaluation) throws SQLException {
+        var signal = evaluation.signal();
+        var sql = """
+                insert into backtest_signal_evaluation (
+                    run_id, entry_index, candle_time, direction, outcome, volatility_regime, trend_regime,
+                    candles_to_resolution, maximum_favorable_excursion, maximum_adverse_excursion
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """;
+
+        try (var statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, runId);
+            statement.setInt(2, evaluation.entryIndex());
+            statement.setString(3, signal.candleTime().toString());
+            statement.setString(4, signal.direction().name());
+            statement.setString(5, evaluation.outcome().name());
+            statement.setString(6, evaluation.volatilityRegime().name());
+            statement.setString(7, evaluation.trendRegime().name());
+            statement.setInt(8, evaluation.candlesToResolution());
+            statement.setDouble(9, evaluation.maximumFavorableExcursion());
+            statement.setDouble(10, evaluation.maximumAdverseExcursion());
             statement.executeUpdate();
         }
     }

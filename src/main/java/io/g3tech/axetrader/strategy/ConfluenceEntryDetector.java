@@ -16,13 +16,13 @@ public class ConfluenceEntryDetector {
     private final ConfluenceSettings settings;
 
     @Autowired
-    public ConfluenceEntryDetector(IndicatorCalculator indicatorCalculator) {
-        this(indicatorCalculator, ConfluenceSettings.defaults());
-    }
-
     public ConfluenceEntryDetector(IndicatorCalculator indicatorCalculator, ConfluenceSettings settings) {
         this.indicatorCalculator = indicatorCalculator;
         this.settings = settings;
+    }
+
+    public ConfluenceEntryDetector(IndicatorCalculator indicatorCalculator) {
+        this(indicatorCalculator, ConfluenceSettings.defaults());
     }
 
     public Optional<EntrySignal> detect(CandleWindow biasWindow, CandleWindow entryWindow) {

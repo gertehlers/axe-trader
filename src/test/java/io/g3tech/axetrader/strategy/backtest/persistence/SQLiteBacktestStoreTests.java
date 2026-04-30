@@ -34,7 +34,8 @@ class SQLiteBacktestStoreTests {
                 new ConfluenceSettings(60, 10, 8, 15, 0.65, 0.35, 1.5, 10)
         );
         var candles = trendingCandles();
-        var result = new ConfluenceBacktester(detector, new BacktestSettings(60, 1.0)).run(candles);
+        var settings = new BacktestSettings(60, 1.0);
+        var result = new ConfluenceBacktester(detector, settings).run(candles);
         var request = new HistoricalPriceRequest(
                 "US500",
                 "MINUTE_5",
@@ -43,13 +44,14 @@ class SQLiteBacktestStoreTests {
                 candles.size()
         );
 
-        var runId = store.save(request, result);
+        var runId = store.save(request, settings, result);
 
         assertThat(runId).isPositive();
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + databasePath)) {
             assertThat(count(connection, "backtest_run")).isEqualTo(1);
             assertThat(count(connection, "backtest_signal")).isEqualTo(result.signalsDetected());
             assertThat(count(connection, "backtest_trade")).isEqualTo(result.tradesClosed());
+            assertThat(count(connection, "backtest_signal_evaluation")).isEqualTo(result.signalEvaluations().size());
         }
     }
 

@@ -8,27 +8,33 @@ import java.util.List;
 @Component
 public class IndicatorCalculator {
 
-    private static final int RSI_PERIOD = 14;
-    private static final int ATR_PERIOD = 14;
-    private static final int ADX_PERIOD = 14;
+    private final IndicatorSettings settings;
+
+    public IndicatorCalculator() {
+        this(IndicatorSettings.defaults());
+    }
+
+    public IndicatorCalculator(IndicatorSettings settings) {
+        this.settings = settings;
+    }
 
     public IndicatorSnapshot calculate(CandleWindow window) {
-        if (window.size() < 51) {
-            throw new IllegalArgumentException("At least 51 candles are required to calculate the strategy indicators");
+        if (window.size() < settings.requiredCandles()) {
+            throw new IllegalArgumentException("At least %d candles are required to calculate the strategy indicators".formatted(settings.requiredCandles()));
         }
 
         var candles = window.candles();
-        var ema20 = ema(candles, 20);
-        var previousEma20 = ema(candles.subList(0, candles.size() - 1), 20);
+        var fastEma = ema(candles, settings.fastEmaPeriod());
+        var previousFastEma = ema(candles.subList(0, candles.size() - 1), settings.fastEmaPeriod());
 
-        var directional = directionalMovement(candles, ADX_PERIOD);
+        var directional = directionalMovement(candles, settings.adxPeriod());
 
         return new IndicatorSnapshot(
-                ema20,
-                ema(candles, 50),
-                ema20 - previousEma20,
-                rsi(candles, RSI_PERIOD),
-                atr(candles, ATR_PERIOD),
+                fastEma,
+                ema(candles, settings.slowEmaPeriod()),
+                fastEma - previousFastEma,
+                rsi(candles, settings.rsiPeriod()),
+                atr(candles, settings.atrPeriod()),
                 directional.adx(),
                 directional.plusDi(),
                 directional.minusDi()
