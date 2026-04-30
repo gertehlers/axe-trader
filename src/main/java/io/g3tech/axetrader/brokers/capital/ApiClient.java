@@ -1,8 +1,6 @@
 package io.g3tech.axetrader.brokers.capital;
 
 import io.g3tech.axetrader.brokers.capital.dto.account.GetAccountsResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -17,8 +15,6 @@ import static io.g3tech.axetrader.brokers.capital.Constants.CLIENT_SSO_TOKEN;
 
 @Service
 public class ApiClient {
-
-    Logger logger = LoggerFactory.getLogger(this.getClass());
 
     private final RestClient restClient;
 

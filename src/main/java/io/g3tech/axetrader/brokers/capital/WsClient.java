@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.net.ConnectException;
 import java.net.URI;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -28,7 +29,7 @@ import java.util.concurrent.TimeoutException;
 @Service
 public class WsClient {
 
-    Logger logger = LoggerFactory.getLogger(WsClient.class);
+    private static final Logger logger = LoggerFactory.getLogger(WsClient.class);
 
     private final ObjectMapper objectMapper;
     private final WebSocketClient webSocketClient;
@@ -37,13 +38,13 @@ public class WsClient {
     private WebSocketSession session;
     private URI wsUrl;
 
-    public WsClient() {
-        this.objectMapper = new ObjectMapper();
+    public WsClient(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
         this.webSocketClient = new StandardWebSocketClient();
     }
 
     public synchronized void connect(ConversationContext conversationContext) throws IOException {
-        this.conversationContext = conversationContext;
+        this.conversationContext = Objects.requireNonNull(conversationContext, "conversationContext");
         this.wsUrl = URI.create(conversationContext.streamingUrl().concat(Constants.CONNECT.value()));
         this.session = openSession();
     }
@@ -52,12 +53,24 @@ public class WsClient {
         send("ping", null);
     }
 
-    public void subscribeOHLCMarketData(String epic, String resolution) throws IOException {
-        subscribeOHLCMarketData(List.of(epic), List.of(resolution));
+    public void subscribeOHLCMarketData(List<String> epics, List<String> resolutions, List<String> types) throws IOException {
+        send("OHLCMarketData.subscribe", new MarketDataSubscribe(epics, resolutions, types));
     }
 
     public void subscribeOHLCMarketData(List<String> epics, List<String> resolutions) throws IOException {
-        send("OHLCMarketData.subscribe", new MarketDataSubscribe(epics, resolutions));
+        send("OHLCMarketData.subscribe", MarketDataSubscribe.ohlc(epics, resolutions));
+    }
+
+    public void unsubscribeOHLCMarketData(List<String> epics, List<String> resolutions, List<String> types) throws IOException {
+        send("OHLCMarketData.unsubscribe", new MarketDataSubscribe(epics, resolutions, types));
+    }
+
+    public void subscribeMarketData(List<String> epics, List<String> resolutions, List<String> types) throws IOException {
+        send("marketData.subscribe", new MarketDataSubscribe(epics, resolutions, types));
+    }
+
+    public void unsubscribeMarketData(List<String> epics, List<String> resolutions, List<String> types) throws IOException {
+        send("marketData.unsubscribe", new MarketDataSubscribe(epics, resolutions, types));
     }
 
     private synchronized WebSocketSession getSession() throws IOException {
@@ -91,6 +104,10 @@ public class WsClient {
     }
 
     private void send(String destination, Object payload) throws IOException {
+        if (conversationContext == null) {
+            throw new IllegalStateException("Call connect(conversationContext) before sending websocket messages");
+        }
+
         var request = new Request(
                 destination,
                 UUID.randomUUID().toString(),

@@ -25,6 +25,7 @@ import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 import java.util.List;
+import java.util.Objects;
 
 import static io.g3tech.axetrader.brokers.capital.Constants.X_SECURITY_TOKEN;
 import static io.g3tech.axetrader.brokers.capital.Constants.API_V1_SESSION;
@@ -35,7 +36,7 @@ import static io.g3tech.axetrader.brokers.capital.Constants.X_CAP_API_KEY;
 @Service
 public class AuthenticationClient {
 
-    Logger logger = LoggerFactory.getLogger(AuthenticationClient.class);
+    private static final Logger logger = LoggerFactory.getLogger(AuthenticationClient.class);
 
     private final RestClient restClient;
     private final CapitalUserConfig capitalUserConfig;
@@ -53,11 +54,12 @@ public class AuthenticationClient {
                 .retrieve()
                 .body(GetEncryptionKeySessionResponse.class);
 
-        logger.debug("Encryption key: {}", encryptionKeySessionResponse.encryptionKey());
+        Objects.requireNonNull(encryptionKeySessionResponse, "Capital session encryption key response was empty");
+
         var encryptedPassword = encryptPassword(encryptionKeySessionResponse.encryptionKey(), encryptionKeySessionResponse.timeStamp(), capitalUserConfig.password());
         var createSessionRequest = new CreateSessionRequest(capitalUserConfig.login(), encryptedPassword, true);
 
-        logger.debug("Sending create session request: {}", createSessionRequest);
+        logger.debug("Sending create session request for configured Capital.com user");
         var createSessionResponse = restClient.post()
                 .uri(API_V1_SESSION.value())
                 .headers(this::appendHttpHeaders)
@@ -68,9 +70,10 @@ public class AuthenticationClient {
         var responseHeaders = createSessionResponse.getHeaders();
         var responseBody = createSessionResponse.getBody();
 
-        logger.debug("Session created: {}", responseBody);
+        Objects.requireNonNull(responseBody, "Capital create session response was empty");
+        logger.debug("Session created for account {}", responseBody.currentAccountId());
+
         return new ConversationContext(
-                capitalUserConfig.apiKey(),
                 responseHeaders.getFirst(CLIENT_SSO_TOKEN.value()),
                 responseHeaders.getFirst(X_SECURITY_TOKEN.value()),
                 responseBody.streamingHost()
