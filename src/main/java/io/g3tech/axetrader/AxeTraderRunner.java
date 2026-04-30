@@ -4,6 +4,7 @@ import io.g3tech.axetrader.brokers.capital.ApiClient;
 import io.g3tech.axetrader.brokers.capital.AuthenticationClient;
 import io.g3tech.axetrader.brokers.capital.ConversationContext;
 import io.g3tech.axetrader.brokers.capital.WsClient;
+import io.g3tech.axetrader.brokers.capital.domain.MarketDataPreferences;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,7 +15,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.util.List;
 
 @Service
 public class AxeTraderRunner {
@@ -25,23 +25,20 @@ public class AxeTraderRunner {
     private final AuthenticationClient authenticationClient;
     private final WsClient wsClient;
     private final boolean enabled;
-    private final List<String> ohlcEpics;
-    private final List<String> ohlcResolutions;
+    private final MarketDataPreferences marketDataPreferences;
 
     public AxeTraderRunner(
             ApiClient apiClient,
             AuthenticationClient authenticationClient,
             WsClient wsClient,
             @Value("${axe-trader.enabled:true}") boolean enabled,
-            @Value("${axe-trader.market.ohlc.epics:US500}") List<String> ohlcEpics,
-            @Value("${axe-trader.market.ohlc.resolutions:MINUTE_5}") List<String> ohlcResolutions
+            MarketDataPreferences marketDataPreferences
     ) {
         this.apiClient = apiClient;
         this.authenticationClient = authenticationClient;
         this.wsClient = wsClient;
         this.enabled = enabled;
-        this.ohlcEpics = ohlcEpics;
-        this.ohlcResolutions = ohlcResolutions;
+        this.marketDataPreferences = marketDataPreferences;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -65,7 +62,7 @@ public class AxeTraderRunner {
         }
 
         try {
-            wsClient.subscribeOHLCMarketData(ohlcEpics, ohlcResolutions);
+            wsClient.subscribeOHLCMarketData(marketDataPreferences.epics(), marketDataPreferences.resolutions());
         } catch (IOException e) {
             logger.error("Failed to subscribe to OHLC market data", e);
             throw new RuntimeException(e);

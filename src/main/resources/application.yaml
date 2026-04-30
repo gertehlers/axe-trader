@@ -19,9 +19,8 @@ brokers:
 axe-trader:
   enabled: true
   market:
-    ohlc:
-      epics: US500
-      resolutions: MINUTE_5
+    epics: US500
+    resolutions: MINUTE
 
 logging:
   level:
