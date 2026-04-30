@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Map;
 
 public record BulkBacktestReport(
+        long runId,
         String epic,
         String resolution,
         Instant from,

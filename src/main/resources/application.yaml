@@ -20,6 +20,8 @@ brokers:
 
 axe-trader:
   enabled: true
+  database:
+    path: data/axe-trader.sqlite
   market:
     epics: US500
     resolutions: MINUTE

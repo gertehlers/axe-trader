@@ -59,6 +59,7 @@ public class BacktestCommandRunner implements ApplicationRunner {
 
         logger.info("""
                 Backtest report:
+                  runId={}
                   epic={}
                   resolution={}
                   from={}
@@ -71,6 +72,7 @@ public class BacktestCommandRunner implements ApplicationRunner {
                   averageR={}
                   exitReasons={}
                 """,
+                report.runId(),
                 report.epic(),
                 report.resolution(),
                 report.from(),
