@@ -5,8 +5,13 @@ public record IndicatorSettings(
         int slowEmaPeriod,
         int rsiPeriod,
         int atrPeriod,
-        int adxPeriod
+        int adxPeriod,
+        int structureLookbackPeriod
 ) {
+
+    public IndicatorSettings(int fastEmaPeriod, int slowEmaPeriod, int rsiPeriod, int atrPeriod, int adxPeriod) {
+        this(fastEmaPeriod, slowEmaPeriod, rsiPeriod, atrPeriod, adxPeriod, 20);
+    }
 
     public IndicatorSettings {
         if (fastEmaPeriod <= 0) {
@@ -24,13 +29,19 @@ public record IndicatorSettings(
         if (adxPeriod <= 0) {
             throw new IllegalArgumentException("ADX period must be positive");
         }
+        if (structureLookbackPeriod <= 0) {
+            throw new IllegalArgumentException("Structure lookback period must be positive");
+        }
     }
 
     public int requiredCandles() {
-        return Math.max(Math.max(fastEmaPeriod, slowEmaPeriod), (adxPeriod * 2) + 1) + 1;
+        return Math.max(
+                Math.max(Math.max(fastEmaPeriod, slowEmaPeriod), (adxPeriod * 2) + 1),
+                structureLookbackPeriod
+        ) + 1;
     }
 
     public static IndicatorSettings defaults() {
-        return new IndicatorSettings(20, 50, 14, 14, 14);
+        return new IndicatorSettings(20, 50, 14, 14, 14, 20);
     }
 }

@@ -5,17 +5,21 @@ import io.g3tech.axetrader.brokers.capital.AuthenticationClient;
 import io.g3tech.axetrader.brokers.capital.ConversationContext;
 import io.g3tech.axetrader.brokers.capital.WsClient;
 import io.g3tech.axetrader.brokers.capital.domain.MarketDataPreferences;
+import io.g3tech.axetrader.brokers.capital.dto.prices.GetPricesRequest;
 import io.g3tech.axetrader.config.AxeTraderMode;
+import io.g3tech.axetrader.strategy.backtest.repositories.CapitalHistoricalPriceMapper;
+import io.g3tech.axetrader.strategy.backtest.repositories.HistoricalPriceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.ContextClosedEvent;
-import org.springframework.context.event.EventListener;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 
 @Service
 public class AxeTraderRunner {
@@ -27,22 +31,57 @@ public class AxeTraderRunner {
     private final WsClient wsClient;
     private final AxeTraderMode mode;
     private final MarketDataPreferences marketDataPreferences;
+    private final CapitalHistoricalPriceMapper historicalPriceMapper;
+    private final HistoricalPriceRepository historicalPriceRepository;
 
     public AxeTraderRunner(
             ApiClient apiClient,
             AuthenticationClient authenticationClient,
             WsClient wsClient,
             @Value("${axe-trader.mode:monitor}") String mode,
-            MarketDataPreferences marketDataPreferences
+            MarketDataPreferences marketDataPreferences,
+            CapitalHistoricalPriceMapper historicalPriceMapper,
+            HistoricalPriceRepository historicalPriceRepository
     ) {
         this.apiClient = apiClient;
         this.authenticationClient = authenticationClient;
         this.wsClient = wsClient;
         this.mode = AxeTraderMode.from(mode);
         this.marketDataPreferences = marketDataPreferences;
+        this.historicalPriceMapper = historicalPriceMapper;
+        this.historicalPriceRepository = historicalPriceRepository;
     }
 
-    @EventListener(ApplicationReadyEvent.class)
+
+
+    public void loadData() throws InterruptedException {
+        logger.info("Loading data");
+
+        var conversationContext = authenticationClient.createSession();
+
+        var startTime = ZonedDateTime.now(ZoneId.from(ZoneOffset.UTC));
+
+        for (var i = 0; i < 500; i++) {
+            Thread.sleep(1000);
+
+            var to = startTime.minusSeconds(1).toInstant();
+
+            var getPricesRequest = new GetPricesRequest("US500", "MINUTE", null, to, 1000);
+
+            var apiPrices = apiClient.getPrices(conversationContext, getPricesRequest);
+            var historicalPrices = historicalPriceMapper.toHistoricalPrices(apiPrices, getPricesRequest);
+            historicalPriceRepository.saveAll(historicalPrices);
+            logger.info("Saved {} historical prices with last price at {}", historicalPrices.size(), historicalPrices.getFirst().getSnapshotTimeUtc());
+
+            startTime = ZonedDateTime.of(LocalDateTime.parse(apiPrices.prices().getFirst().snapshotTimeUTC()), ZoneId.from(ZoneOffset.UTC));
+        }
+//
+//
+
+    }
+
+
+//    @EventListener(ApplicationReadyEvent.class)
     public void run() {
         if (!mode.isLiveMarketMode()) {
             logger.info("AxeTrader live runner is disabled because mode is {}", mode);
@@ -75,7 +114,7 @@ public class AxeTraderRunner {
 
     }
 
-    @Scheduled(fixedDelay = 30000, initialDelay = 10000)
+//    @Scheduled(fixedDelay = 30000, initialDelay = 10000)
     public void ping() {
         if (!mode.isLiveMarketMode()) {
             return;
@@ -88,7 +127,7 @@ public class AxeTraderRunner {
         }
     }
 
-    @EventListener
+//    @EventListener
     public void close(ContextClosedEvent event) {
         logger.debug("Application is closing. Closing AxeTrader. Closed by {}", event.getSource().getClass().getSimpleName());
         try {

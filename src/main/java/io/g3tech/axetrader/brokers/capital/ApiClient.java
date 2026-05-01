@@ -3,6 +3,7 @@ package io.g3tech.axetrader.brokers.capital;
 import io.g3tech.axetrader.brokers.capital.dto.account.GetAccountsResponse;
 import io.g3tech.axetrader.brokers.capital.dto.prices.GetPricesRequest;
 import io.g3tech.axetrader.brokers.capital.dto.prices.GetPricesResponse;
+import org.slf4j.Logger;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -13,13 +14,15 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-import static io.g3tech.axetrader.brokers.capital.Constants.X_SECURITY_TOKEN;
 import static io.g3tech.axetrader.brokers.capital.Constants.API_V1_ACCOUNTS;
 import static io.g3tech.axetrader.brokers.capital.Constants.API_V1_PRICES;
 import static io.g3tech.axetrader.brokers.capital.Constants.CLIENT_SSO_TOKEN;
+import static io.g3tech.axetrader.brokers.capital.Constants.X_SECURITY_TOKEN;
 
 @Service
 public class ApiClient {
+
+    Logger logger = org.slf4j.LoggerFactory.getLogger(ApiClient.class);
 
     private static final DateTimeFormatter CAPITAL_DATE_FORMAT = DateTimeFormatter
             .ofPattern("yyyy-MM-dd'T'HH:mm:ss")

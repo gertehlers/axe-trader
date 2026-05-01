@@ -26,19 +26,106 @@ public class IndicatorCalculator {
         var candles = window.candles();
         var fastEma = ema(candles, settings.fastEmaPeriod());
         var previousFastEma = ema(candles.subList(0, candles.size() - 1), settings.fastEmaPeriod());
+        var fastEmaDelta = fastEma - previousFastEma;
+        var atr = atr(candles, settings.atrPeriod());
+        var vwap = calculateVWAP(candles);
 
         var directional = directionalMovement(candles, settings.adxPeriod());
 
         return new IndicatorSnapshot(
                 fastEma,
                 ema(candles, settings.slowEmaPeriod()),
-                fastEma - previousFastEma,
+                fastEmaDelta,
                 rsi(candles, settings.rsiPeriod()),
-                atr(candles, settings.atrPeriod()),
+                atr,
                 directional.adx(),
                 directional.plusDi(),
-                directional.minusDi()
+                directional.minusDi(),
+                new IndicatorSnapshot.IndicatorExtensions(
+                        calculateVWAPMetrics(window.latest(), vwap, atr),
+                        calculateCandleStrength(window.latest()),
+                        calculateStructureBreak(candles, settings.structureLookbackPeriod()),
+                        safeDivide(fastEmaDelta, atr)
+                )
         );
+    }
+
+    double calculateVWAP(List<Candle> candles) {
+        if (candles == null || candles.isEmpty()) {
+            throw new IllegalArgumentException("Candles must not be empty");
+        }
+
+        if (hasAvailableVolume(candles)) {
+            double cumulativePriceVolume = 0;
+            double cumulativeVolume = 0;
+
+            for (var candle : candles) {
+                var volume = candle.volume().doubleValue();
+                cumulativePriceVolume += typicalPrice(candle) * volume;
+                cumulativeVolume += volume;
+            }
+
+            if (cumulativeVolume > 0) {
+                return cumulativePriceVolume / cumulativeVolume;
+            }
+        }
+
+        return candles.stream()
+                .mapToDouble(this::typicalPrice)
+                .average()
+                .orElseThrow();
+    }
+
+    IndicatorSnapshot.CandleStrength calculateCandleStrength(Candle candle) {
+        var range = candle.highValue() - candle.lowValue();
+        return new IndicatorSnapshot.CandleStrength(
+                safeDivide(Math.abs(candle.closeValue() - candle.openValue()), range),
+                range == 0 ? 0.5 : safeDivide(candle.closeValue() - candle.lowValue(), range)
+        );
+    }
+
+    IndicatorSnapshot.StructureBreak calculateStructureBreak(List<Candle> candles, int lookback) {
+        if (lookback <= 0) {
+            throw new IllegalArgumentException("Structure lookback must be positive");
+        }
+        if (candles == null || candles.size() <= lookback) {
+            throw new IllegalArgumentException("Not enough candles to calculate structure lookback %d".formatted(lookback));
+        }
+
+        var currentClose = candles.getLast().closeValue();
+        var structureCandles = candles.subList(candles.size() - lookback - 1, candles.size() - 1);
+        var recentHigh = structureCandles.stream()
+                .mapToDouble(Candle::highValue)
+                .max()
+                .orElseThrow();
+        var recentLow = structureCandles.stream()
+                .mapToDouble(Candle::lowValue)
+                .min()
+                .orElseThrow();
+
+        return new IndicatorSnapshot.StructureBreak(
+                recentHigh,
+                recentLow,
+                currentClose > recentHigh,
+                currentClose < recentLow
+        );
+    }
+
+    private IndicatorSnapshot.VWAPMetrics calculateVWAPMetrics(Candle latest, double vwap, double atr) {
+        var distanceFromVwap = latest.closeValue() - vwap;
+        return new IndicatorSnapshot.VWAPMetrics(vwap, distanceFromVwap, safeDivide(distanceFromVwap, atr));
+    }
+
+    private boolean hasAvailableVolume(List<Candle> candles) {
+        return candles.stream().allMatch(candle -> candle.volume() != null && candle.volume() > 0);
+    }
+
+    private double typicalPrice(Candle candle) {
+        return (candle.highValue() + candle.lowValue() + candle.closeValue()) / 3.0;
+    }
+
+    private double safeDivide(double numerator, double denominator) {
+        return denominator == 0 ? 0 : numerator / denominator;
     }
 
     private double ema(List<Candle> candles, int period) {
@@ -80,6 +167,10 @@ public class IndicatorCalculator {
             var change = candles.get(i).closeValue() - candles.get(i - 1).closeValue();
             averageGain = ((averageGain * (period - 1)) + Math.max(change, 0)) / period;
             averageLoss = ((averageLoss * (period - 1)) + Math.max(-change, 0)) / period;
+        }
+
+        if (averageLoss == 0 && averageGain == 0) {
+            return 50;
         }
 
         if (averageLoss == 0) {

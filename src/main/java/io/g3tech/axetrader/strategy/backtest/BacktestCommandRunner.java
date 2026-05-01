@@ -1,12 +1,12 @@
 package io.g3tech.axetrader.strategy.backtest;
 
-import io.g3tech.axetrader.strategy.backtest.data.HistoricalPriceRequest;
 import io.g3tech.axetrader.config.AxeTraderMode;
+import io.g3tech.axetrader.strategy.backtest.data.HistoricalPriceRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.ApplicationArguments;
-import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.context.event.ApplicationStartedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -14,7 +14,7 @@ import java.util.Arrays;
 import java.util.List;
 
 @Component
-public class BacktestCommandRunner implements ApplicationRunner {
+public class BacktestCommandRunner {
 
     private static final Logger logger = LoggerFactory.getLogger(BacktestCommandRunner.class);
 
@@ -59,8 +59,8 @@ public class BacktestCommandRunner implements ApplicationRunner {
         this.stopAtrMultiples = parseDoubles(stopAtrMultiples, List.of(1.5));
     }
 
-    @Override
-    public void run(ApplicationArguments args) {
+    @EventListener(ApplicationStartedEvent.class)
+    public void run() {
         if (mode != AxeTraderMode.BACKTEST) {
             logger.info("Backtest runner is disabled because mode is {}", mode);
             return;

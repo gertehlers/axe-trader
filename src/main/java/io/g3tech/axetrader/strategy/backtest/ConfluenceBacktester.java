@@ -49,9 +49,8 @@ public class ConfluenceBacktester {
         var volatilityRegimeClassifier = VolatilityRegimeClassifier.from(candles, settings.minimumCandles(), indicatorCalculator);
         BacktestTrade openTrade = null;
 
-        for (int i = 0; i < candles.size(); i++) {
-            var candleIndex = i;
-            var candle = candles.get(i);
+        for (int candleIndex = 0; candleIndex < candles.size(); candleIndex++) {
+            var candle = candles.get(candleIndex);
             replay.add(candle);
 
             if (openTrade != null) {
