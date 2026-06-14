@@ -15,7 +15,11 @@ import org.ta4j.core.BarSeries;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -51,10 +55,32 @@ class BacktestChartExporterTest {
         long longs = trades.stream().filter(t -> t.direction() == Direction.LONG).count();
         long shorts = trades.stream().filter(t -> t.direction() == Direction.SHORT).count();
         long wins = trades.stream().filter(TradeResult::isWin).count();
+        double winRate = trades.isEmpty() ? 0.0 : 100.0 * wins / trades.size();
         System.out.printf(
                 "Confluence backtest: %d trades (%d long, %d short), %d wins (%.0f%%)%n",
-                trades.size(), longs, shorts, wins,
-                trades.isEmpty() ? 0.0 : 100.0 * wins / trades.size());
+                trades.size(), longs, shorts, wins, winRate);
+        System.out.printf("Approx trading days in dataset: %.1f  →  avg %.1f trades/day%n%n",
+                series.getBarCount() / 78.0, trades.size() / (series.getBarCount() / 78.0));
+
+        // Pillar-combo breakdown — shows which pairs/triples are actually driving entries.
+        Map<String, Long> comboCount = trades.stream()
+                .collect(Collectors.groupingBy(
+                        t -> String.join(" + ", t.reasons().stream().sorted().toList()),
+                        TreeMap::new, Collectors.counting()));
+        Map<String, Long> comboWins = trades.stream().filter(TradeResult::isWin)
+                .collect(Collectors.groupingBy(
+                        t -> String.join(" + ", t.reasons().stream().sorted().toList()),
+                        Collectors.counting()));
+        System.out.println("Pillar combination breakdown (count | wins | win%):");
+        comboCount.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue(Comparator.reverseOrder()))
+                .forEach(e -> {
+                    long total = e.getValue();
+                    long w = comboWins.getOrDefault(e.getKey(), 0L);
+                    System.out.printf("  %-45s  %3d  |  %3d  |  %.0f%%%n",
+                            e.getKey(), total, w, 100.0 * w / total);
+                });
+        System.out.println();
 
         // Each entry must have recorded at least `threshold` agreeing pillars; fewer would mean
         // the reason re-evaluation disagrees with the live score (e.g. a look-ahead indicator).
