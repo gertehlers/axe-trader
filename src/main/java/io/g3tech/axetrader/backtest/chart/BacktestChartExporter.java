@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -96,6 +97,14 @@ public class BacktestChartExporter {
                       white-space: nowrap;
                       pointer-events: none;
                       box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+                    }
+                    .trade-reason {
+                      margin-top: 3px;
+                      padding-top: 3px;
+                      border-top: 1px solid rgba(255, 255, 255, 0.18);
+                      font-size: 10px;
+                      font-weight: 500;
+                      opacity: 0.9;
                     }
                     .trade-label::after {
                       content: "";
@@ -212,7 +221,16 @@ public class BacktestChartExporter {
                         label.style.top = `${y}px`;
                         label.style.borderColor = operation.color;
                         label.style.setProperty('--pointer-color', operation.color);
-                        label.textContent = operation.label;
+
+                        const title = document.createElement('div');
+                        title.textContent = operation.label;
+                        label.appendChild(title);
+                        if (operation.reason) {
+                          const reason = document.createElement('div');
+                          reason.className = 'trade-reason';
+                          reason.textContent = operation.reason;
+                          label.appendChild(reason);
+                        }
                         priceElement.appendChild(label);
                       });
                     }
@@ -266,33 +284,41 @@ public class BacktestChartExporter {
     }
 
     private static String tradeMarkers(List<TradeResult> trades) {
-        StringBuilder markers = new StringBuilder("[");
-        trades.stream()
-                .flatMap(trade -> List.of(entryMarker(trade), exitMarker(trade)).stream())
-                .sorted(Comparator.comparingLong(BacktestChartExporter::markerTime))
-                .forEach(marker -> {
-                    appendComma(markers);
-                    markers.append(marker);
-                });
-        return markers.append("]").toString();
+        List<String> markers = new ArrayList<>();
+        for (int i = 0; i < trades.size(); i++) {
+            TradeResult trade = trades.get(i);
+            int id = i + 1;
+            markers.add(entryMarker(trade, id));
+            markers.add(exitMarker(trade, id));
+        }
+        markers.sort(Comparator.comparingLong(BacktestChartExporter::markerTime));
+
+        StringBuilder out = new StringBuilder("[");
+        for (String marker : markers) {
+            appendComma(out);
+            out.append(marker);
+        }
+        return out.append("]").toString();
     }
 
-    private static String entryMarker(TradeResult trade) {
+    private static String entryMarker(TradeResult trade, int id) {
         boolean isLong = trade.direction() == Direction.LONG;
         return String.format(Locale.US,
-                "{time:%d,position:'%s',color:'%s',shape:'%s',text:'%s'}",
+                "{time:%d,position:'%s',color:'%s',shape:'%s',text:'#%d %s'}",
                 epochSecond(trade.entryTime()),
                 isLong ? "belowBar" : "aboveBar",
                 isLong ? "#2962ff" : "#ff8a80",
                 isLong ? "arrowUp" : "arrowDown",
+                id,
                 isLong ? "LONG" : "SHORT");
     }
 
-    private static String exitMarker(TradeResult trade) {
+    private static String exitMarker(TradeResult trade, int id) {
         return String.format(Locale.US,
-                "{time:%d,position:'aboveBar',color:'%s',shape:'arrowDown',text:'%s %.2fR'}",
+                "{time:%d,position:'aboveBar',color:'%s',shape:'arrowDown',text:'#%d %s %.2fR'}",
                 epochSecond(trade.exitTime()),
                 exitColor(trade),
+                id,
                 trade.isWin() ? "Gain" : "Stop",
                 trade.rMultiple());
     }
@@ -313,45 +339,56 @@ public class BacktestChartExporter {
     }
 
     private static String operationLabels(List<TradeResult> trades) {
-        StringBuilder labels = new StringBuilder("[");
-        trades.stream()
-                .flatMap(trade -> List.of(entryLabel(trade), exitLabel(trade)).stream())
-                .sorted(Comparator.comparingLong(BacktestChartExporter::labelTime))
-                .forEach(label -> {
-                    appendComma(labels);
-                    labels.append(label);
-                });
-        return labels.append("]").toString();
+        List<String> labels = new ArrayList<>();
+        for (int i = 0; i < trades.size(); i++) {
+            TradeResult trade = trades.get(i);
+            int id = i + 1;
+            labels.add(entryLabel(trade, id));
+            labels.add(exitLabel(trade, id));
+        }
+        labels.sort(Comparator.comparingLong(BacktestChartExporter::labelTime));
+
+        StringBuilder out = new StringBuilder("[");
+        for (String label : labels) {
+            appendComma(out);
+            out.append(label);
+        }
+        return out.append("]").toString();
     }
 
-    private static String entryLabel(TradeResult trade) {
+    private static String entryLabel(TradeResult trade, int id) {
         boolean isLong = trade.direction() == Direction.LONG;
+        String reason = trade.reasons().isEmpty() ? "" : String.join(", ", trade.reasons());
         return operationLabel(
                 epochSecond(trade.entryTime()),
                 trade.entryPrice(),
                 isLong ? "#2962ff" : "#ff8a80",
-                String.format(Locale.US, "%s entry %.2f", isLong ? "Long" : "Short", trade.entryPrice()));
+                String.format(Locale.US, "#%d %s entry %.2f", id, isLong ? "Long" : "Short", trade.entryPrice()),
+                reason);
     }
 
-    private static String exitLabel(TradeResult trade) {
+    private static String exitLabel(TradeResult trade, int id) {
         return operationLabel(
                 epochSecond(trade.exitTime()),
                 trade.exitPrice(),
                 exitColor(trade),
                 String.format(Locale.US,
-                        "%s %.2f | %.2fR",
+                        "#%d %s %.2f | %.2fR",
+                        id,
                         trade.isWin() ? "Gain" : "Stop",
                         trade.exitPrice(),
-                        trade.rMultiple()));
+                        trade.rMultiple()),
+                "");
     }
 
-    private static String operationLabel(long time, double price, String color, String label) {
+    private static String operationLabel(long time, double price, String color, String label, String reason) {
         return String.format(Locale.US,
-                "{time:%d,price:%.5f,color:'%s',label:'%s'}",
+                "{time:%d,price:%.5f,color:'%s',label:'%s',reason:'%s'}",
                 time,
                 price,
                 color,
-                escapeJs(label));
+                escapeJs(label),
+                escapeJs(reason));
     }
 
     private static long labelTime(String label) {

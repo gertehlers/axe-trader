@@ -54,6 +54,16 @@ public class BacktestProperties {
         private double stopAtrMultiple;
         private double targetAtrMultiple;
 
+        // Confluence (5-pillar voting)
+        private int confluenceThreshold;     // votes required to enter
+        private double proximityAtrMultiple; // "near" a swing level, in ATR units (pillar 3)
+        private int swingLookbackBars;       // backward window for support/resistance & structure (pillars 3 & 4)
+        private int volumeSmaPeriod;         // volume baseline (pillar 5)
+        private boolean enableCandles;
+        private boolean enableSupportResistance;
+        private boolean enableStructure;
+        private boolean enableVolumeTrend;
+
         public int getRsiPeriod() {
             return rsiPeriod;
         }
@@ -132,6 +142,70 @@ public class BacktestProperties {
 
         public void setTargetAtrMultiple(double targetAtrMultiple) {
             this.targetAtrMultiple = targetAtrMultiple;
+        }
+
+        public int getConfluenceThreshold() {
+            return confluenceThreshold;
+        }
+
+        public void setConfluenceThreshold(int confluenceThreshold) {
+            this.confluenceThreshold = confluenceThreshold;
+        }
+
+        public double getProximityAtrMultiple() {
+            return proximityAtrMultiple;
+        }
+
+        public void setProximityAtrMultiple(double proximityAtrMultiple) {
+            this.proximityAtrMultiple = proximityAtrMultiple;
+        }
+
+        public int getSwingLookbackBars() {
+            return swingLookbackBars;
+        }
+
+        public void setSwingLookbackBars(int swingLookbackBars) {
+            this.swingLookbackBars = swingLookbackBars;
+        }
+
+        public int getVolumeSmaPeriod() {
+            return volumeSmaPeriod;
+        }
+
+        public void setVolumeSmaPeriod(int volumeSmaPeriod) {
+            this.volumeSmaPeriod = volumeSmaPeriod;
+        }
+
+        public boolean isEnableCandles() {
+            return enableCandles;
+        }
+
+        public void setEnableCandles(boolean enableCandles) {
+            this.enableCandles = enableCandles;
+        }
+
+        public boolean isEnableSupportResistance() {
+            return enableSupportResistance;
+        }
+
+        public void setEnableSupportResistance(boolean enableSupportResistance) {
+            this.enableSupportResistance = enableSupportResistance;
+        }
+
+        public boolean isEnableStructure() {
+            return enableStructure;
+        }
+
+        public void setEnableStructure(boolean enableStructure) {
+            this.enableStructure = enableStructure;
+        }
+
+        public boolean isEnableVolumeTrend() {
+            return enableVolumeTrend;
+        }
+
+        public void setEnableVolumeTrend(boolean enableVolumeTrend) {
+            this.enableVolumeTrend = enableVolumeTrend;
         }
     }
 }

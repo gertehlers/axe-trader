@@ -1,31 +1,115 @@
 package io.g3tech.axetrader.backtest.strategy;
 
 import io.g3tech.axetrader.backtest.config.BacktestProperties;
+import io.g3tech.axetrader.backtest.indicators.ConfluenceScoreIndicator;
 import io.g3tech.axetrader.backtest.indicators.IndicatorBundle;
 import org.springframework.stereotype.Component;
 import org.ta4j.core.BaseStrategy;
 import org.ta4j.core.Rule;
 import org.ta4j.core.Strategy;
+import org.ta4j.core.indicators.numeric.NumericIndicator;
 import org.ta4j.core.rules.AverageTrueRangeStopGainRule;
 import org.ta4j.core.rules.AverageTrueRangeStopLossRule;
-import org.ta4j.core.rules.CrossedUpIndicatorRule;
+import org.ta4j.core.rules.BooleanIndicatorRule;
 import org.ta4j.core.rules.OverIndicatorRule;
+import org.ta4j.core.rules.OverOrEqualIndicatorRule;
+import org.ta4j.core.rules.UnderIndicatorRule;
 import org.ta4j.core.rules.UnderOrEqualIndicatorRule;
 
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Builds the 5-pillar confluence strategies. Each enabled pillar contributes a named bullish
+ * and bearish {@link PillarVote}; the votes are counted by a {@link ConfluenceScoreIndicator}
+ * and an entry fires once the score reaches {@code confluence-threshold}.
+ *
+ * <p>Pillars:
+ * <ol>
+ *   <li>Technical indicators — RSI extreme + Bollinger Band touch</li>
+ *   <li>Candlestick patterns — engulfing / harami / hammer / shooting-star</li>
+ *   <li>Support &amp; resistance — price near the lookback low (bull) / high (bear)</li>
+ *   <li>Chart-pattern structure — break above the prior lookback high (bull) / below the prior low (bear)</li>
+ *   <li>Volume / trend — above-average volume in the direction of the EMA trend</li>
+ * </ol>
+ */
 @Component
 public class StrategyFactory {
 
-    public Strategy build(IndicatorBundle indicators, BacktestProperties.Strategy config) {
-        Rule longEntry = new CrossedUpIndicatorRule(indicators.rsi, config.getRsiOversold())
-                .and(new OverIndicatorRule(indicators.closePrice, indicators.ema))
-                .and(new UnderOrEqualIndicatorRule(indicators.closePrice, indicators.bbLower));
+    public ConfluenceStrategies build(IndicatorBundle indicators, BacktestProperties.Strategy config) {
+        List<PillarVote> bullishVotes = new ArrayList<>();
+        List<PillarVote> bearishVotes = new ArrayList<>();
+
+        NumericIndicator close = NumericIndicator.of(indicators.closePrice);
+        NumericIndicator atrBand = NumericIndicator.of(indicators.atr).multipliedBy(config.getProximityAtrMultiple());
+
+        // Pillar 1 — Technical indicators: RSI extreme confirmed by a Bollinger Band touch.
+        bullishVotes.add(new PillarVote("RSI+BB",
+                new UnderIndicatorRule(indicators.rsi, config.getRsiOversold())
+                        .and(new UnderOrEqualIndicatorRule(indicators.closePrice, indicators.bbLower))));
+        bearishVotes.add(new PillarVote("RSI+BB",
+                new OverIndicatorRule(indicators.rsi, config.getRsiOverbought())
+                        .and(new OverOrEqualIndicatorRule(indicators.closePrice, indicators.bbUpper))));
+
+        // Pillar 2 — Candlestick patterns.
+        if (config.isEnableCandles()) {
+            bullishVotes.add(new PillarVote("Candle",
+                    new BooleanIndicatorRule(indicators.bullishEngulfing)
+                            .or(new BooleanIndicatorRule(indicators.bullishHarami))
+                            .or(new BooleanIndicatorRule(indicators.hammer))));
+            bearishVotes.add(new PillarVote("Candle",
+                    new BooleanIndicatorRule(indicators.bearishEngulfing)
+                            .or(new BooleanIndicatorRule(indicators.bearishHarami))
+                            .or(new BooleanIndicatorRule(indicators.shootingStar))));
+        }
+
+        // Backward-only swing levels (no look-ahead): lowest/highest close over the lookback window.
+        int lookback = config.getSwingLookbackBars();
+        NumericIndicator supportLevel = close.lowest(lookback);
+        NumericIndicator resistanceLevel = close.highest(lookback);
+
+        // Pillar 3 — Support & resistance: close within proximityAtrMultiple x ATR of a level.
+        if (config.isEnableSupportResistance()) {
+            Rule nearSupport = close.minus(supportLevel).abs().isLessThan(atrBand);
+            Rule nearResistance = close.minus(resistanceLevel).abs().isLessThan(atrBand);
+            bullishVotes.add(new PillarVote("S/R", nearSupport));
+            bearishVotes.add(new PillarVote("S/R", nearResistance));
+        }
+
+        // Pillar 4 — Chart-pattern structure proxy: break of the prior lookback range.
+        if (config.isEnableStructure()) {
+            NumericIndicator priorHigh = resistanceLevel.previous(1);
+            NumericIndicator priorLow = supportLevel.previous(1);
+            bullishVotes.add(new PillarVote("Structure", close.isGreaterThan(priorHigh)));
+            bearishVotes.add(new PillarVote("Structure", close.isLessThan(priorLow)));
+        }
+
+        // Pillar 5 — Volume / trend confirmation: above-average volume aligned with the EMA trend.
+        if (config.isEnableVolumeTrend()) {
+            Rule highVolume = new OverIndicatorRule(indicators.volume, indicators.volumeSma);
+            bullishVotes.add(new PillarVote("Vol+Trend",
+                    highVolume.and(new OverIndicatorRule(indicators.closePrice, indicators.ema))));
+            bearishVotes.add(new PillarVote("Vol+Trend",
+                    highVolume.and(new UnderIndicatorRule(indicators.closePrice, indicators.ema))));
+        }
+
+        Strategy longStrategy = directionStrategy("CONFLUENCE_LONG", indicators, config, bullishVotes);
+        Strategy shortStrategy = directionStrategy("CONFLUENCE_SHORT", indicators, config, bearishVotes);
+        return new ConfluenceStrategies(longStrategy, shortStrategy, bullishVotes, bearishVotes);
+    }
+
+    private Strategy directionStrategy(
+            String name, IndicatorBundle indicators, BacktestProperties.Strategy config, List<PillarVote> votes) {
+        List<Rule> rules = votes.stream().map(PillarVote::rule).toList();
+        var score = new ConfluenceScoreIndicator(indicators.series, rules);
+        Rule entry = new OverIndicatorRule(score, config.getConfluenceThreshold() - 0.5);
 
         Rule exit = new AverageTrueRangeStopLossRule(
                 indicators.closePrice, indicators.atr, config.getStopAtrMultiple())
                 .or(new AverageTrueRangeStopGainRule(
                         indicators.closePrice, indicators.atr, config.getTargetAtrMultiple()));
 
-        Strategy strategy = new BaseStrategy("RSI_BB_EMA_LONG", longEntry, exit);
+        Strategy strategy = new BaseStrategy(name, entry, exit);
         strategy.setUnstableBars(config.getEmaPeriod());
         return strategy;
     }

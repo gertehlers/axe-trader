@@ -15,13 +15,13 @@ Phase 4 complete. Pre-MVP: priority is a stable monitor pipeline, then strategy 
 
 - [ ] Establish RSI-only baseline — measure win rate before adding complexity
 - [ ] Fix entry/exit rules — current signals produce poor results (too many false positives)
-- [ ] Implement SHORT entries — currently only LONG trades are opened
-- [ ] Layer in 5-pillar confluence toward >85% accuracy target:
-  - [ ] Pillar 1: Technical indicators — RSI, BB, EMA, ATR (foundation in place, needs tuning)
-  - [ ] Pillar 2: Candlestick patterns
-  - [ ] Pillar 3: Support & resistance levels
-  - [ ] Pillar 4: Chart patterns
-  - [ ] Pillar 5: Volume / trend confirmation
+- [x] Implement SHORT entries — confluence runs bullish votes LONG, bearish votes SHORT
+- [x] Layer in 5-pillar confluence toward >85% accuracy target (scoring/voting, threshold-tunable):
+  - [x] Pillar 1: Technical indicators — RSI extreme + Bollinger Band touch (bull/bear votes)
+  - [x] Pillar 2: Candlestick patterns — engulfing / harami / hammer / shooting-star
+  - [x] Pillar 3: Support & resistance levels — close near lookback low/high (ATR proximity)
+  - [x] Pillar 4: Chart patterns — break-of-structure proxy (break prior lookback high/low)
+  - [x] Pillar 5: Volume / trend confirmation — above-average volume aligned with EMA trend
 
 ---
 

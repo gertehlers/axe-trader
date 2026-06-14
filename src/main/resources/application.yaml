@@ -56,6 +56,16 @@ backtest:
     stop-atr-multiple: 1.5
     target-atr-multiple: 3.0
 
+    # 5-pillar confluence voting
+    confluence-threshold: 2        # votes (pillars) that must agree before entering; tune for quality vs. frequency
+    proximity-atr-multiple: 0.5    # "near" a swing level, in ATR units (pillar 3)
+    swing-lookback-bars: 10        # backward window for support/resistance & structure (pillars 3 & 4)
+    volume-sma-period: 20          # volume baseline (pillar 5)
+    enable-candles: true           # pillar 2 — added in step 2
+    enable-support-resistance: true # pillar 3 — added in step 3
+    enable-structure: true         # pillar 4 — added in step 4
+    enable-volume-trend: true      # pillar 5 — added in step 5
+
 logging:
   file:
     name: logs/axe-trader.log

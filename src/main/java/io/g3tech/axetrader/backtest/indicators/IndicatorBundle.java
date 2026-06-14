@@ -9,7 +9,14 @@ import org.ta4j.core.indicators.averages.SMAIndicator;
 import org.ta4j.core.indicators.bollinger.BollingerBandsLowerIndicator;
 import org.ta4j.core.indicators.bollinger.BollingerBandsMiddleIndicator;
 import org.ta4j.core.indicators.bollinger.BollingerBandsUpperIndicator;
+import org.ta4j.core.indicators.candles.BearishEngulfingIndicator;
+import org.ta4j.core.indicators.candles.BearishHaramiIndicator;
+import org.ta4j.core.indicators.candles.BullishEngulfingIndicator;
+import org.ta4j.core.indicators.candles.BullishHaramiIndicator;
+import org.ta4j.core.indicators.candles.HammerIndicator;
+import org.ta4j.core.indicators.candles.ShootingStarIndicator;
 import org.ta4j.core.indicators.helpers.ClosePriceIndicator;
+import org.ta4j.core.indicators.helpers.VolumeIndicator;
 import org.ta4j.core.indicators.statistics.StandardDeviationIndicator;
 
 public class IndicatorBundle {
@@ -24,51 +31,85 @@ public class IndicatorBundle {
     public final BollingerBandsLowerIndicator bbLower;
     public final ATRIndicator atr;
 
-    private IndicatorBundle(
-            BarSeries series,
-            ClosePriceIndicator closePrice,
-            EMAIndicator ema,
-            RSIIndicator rsi,
-            SMAIndicator smoothRsi,
-            BollingerBandsMiddleIndicator bbMiddle,
-            BollingerBandsUpperIndicator bbUpper,
-            BollingerBandsLowerIndicator bbLower,
-            ATRIndicator atr) {
-        this.series = series;
-        this.closePrice = closePrice;
-        this.ema = ema;
-        this.rsi = rsi;
-        this.smoothRsi = smoothRsi;
-        this.bbMiddle = bbMiddle;
-        this.bbUpper = bbUpper;
-        this.bbLower = bbLower;
-        this.atr = atr;
+    // Pillar 2 — candlestick patterns
+    public final BullishEngulfingIndicator bullishEngulfing;
+    public final BearishEngulfingIndicator bearishEngulfing;
+    public final BullishHaramiIndicator bullishHarami;
+    public final BearishHaramiIndicator bearishHarami;
+    public final HammerIndicator hammer;
+    public final ShootingStarIndicator shootingStar;
+
+    // Pillar 5 — volume confirmation
+    public final VolumeIndicator volume;
+    public final SMAIndicator volumeSma;
+
+    private IndicatorBundle(Builder b) {
+        this.series = b.series;
+        this.closePrice = b.closePrice;
+        this.ema = b.ema;
+        this.rsi = b.rsi;
+        this.smoothRsi = b.smoothRsi;
+        this.bbMiddle = b.bbMiddle;
+        this.bbUpper = b.bbUpper;
+        this.bbLower = b.bbLower;
+        this.atr = b.atr;
+        this.bullishEngulfing = b.bullishEngulfing;
+        this.bearishEngulfing = b.bearishEngulfing;
+        this.bullishHarami = b.bullishHarami;
+        this.bearishHarami = b.bearishHarami;
+        this.hammer = b.hammer;
+        this.shootingStar = b.shootingStar;
+        this.volume = b.volume;
+        this.volumeSma = b.volumeSma;
     }
 
     public static IndicatorBundle from(BarSeries series, BacktestProperties.Strategy config) {
-        var closePrice = new ClosePriceIndicator(series);
-        var ema = new EMAIndicator(closePrice, config.getEmaPeriod());
-        var rsi = new RSIIndicator(closePrice, config.getRsiPeriod());
-        var smoothRsi = new SMAIndicator(rsi, config.getRsiSmoothPeriod());
+        Builder b = new Builder();
+        b.series = series;
+        b.closePrice = new ClosePriceIndicator(series);
+        b.ema = new EMAIndicator(b.closePrice, config.getEmaPeriod());
+        b.rsi = new RSIIndicator(b.closePrice, config.getRsiPeriod());
+        b.smoothRsi = new SMAIndicator(b.rsi, config.getRsiSmoothPeriod());
 
-        var bbSma = new SMAIndicator(closePrice, config.getBbPeriod());
-        var bbMiddle = new BollingerBandsMiddleIndicator(bbSma);
-        var standardDeviation = new StandardDeviationIndicator(closePrice, config.getBbPeriod());
+        var bbSma = new SMAIndicator(b.closePrice, config.getBbPeriod());
+        b.bbMiddle = new BollingerBandsMiddleIndicator(bbSma);
+        var standardDeviation = new StandardDeviationIndicator(b.closePrice, config.getBbPeriod());
         var multiplier = series.numFactory().numOf(config.getBbMultiplier());
-        var bbUpper = new BollingerBandsUpperIndicator(bbMiddle, standardDeviation, multiplier);
-        var bbLower = new BollingerBandsLowerIndicator(bbMiddle, standardDeviation, multiplier);
+        b.bbUpper = new BollingerBandsUpperIndicator(b.bbMiddle, standardDeviation, multiplier);
+        b.bbLower = new BollingerBandsLowerIndicator(b.bbMiddle, standardDeviation, multiplier);
 
-        var atr = new ATRIndicator(series, config.getAtrPeriod());
+        b.atr = new ATRIndicator(series, config.getAtrPeriod());
 
-        return new IndicatorBundle(
-                series,
-                closePrice,
-                ema,
-                rsi,
-                smoothRsi,
-                bbMiddle,
-                bbUpper,
-                bbLower,
-                atr);
+        b.bullishEngulfing = new BullishEngulfingIndicator(series);
+        b.bearishEngulfing = new BearishEngulfingIndicator(series);
+        b.bullishHarami = new BullishHaramiIndicator(series);
+        b.bearishHarami = new BearishHaramiIndicator(series);
+        b.hammer = new HammerIndicator(series);
+        b.shootingStar = new ShootingStarIndicator(series);
+
+        b.volume = new VolumeIndicator(series);
+        b.volumeSma = new SMAIndicator(b.volume, config.getVolumeSmaPeriod());
+
+        return new IndicatorBundle(b);
+    }
+
+    private static final class Builder {
+        private BarSeries series;
+        private ClosePriceIndicator closePrice;
+        private EMAIndicator ema;
+        private RSIIndicator rsi;
+        private SMAIndicator smoothRsi;
+        private BollingerBandsMiddleIndicator bbMiddle;
+        private BollingerBandsUpperIndicator bbUpper;
+        private BollingerBandsLowerIndicator bbLower;
+        private ATRIndicator atr;
+        private BullishEngulfingIndicator bullishEngulfing;
+        private BearishEngulfingIndicator bearishEngulfing;
+        private BullishHaramiIndicator bullishHarami;
+        private BearishHaramiIndicator bearishHarami;
+        private HammerIndicator hammer;
+        private ShootingStarIndicator shootingStar;
+        private VolumeIndicator volume;
+        private SMAIndicator volumeSma;
     }
 }

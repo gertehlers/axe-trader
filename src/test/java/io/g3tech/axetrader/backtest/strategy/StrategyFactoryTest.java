@@ -7,7 +7,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.ta4j.core.BarSeries;
-import org.ta4j.core.Strategy;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -25,17 +24,20 @@ class StrategyFactoryTest {
     private BacktestProperties backtestProperties;
 
     @Test
-    void buildsLongOnlyStrategyFromIndicators() {
+    void buildsLongAndShortConfluenceStrategies() {
         BarSeries series = barSeriesFactory.build(
                 backtestProperties.getEpic(),
                 backtestProperties.getLimit(),
                 backtestProperties.getTimeframeMinutes());
         IndicatorBundle indicators = IndicatorBundle.from(series, backtestProperties.getStrategy());
 
-        Strategy strategy = strategyFactory.build(indicators, backtestProperties.getStrategy());
+        ConfluenceStrategies strategies = strategyFactory.build(indicators, backtestProperties.getStrategy());
 
-        assertThat(strategy).isNotNull();
-        assertThat(strategy.getName()).isNotBlank();
-        assertThatCode(() -> strategy.shouldEnter(50)).doesNotThrowAnyException();
+        assertThat(strategies.longStrategy()).isNotNull();
+        assertThat(strategies.shortStrategy()).isNotNull();
+        assertThat(strategies.longStrategy().getName()).isNotBlank();
+        assertThat(strategies.shortStrategy().getName()).isNotBlank();
+        assertThatCode(() -> strategies.longStrategy().shouldEnter(50)).doesNotThrowAnyException();
+        assertThatCode(() -> strategies.shortStrategy().shouldEnter(50)).doesNotThrowAnyException();
     }
 }
