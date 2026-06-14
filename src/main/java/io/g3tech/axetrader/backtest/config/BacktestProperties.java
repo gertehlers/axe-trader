@@ -1,0 +1,137 @@
+package io.g3tech.axetrader.backtest.config;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+@ConfigurationProperties(prefix = "backtest")
+public class BacktestProperties {
+
+    private String epic;
+    private int limit;
+    private int timeframeMinutes;
+    private Strategy strategy = new Strategy();
+
+    public String getEpic() {
+        return epic;
+    }
+
+    public void setEpic(String epic) {
+        this.epic = epic;
+    }
+
+    public int getLimit() {
+        return limit;
+    }
+
+    public void setLimit(int limit) {
+        this.limit = limit;
+    }
+
+    public int getTimeframeMinutes() {
+        return timeframeMinutes;
+    }
+
+    public void setTimeframeMinutes(int timeframeMinutes) {
+        this.timeframeMinutes = timeframeMinutes;
+    }
+
+    public Strategy getStrategy() {
+        return strategy;
+    }
+
+    public void setStrategy(Strategy strategy) {
+        this.strategy = strategy;
+    }
+
+    public static class Strategy {
+        private int rsiPeriod;
+        private int rsiSmoothPeriod;
+        private int bbPeriod;
+        private double bbMultiplier;
+        private int emaPeriod;
+        private int atrPeriod;
+        private double rsiOversold;
+        private double rsiOverbought;
+        private double stopAtrMultiple;
+        private double targetAtrMultiple;
+
+        public int getRsiPeriod() {
+            return rsiPeriod;
+        }
+
+        public void setRsiPeriod(int rsiPeriod) {
+            this.rsiPeriod = rsiPeriod;
+        }
+
+        public int getRsiSmoothPeriod() {
+            return rsiSmoothPeriod;
+        }
+
+        public void setRsiSmoothPeriod(int rsiSmoothPeriod) {
+            this.rsiSmoothPeriod = rsiSmoothPeriod;
+        }
+
+        public int getBbPeriod() {
+            return bbPeriod;
+        }
+
+        public void setBbPeriod(int bbPeriod) {
+            this.bbPeriod = bbPeriod;
+        }
+
+        public double getBbMultiplier() {
+            return bbMultiplier;
+        }
+
+        public void setBbMultiplier(double bbMultiplier) {
+            this.bbMultiplier = bbMultiplier;
+        }
+
+        public int getEmaPeriod() {
+            return emaPeriod;
+        }
+
+        public void setEmaPeriod(int emaPeriod) {
+            this.emaPeriod = emaPeriod;
+        }
+
+        public int getAtrPeriod() {
+            return atrPeriod;
+        }
+
+        public void setAtrPeriod(int atrPeriod) {
+            this.atrPeriod = atrPeriod;
+        }
+
+        public double getRsiOversold() {
+            return rsiOversold;
+        }
+
+        public void setRsiOversold(double rsiOversold) {
+            this.rsiOversold = rsiOversold;
+        }
+
+        public double getRsiOverbought() {
+            return rsiOverbought;
+        }
+
+        public void setRsiOverbought(double rsiOverbought) {
+            this.rsiOverbought = rsiOverbought;
+        }
+
+        public double getStopAtrMultiple() {
+            return stopAtrMultiple;
+        }
+
+        public void setStopAtrMultiple(double stopAtrMultiple) {
+            this.stopAtrMultiple = stopAtrMultiple;
+        }
+
+        public double getTargetAtrMultiple() {
+            return targetAtrMultiple;
+        }
+
+        public void setTargetAtrMultiple(double targetAtrMultiple) {
+            this.targetAtrMultiple = targetAtrMultiple;
+        }
+    }
+}

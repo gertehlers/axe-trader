@@ -18,6 +18,6 @@ public class InstantConverter implements AttributeConverter<Instant, String> {
 
     @Override
     public Instant convertToEntityAttribute(String dbData) {
-        return Instant.parse(dbData);
+        return ZonedDateTime.parse(dbData).toInstant();
     }
 }

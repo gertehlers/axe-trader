@@ -146,6 +146,7 @@ public class WsClient {
 
             logger.info("Received websocket message: destination={}, correlationId={}, status={}", response.destination(), response.correlationId(), response.status());
             logger.debug("Websocket payload: {}", response.payload());
+
         }
 
         @Override

@@ -34,87 +34,30 @@ brokers:
         apiKey: ${CAPITAL_API_KEY}
 
 axe-trader:
-  # App mode:
-  # - backtest: run historical strategy tests only.
-  # - monitor: watch live market data and detect setups, but do not place trades.
-  # - trade: reserved for live/demo execution; currently blocked until risk controls exist.
   mode: backtest
-  strategy:
-    # Number of candles required before the detector can start producing signals.
-    # Higher values give indicators more history, but reduce early signals in a test window.
-    minimum-candles: 60
-    # How many recent candles are used to check market structure such as higher highs,
-    # higher lows, lower highs, lower lows, breakouts, and breakdowns.
-    structure-lookback: 10
-    # Minimum confluence score required before a LONG/SHORT setup is accepted.
-    # Higher means fewer but stricter signals.
-    minimum-score: 8
-    # ADX measures trend strength, not direction. Higher values require a stronger trend
-    # before ADX contributes to the setup score.
-    minimum-adx: 20.0
-    # For LONG setups, the candle close must be this high inside its range to count as
-    # a strong bullish close. 0.70 means the close is in the top 30% of the candle.
-    bullish-close-location: 0.70
-    # For SHORT setups, the candle close must be this low inside its range to count as
-    # a strong bearish close. 0.30 means the close is in the bottom 30% of the candle.
-    bearish-close-location: 0.30
-    # ATR-based stop distance used by the detector's raw signal.
-    # ATR is Average True Range: a volatility measure. Bigger values mean wider stops.
-    stop-atr-multiple: 1.5
-    # Prevents entries when price is too far away from the fast EMA.
-    # This avoids chasing candles that may already be overextended.
-    max-atr-extension-from-fast-ema: 3.0
-    indicators:
-      # Fast EMA period. EMA is Exponential Moving Average; it reacts faster to price
-      # than a simple moving average. Lower values make it more sensitive.
-      fast-ema-period: 20
-      # Slow EMA period. Used with fast EMA to judge trend direction.
-      # Fast EMA above slow EMA is bullish; fast EMA below slow EMA is bearish.
-      slow-ema-period: 50
-      # RSI period. RSI is Relative Strength Index, a momentum oscillator.
-      # Above 50 is treated as bullish momentum; below 50 as bearish momentum.
-      rsi-period: 14
-      # ATR period. ATR is Average True Range, used to estimate normal price movement
-      # and set volatility-adjusted stop distances.
-      atr-period: 14
-      # ADX period. ADX is Average Directional Index, used to estimate trend strength.
-      # It is paired with +DI and -DI to decide whether bulls or bears have control.
-      adx-period: 14
-  backtest:
-    # Enables historical backtesting when mode is backtest.
-    enabled: true
-    # capital = real Capital.com historical data. fake = generated test data.
-    # fallback = try Capital.com, then use fake data if Capital.com fails.
-    data-source: capital
-    # Capital.com instrument epic to test.
-    epic: US500
-    # Candle timeframe. Capital supports MINUTE, MINUTE_5, MINUTE_15, MINUTE_30,
-    # HOUR, HOUR_4, DAY, and WEEK.
-    resolution: MINUTE_5
-    # Historical test window start and end in UTC.
-    from: 2026-01-01T00:00:00Z
-    to: 2026-04-30T08:00:00Z
-    # Maximum candles requested per API call. Capital caps this at 1000.
-    max: 1000
-    # Chunk size for loading large historical ranges. Lower this if Capital rejects
-    # a request with an invalid date range error.
-    chunk-size: 500
-    # Warmup candles for the backtest loop. Usually keep this at least as high as
-    # strategy.minimum-candles.
-    minimum-candles: 60
-    # Take-profit distance in R. 1.0 means target distance equals stop distance.
-    target-risk-multiple: 1.0
-    sweep:
-      # Target distances to test. Keep this at 1.0 for a strict 1:1 target/stop model.
-      target-risk-multiples: 1.0
-      # ATR stop widths to test. Bigger values give the setup more room but reduce
-      # position size if risking a fixed account percentage per trade.
-      stop-atr-multiples: 1.0,1.25,1.5,1.75,2.0,2.5,3.0
   market:
-    # Instruments and candle streams to subscribe to in monitor mode.
     epics: US500
     resolutions: MINUTE
 
+backtest:
+  epic: US500
+  limit: 10000          # number of 1-minute bars to load from DB
+  timeframe-minutes: 5  # aggregate target (5 = 5m chart)
+
+  strategy:
+    rsi-period: 7
+    rsi-smooth-period: 7
+    bb-period: 20
+    bb-multiplier: 2.0
+    ema-period: 50
+    atr-period: 14
+    rsi-oversold: 30
+    rsi-overbought: 70
+    stop-atr-multiple: 1.5
+    target-atr-multiple: 3.0
+
 logging:
+  file:
+    name: logs/axe-trader.log
   level:
     io.g3tech: trace
