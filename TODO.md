@@ -54,6 +54,45 @@ Removing this pair would cut trades from 168 → 113 and lift overall win rate.
   price to have been *below* the level recently before breaking it)
 - Goal: ~5 quality trades/day at materially higher win rate than 32%
 
+### Tuning iteration 1 — full-year sweep (2026-07-03)
+
+Harness: `ConfluenceSweepTest` (`-Dtest=ConfluenceSweepTest -Dsweep=true`), grid of 21 configs in one
+JVM. **In-sample window: 2024-12-04 → 2026-01-01** (76,796 5m bars, 336 trading days, avg spread
+0.48 pts). **Jan–May 2026 is held out for out-of-sample validation — do not tune against it.**
+"Net" = after one full spread per round trip. Modeling gaps (noted in harness javadoc): mid-price
+fills, stops/targets trigger on bar close not intrabar wicks.
+
+Key rows (full table in the harness output; base config = yaml except where named):
+
+| Config                        | Trades | /day | Win% | netAvgPnl (pts) |
+|-------------------------------|--------|------|------|-----------------|
+| th2_struct (old baseline)     | 6510   | 19.4 | 37%  | **−0.40**       |
+| th2_noStruct_stop3.0_tgt1.0   | 5408   | 16.1 | 71%  | **−0.34**       |
+| th3_noStruct (yaml geometry)  | 335    | 1.0  | 40%  | +0.67           |
+| th3_noStruct_stop2.0_tgt1.0   | 335    | 1.0  | 66%  | +0.73           |
+| **th3_noStruct_stop3.0_tgt1.0** | 334  | 1.0  | **70%** | +0.58        |
+| th3_noStruct_stop1.5_tgt1.5   | 337    | 1.0  | 57%  | +1.15 (best expectancy) |
+| th4_* (any)                   | 3      | 0.0  | —    | dead            |
+
+**Findings:**
+1. The 26-day Dec-2024 window behind the old 32% baseline was unrepresentative — threshold 2 actually
+   fires 15–19 trades/day over the year and **loses money after spread at every geometry tested**.
+   Threshold 2 is a dead end, full stop.
+2. Threshold 3 + structure off ≈ 1 trade/day, profitable after spread at every geometry — this is the
+   quality zone. Threshold 4 ≈ 3 trades/year — dead.
+3. **Stop/target geometry is the dominant win-rate lever** (as predicted: target > stop structurally
+   caps win rate). Same entries went 40% → 70% by moving from stop 1.5/target 3.0 to stop 3.0/target 1.0.
+   Win rate and expectancy trade off: 1.5/1.5 gives 57% win but the best netAvgPnl (+1.15).
+4. Win rate ≈ net win rate everywhere — trade sizes (ATR-scale) dwarf the 0.48-pt spread; spread
+   mainly erodes expectancy, which is what kills threshold 2.
+
+**Gaps vs. north star:** 70% < 80% win rate; 1.0 < ~5 trades/day.
+
+**Next (iteration 2):** anchored on th3_noStruct — (a) push geometry further (stop 3.5–4.0, target
+0.5–0.75) watching that netAvgPnl stays clearly positive; (b) raise cadence by loosening pillar gates
+(RSI 30/70, proximity-atr 0.4–0.5, shorter swing-lookback) so 3-of-4 votes fire more often; (c) later,
+time-of-day/volatility-regime filters as win-rate polish.
+
 ---
 
 ## Infrastructure
