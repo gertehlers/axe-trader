@@ -31,6 +31,24 @@ Read this before touching strategy code — it's the bar every change is judged 
 - **Accuracy before execution.** TRADE mode stays safety-locked (see `AxeTraderRunner`) until backtests
   show the win-rate target holding out-of-sample on the instrument(s) in question.
 
+## Tuning Workflow (Don't Lose Progress)
+
+Strategy tuning runs in this repo tend to be long, iterative loops (tweak a threshold in
+`application.yaml`, backtest, read the result, repeat). Sessions and their containers are ephemeral —
+work that only exists in conversation memory or an uncommitted working tree is gone the moment a
+session ends, whether from a credit cutoff or the container simply being reclaimed. Treat git as the
+only durable state:
+
+- **Commit after every iteration, not at the end.** Each config change + its backtest result gets its
+  own small commit. Never let a long run sit as one big uncommitted diff.
+- **Push after every commit**, not batched — an unpushed local commit is as fragile as an uncommitted one.
+- **Log every iteration in `TODO.md`'s tuning log** (config used → trades/win rate → notes), and call
+  out the current best result explicitly. This is what lets a brand-new session with zero memory of
+  prior conversations pick up cold: read `TODO.md`, see exactly what's been tried and what won, and
+  continue — no dependency on any session "remembering" the history.
+- `data/axe-trader.sqlite` itself needs no safeguarding — it's disposable and reconstructible from the
+  committed `data/axe-trader.sqlite.gz` snapshot (see `DatabaseBootstrap`).
+
 ## Build & Run
 
 ```bash
