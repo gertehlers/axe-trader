@@ -118,12 +118,11 @@ class ConfluenceSweepTest {
     }
 
     /**
-     * Iteration 2 grid (see TODO.md tuning log for iteration 1's results and grid). All configs
-     * are threshold 3 + structure off — iteration 1 showed that zone is the only one both
-     * selective and profitable after spread (th2 loses money at every geometry; th4 is dead).
-     * Axis A pushes stop/target geometry toward higher win rates (watching that net expectancy
-     * stays positive). Axis B loosens individual pillar gates (RSI band, S/R proximity, swing
-     * lookback) at fixed geometry to raise cadence toward ~5 trades/day.
+     * Iteration 3 grid (see TODO.md tuning log for prior iterations). Composes iteration 2's
+     * two independent wins at th3/noStruct/RSI 25/75: the cadence gates (S/R proximity + swing
+     * lookback, which doubled trades while raising win rate) crossed with the win-rate geometry
+     * corner (wide stop / tight target, which crossed 80% in-sample). RSI stays at 25/75 —
+     * iteration 2 showed loosening it goes net-negative after spread.
      */
     private static Map<String, BacktestProperties.Strategy> buildGrid(BacktestProperties.Strategy base) {
         Map<String, BacktestProperties.Strategy> grid = new LinkedHashMap<>();
@@ -133,33 +132,19 @@ class ConfluenceSweepTest {
             s.setEnableStructure(false);
         });
 
-        // Axis A: geometry push around iteration 1's winner (stop 3.0 / target 1.0 → 70% win).
-        for (double stop : new double[] {3.0, 3.5, 4.0}) {
-            for (double target : new double[] {0.5, 0.75, 1.0}) {
-                grid.put("geo_stop%.1f_tgt%.2f".formatted(stop, target),
-                        variant(anchor, s -> {
-                            s.setStopAtrMultiple(stop);
-                            s.setTargetAtrMultiple(target);
-                        }));
-            }
-        }
-
-        // Axis B: gate loosening at fixed geometry (stop 3.0 / target 1.0) to raise trade count.
-        double[][] rsiBands = {{25, 75}, {30, 70}, {35, 65}};
-        for (double[] rsiBand : rsiBands) {
-            for (double proximity : new double[] {0.3, 0.5}) {
-                for (int lookback : new int[] {10, 20}) {
-                    double oversold = rsiBand[0];
-                    double overbought = rsiBand[1];
-                    grid.put("gates_rsi%.0f-%.0f_prox%.1f_look%d".formatted(
-                                    oversold, overbought, proximity, lookback),
+        double[][] geometries = {{3.0, 0.75}, {3.5, 0.5}, {3.5, 0.75}, {4.0, 0.5}, {4.0, 0.75}};
+        for (double proximity : new double[] {0.4, 0.5, 0.6}) {
+            for (int lookback : new int[] {8, 10, 14}) {
+                for (double[] geometry : geometries) {
+                    double stop = geometry[0];
+                    double target = geometry[1];
+                    grid.put("prox%.1f_look%d_stop%.1f_tgt%.2f".formatted(
+                                    proximity, lookback, stop, target),
                             variant(anchor, s -> {
-                                s.setStopAtrMultiple(3.0);
-                                s.setTargetAtrMultiple(1.0);
-                                s.setRsiOversold(oversold);
-                                s.setRsiOverbought(overbought);
                                 s.setProximityAtrMultiple(proximity);
                                 s.setSwingLookbackBars(lookback);
+                                s.setStopAtrMultiple(stop);
+                                s.setTargetAtrMultiple(target);
                             }));
                 }
             }
