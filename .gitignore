@@ -35,5 +35,9 @@ build/
 ### VS Code ###
 .vscode/
 
-.claude
 !.claude/settings.json
+!.claude/agents/
+!.claude/plugins/
+!.claude/skills/
+!.claude/CLAUDE.md
+.claude
