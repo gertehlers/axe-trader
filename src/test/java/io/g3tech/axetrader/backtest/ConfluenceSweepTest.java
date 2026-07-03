@@ -118,39 +118,50 @@ class ConfluenceSweepTest {
     }
 
     /**
-     * Iteration grid. Axis 1: confluence threshold × structure pillar (TODO.md flagged
-     * Structure+Vol/Trend as the correlated noise pair). Axis 2: stop/target geometry —
-     * with the target above the stop, win rate is structurally capped well below the 80%
-     * goal, so the sweep leans toward target ≤ stop shapes.
+     * Iteration 2 grid (see TODO.md tuning log for iteration 1's results and grid). All configs
+     * are threshold 3 + structure off — iteration 1 showed that zone is the only one both
+     * selective and profitable after spread (th2 loses money at every geometry; th4 is dead).
+     * Axis A pushes stop/target geometry toward higher win rates (watching that net expectancy
+     * stays positive). Axis B loosens individual pillar gates (RSI band, S/R proximity, swing
+     * lookback) at fixed geometry to raise cadence toward ~5 trades/day.
      */
     private static Map<String, BacktestProperties.Strategy> buildGrid(BacktestProperties.Strategy base) {
         Map<String, BacktestProperties.Strategy> grid = new LinkedHashMap<>();
 
-        for (int threshold : new int[] {2, 3, 4}) {
-            for (boolean structure : new boolean[] {true, false}) {
-                int th = threshold;
-                boolean st = structure;
-                grid.put("th%d_%s".formatted(th, st ? "struct" : "noStruct"),
-                        variant(base, s -> {
-                            s.setConfluenceThreshold(th);
-                            s.setEnableStructure(st);
+        BacktestProperties.Strategy anchor = variant(base, s -> {
+            s.setConfluenceThreshold(3);
+            s.setEnableStructure(false);
+        });
+
+        // Axis A: geometry push around iteration 1's winner (stop 3.0 / target 1.0 → 70% win).
+        for (double stop : new double[] {3.0, 3.5, 4.0}) {
+            for (double target : new double[] {0.5, 0.75, 1.0}) {
+                grid.put("geo_stop%.1f_tgt%.2f".formatted(stop, target),
+                        variant(anchor, s -> {
+                            s.setStopAtrMultiple(stop);
+                            s.setTargetAtrMultiple(target);
                         }));
             }
         }
 
-        double[][] geometries = {{1.5, 1.5}, {2.0, 1.5}, {2.0, 1.0}, {2.5, 1.0}, {3.0, 1.0}};
-        for (int threshold : new int[] {2, 3, 4}) {
-            for (double[] geometry : geometries) {
-                int th = threshold;
-                double stop = geometry[0];
-                double target = geometry[1];
-                grid.put("th%d_noStruct_stop%.1f_tgt%.1f".formatted(th, stop, target),
-                        variant(base, s -> {
-                            s.setConfluenceThreshold(th);
-                            s.setEnableStructure(false);
-                            s.setStopAtrMultiple(stop);
-                            s.setTargetAtrMultiple(target);
-                        }));
+        // Axis B: gate loosening at fixed geometry (stop 3.0 / target 1.0) to raise trade count.
+        double[][] rsiBands = {{25, 75}, {30, 70}, {35, 65}};
+        for (double[] rsiBand : rsiBands) {
+            for (double proximity : new double[] {0.3, 0.5}) {
+                for (int lookback : new int[] {10, 20}) {
+                    double oversold = rsiBand[0];
+                    double overbought = rsiBand[1];
+                    grid.put("gates_rsi%.0f-%.0f_prox%.1f_look%d".formatted(
+                                    oversold, overbought, proximity, lookback),
+                            variant(anchor, s -> {
+                                s.setStopAtrMultiple(3.0);
+                                s.setTargetAtrMultiple(1.0);
+                                s.setRsiOversold(oversold);
+                                s.setRsiOverbought(overbought);
+                                s.setProximityAtrMultiple(proximity);
+                                s.setSwingLookbackBars(lookback);
+                            }));
+                }
             }
         }
 
