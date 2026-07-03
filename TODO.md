@@ -93,6 +93,35 @@ Key rows (full table in the harness output; base config = yaml except where name
 (RSI 30/70, proximity-atr 0.4–0.5, shorter swing-lookback) so 3-of-4 votes fire more often; (c) later,
 time-of-day/volatility-regime filters as win-rate polish.
 
+### Tuning iteration 2 — 80% crossed in-sample (2026-07-03)
+
+Same window/harness as iteration 1. All configs: threshold 3, structure off, RSI 25/75 unless noted.
+
+| Config                          | Trades | /day | Win% | netAvgPnl (pts) |
+|---------------------------------|--------|------|------|-----------------|
+| **geo stop4.0/tgt0.5**          | 333    | 1.0  | **81%** | +0.41        |
+| geo stop3.5/tgt0.5              | 335    | 1.0  | 80%  | +0.33           |
+| geo stop4.0/tgt0.75             | 332    | 1.0  | 79%  | +0.52           |
+| geo stop3.0/tgt0.75             | 335    | 1.0  | 76%  | +0.78 (best expectancy) |
+| gates prox0.5/look10 (geo 3.0/1.0) | 720 | 2.1  | 72%  | +0.34           |
+| gates rsi30-70 or 35-65 (any)   | 555–940 | 1.7–2.8 | 69–71% | **negative to +0.34** |
+
+**Findings:**
+1. **The 80% win-rate bar is reachable in-sample**: stop 4.0 ATR / target 0.5 ATR → 81% on 333
+   trades, still positive after spread. Win rate climbs smoothly along the geometry axis
+   (70→76→79→81%), so this is a real response surface, not a lucky cell.
+2. Expectancy thins as win rate climbs (+0.78 at 76% vs +0.41 at 81%). Classic high-win-rate shape:
+   wins ~0.5 ATR, losses ~4 ATR — one stop-out eats ~8 wins. **Position sizing / max-drawdown
+   controls (Infrastructure backlog) are mandatory before live.**
+3. **Cadence lever found**: S/R proximity 0.5 ATR + swing-lookback 10 doubles trades to 2.1/day and
+   *raises* win rate to 72% (at geo 3.0/1.0). The S/R pillar was over-strict, not under-strict.
+4. **RSI 25/75 is load-bearing**: widening to 30/70 or 35/65 adds trades that lose money after
+   spread. Do not loosen pillar 1.
+
+**Next (iteration 3):** compose the two wins — gates (prox 0.4–0.6 × look 8–14) × geometry
+(stop 3.0–4.0 × tgt 0.5–0.75), all at th3/noStruct/RSI 25/75. If effects stack: ~2/day at ~80%.
+Then pick 2–3 candidates and run the held-out Jan–May 2026 window ONCE as the out-of-sample referee.
+
 ---
 
 ## Infrastructure
