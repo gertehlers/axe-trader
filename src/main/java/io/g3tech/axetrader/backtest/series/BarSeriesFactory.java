@@ -32,7 +32,15 @@ public class BarSeriesFactory {
                 Sort.by(Sort.Direction.ASC, "snapshotTimeUtc"),
                 Limit.of(limit)
         );
+        return fromPrices(epic, prices, timeframeMinutes);
+    }
 
+    /**
+     * Builds an aggregated series from an already-loaded (ascending) list of 1m prices.
+     * Lets callers control the window themselves (e.g. in-sample vs out-of-sample splits)
+     * instead of being bound to the epic+limit query above.
+     */
+    public BarSeries fromPrices(String epic, List<HistoricalPrice> prices, int timeframeMinutes) {
         BarSeries oneMinute = new BaseBarSeriesBuilder().withName(epic + "_1m").build();
         for (HistoricalPrice price : prices) {
             oneMinute.barBuilder()
