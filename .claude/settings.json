@@ -1,0 +1,20 @@
+{
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "double-shot-latte@superpowers-marketplace": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    },
+    "superpowers-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "obra/superpowers-marketplace"
+      }
+    }
+  }
+}
