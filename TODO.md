@@ -3,6 +3,10 @@
 ## Status
 Phase 4 complete. Pre-MVP: priority is a stable monitor pipeline, then strategy accuracy.
 
+North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades/day per instrument
+(not scalping), reproducible via 5-pillar confluence, with each instrument tuned as its own
+"personality" rather than one shared config.
+
 ---
 
 ## In Progress
@@ -56,6 +60,9 @@ Removing this pair would cut trades from 168 → 113 and lift overall win rate.
 
 - [ ] Implement TRADE mode order execution (blocked until strategy accuracy is proven)
 - [ ] Add risk controls before any live trading (position sizing, max drawdown, circuit breaker)
+- [ ] Design per-instrument config profiles ("personality") — today `backtest.strategy` is one flat
+      block hardcoded to `US500`; each new instrument needs its own tuned thresholds/pillar weights
+      rather than inheriting US500's settings
 
 ---
 
