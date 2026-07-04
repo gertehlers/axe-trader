@@ -1,7 +1,6 @@
 package io.g3tech.axetrader.backtest;
 
 import io.g3tech.axetrader.backtest.config.BacktestProperties;
-import io.g3tech.axetrader.backtest.config.StrategyMode;
 import io.g3tech.axetrader.backtest.experiment.ExperimentStore;
 import io.g3tech.axetrader.backtest.indicators.IndicatorBundle;
 import io.g3tech.axetrader.backtest.runner.BacktestRunner;
@@ -162,107 +161,46 @@ class ConfluenceSweepTest {
     private static Map<String, BacktestProperties.Strategy> buildGrid(BacktestProperties.Strategy base) {
         Map<String, BacktestProperties.Strategy> grid = new LinkedHashMap<>();
 
-        // Backfill milestones from the tuning log — winners AND known losers, so the first loser-
-        // clustering has a contrast set. Run with -Dsweep.persist=true to write to experiments.sqlite.
-        // Pre-gate anchor: threshold 3, structure off, long+short, no trend gate (as history ran them).
-        BacktestProperties.Strategy pregate = variant(base, s -> {
-            s.setConfluenceThreshold(3);
-            s.setEnableStructure(false);
-            s.setEnableLong(true);
-            s.setEnableShort(true);
-            s.setTrendEmaPeriod(0);
-        });
+        // Iteration 17 (2026-07-04): map the MOMENTUM @ 15m response surface around the promoted
+        // profile (now the yaml `base`: mode MOMENTUM, thr3, look20, slope50, stop1.5, tiers 1.5/3.0,
+        // trail2.5). The 5m→15m timeframe jump + a handful of exit knobs got us the first net-positive
+        // OOS config; most of the surface is unmapped. Vary one dimension at a time to see which knobs
+        // the +0.10 OOS edge actually depends on. Run this whole grid across timeframes with
+        // -Dsweep.tf ∈ {8,10,12,15,20,25} to also map the duration curve. IN-SAMPLE only — the 2026
+        // window is partially burned for the anchor, so tune here and walk-forward, don't peek at OOS.
+        grid.put("anchor_promoted", variant(base, s -> {}));
 
-        // Old 32% baseline (iteration 1): threshold 2, structure on, original geometry.
-        grid.put("i1_baseline_th2_struct", variant(base, s -> {
-            s.setConfluenceThreshold(2);
-            s.setEnableStructure(true);
-            s.setEnableShort(true);
-            s.setTrendEmaPeriod(0);
-            s.setStopAtrMultiple(1.5);
-            s.setTargetAtrMultiple(3.0);
-        }));
-        // Pre-gate win-rate champion (iteration 3): passed in-sample, FAILED out-of-sample on expectancy.
-        grid.put("i3_pregate_winchamp_stop4.0_tgt0.5", variant(pregate, s -> {
-            s.setProximityAtrMultiple(0.5);
-            s.setSwingLookbackBars(8);
-            s.setStopAtrMultiple(4.0);
-            s.setTargetAtrMultiple(0.5);
-        }));
-        // Pre-gate expectancy champion (iteration 3).
-        grid.put("i3_pregate_expchamp_stop3.0_tgt0.75", variant(pregate, s -> {
-            s.setProximityAtrMultiple(0.5);
-            s.setSwingLookbackBars(10);
-            s.setStopAtrMultiple(3.0);
-            s.setTargetAtrMultiple(0.75);
-        }));
-        // Promoted final candidate (iteration 8): long-only + trend-EMA-200 gate.
-        BacktestProperties.Strategy promoted = variant(pregate, s -> {
-            s.setEnableShort(false);
-            s.setProximityAtrMultiple(0.5);
-            s.setSwingLookbackBars(10);
-            s.setStopAtrMultiple(3.0);
-            s.setTargetAtrMultiple(0.75);
-            s.setTrendEmaPeriod(200);
-        });
-        grid.put("final_longOnly_trend200", promoted);
+        // Entry — confluence threshold (how many of the 4 momentum votes must agree).
+        grid.put("thr2", variant(base, s -> s.setConfluenceThreshold(2)));
+        grid.put("thr4", variant(base, s -> s.setConfluenceThreshold(4)));
 
-        // Iteration 11 (done): 3-tier scale-out, aggressive-trail ratchet (user pick, 2026-07-04).
-        // Same entries as the promoted profile: bank ⅓ at T1=0.75 (stop→BE), ⅓ at T2=1.5 (stop→T1),
-        // trail the final ⅓. trail 1.0 won (net −0.06 IS vs baseline −0.14) but stayed net-negative
-        // with 2 negative quarters — because scale-out only acts AFTER T1 and can't touch the ~18%
-        // that hit the 3.0-ATR stop first. Keep trail 1.0 fixed as the scale-out anchor below.
-        BacktestProperties.Strategy scaleOut = variant(promoted, s -> {
-            s.setScaleOutEnabled(true);
-            s.setTier1AtrMultiple(0.75);
-            s.setTier2AtrMultiple(1.5);
-            s.setTrailAtrMultiple(1.0);
-        });
+        // Entry — breakout lookback (bars the close must break above to signal).
+        grid.put("look10", variant(base, s -> s.setSwingLookbackBars(10)));
+        grid.put("look15", variant(base, s -> s.setSwingLookbackBars(15)));
+        grid.put("look30", variant(base, s -> s.setSwingLookbackBars(30)));
 
-        // Iteration 12 (done): tighten the pre-T1 initial stop. stop 2.5 ATR won (net −0.02 IS, the
-        // best all session) but expectancy converged to break-even from below without crossing, and
-        // Q4'24 + Q1'25 stayed negative. The exit lever is exhausted; the plateau is entry-shaped.
-        BacktestProperties.Strategy bestExit = variant(scaleOut, s -> s.setStopAtrMultiple(2.5));
-        grid.put("scaleOut_trail1.0_stop2.5", bestExit);
+        // Entry — regime slope gate (0 = off; higher = stricter up-regime requirement).
+        grid.put("slope0", variant(base, s -> s.setTrendEmaSlopeLookback(0)));
+        grid.put("slope25", variant(base, s -> s.setTrendEmaSlopeLookback(25)));
+        grid.put("slope100", variant(base, s -> s.setTrendEmaSlopeLookback(100)));
 
-        // Iteration 13 (done): regime-slope gate reached exactly break-even (slope100 → 0.00) by
-        // fixing Q1'25 but worsening Q4'24 / Q3'25 — moved the bleed, didn't stop it. Confirmed the
-        // mean-reversion edge is structurally ~break-even.
+        // Exit — initial (pre-T1) stop distance.
+        grid.put("stop1.0", variant(base, s -> s.setStopAtrMultiple(1.0)));
+        grid.put("stop2.0", variant(base, s -> s.setStopAtrMultiple(2.0)));
 
-        // Iteration 14 (thesis pivot — user pick, 2026-07-04): MOMENTUM entry with an inverted,
-        // positive-skew exit. Mean-reversion's ~80% win is bought with wins≈losses geometry that
-        // can't be net-positive. Momentum buys strength (RSI>50 rising + break of prior swing high +
-        // volume thrust + continuation candle) in an up-regime, with a TIGHT stop and a wide trail so
-        // losers are cut small and winners run. Expect lower win rate but positive expectancy — the
-        // opposite shape. Long-only first (US500 upward drift). Sweep entry threshold, breakout
-        // lookback, regime slope, and the positive-skew exit geometry. Gate: net > 0 AND every
-        // quarter ≥ ~0 in-sample before the ONE out-of-sample shot.
-        BacktestProperties.Strategy momoBase = variant(promoted, s -> {
-            s.setMode(StrategyMode.MOMENTUM);
-            s.setConfluenceThreshold(3);          // 3 of 4 momentum votes
-            s.setEnableCandles(true);
-            s.setEnableVolumeTrend(true);
-            s.setSwingLookbackBars(20);           // breakout lookback
-            s.setTrendEmaPeriod(200);
-            s.setTrendEmaSlopeLookback(50);       // up-regime only
-            // Positive-skew exit: tight stop, tiers pushed out, wide trail (winners run).
-            s.setScaleOutEnabled(true);
-            s.setStopAtrMultiple(1.5);
+        // Exit — tier take-profit levels (where the first two thirds bank).
+        grid.put("tiers1.0_2.0", variant(base, s -> {
             s.setTier1AtrMultiple(1.0);
             s.setTier2AtrMultiple(2.0);
-            s.setTrailAtrMultiple(2.0);
-        });
-        grid.put("i14_momo_base", momoBase);
-        grid.put("i14_momo_thr2", variant(momoBase, s -> s.setConfluenceThreshold(2)));
-        grid.put("i14_momo_look10", variant(momoBase, s -> s.setSwingLookbackBars(10)));
-        grid.put("i14_momo_noSlope", variant(momoBase, s -> s.setTrendEmaSlopeLookback(0)));
-        grid.put("i14_momo_stop1.0", variant(momoBase, s -> s.setStopAtrMultiple(1.0)));
-        grid.put("i14_momo_trail3.0", variant(momoBase, s -> s.setTrailAtrMultiple(3.0)));
-        grid.put("i14_momo_wideTiers", variant(momoBase, s -> {
-            s.setTier1AtrMultiple(1.5);
-            s.setTier2AtrMultiple(3.0);
-            s.setTrailAtrMultiple(2.5);
         }));
+        grid.put("tiers2.0_4.0", variant(base, s -> {
+            s.setTier1AtrMultiple(2.0);
+            s.setTier2AtrMultiple(4.0);
+        }));
+
+        // Exit — trailing distance for the final third (how much room winners get to run).
+        grid.put("trail1.5", variant(base, s -> s.setTrailAtrMultiple(1.5)));
+        grid.put("trail3.5", variant(base, s -> s.setTrailAtrMultiple(3.5)));
 
         return grid;
     }

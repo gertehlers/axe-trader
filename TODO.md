@@ -543,7 +543,40 @@ momentum @ 15m is the first approach with a genuine, OOS-validated positive edge
 *develop*, not abandon. Not promoted to `application.yaml` yet (still 5m mean-reversion) — it's a
 validated lead, not a robust every-quarter strategy; promoting the running default is a user call.
 
-**Where a fresh session should pick up (momentum @ 15m is the live lead — 2026-07-04):**
+### Iteration 17 — momentum surface + duration scan: 10m > 15m, every quarter positive (2026-07-04)
+
+Promoted momentum @ 15m to `application.yaml`, then (user ask) mapped the response surface across
+timeframes 8–25m and around the anchor config. Duration curve (anchor config, in-sample):
+
+| TF | Trades | /day | Win% | avgR | netAvgPnl | $net/day |
+|---|---|---|---|---|---|---|
+| 8m | 1230 | 3.7 | 51% | 0.03 | −0.25 | −0.91 |
+| **10m** | 998 | 3.0 | 53% | 0.09 | **+0.52** | **+1.56** |
+| 12m | 877 | 2.6 | 51% | 0.06 | +0.14 | +0.38 |
+| 15m | 695 | 2.1 | 53% | 0.10 | +0.31 | +0.65 |
+| 20m | 536 | 1.6 | 50% | 0.02 | +0.10 | +0.16 |
+| 25m | 472 | 1.4 | 50% | −0.01 | −0.56 | −0.79 |
+
+**The edge lives in a 10–20m band, peaking at 10m** (8m too noisy, 25m+ too slow). **10m is the new
+best and clears the every-quarter gate**: anchor @10m quarters Q4'24 +2.37, Q1'25 **+0.21**, Q2'25
++0.64, Q3'25 +0.56, Q4'25 +0.32 — all five positive, fixing the Q1'25 −0.78 that 15m had, at higher
+expectancy (+0.52) and cadence (3.0/day, closer to the ~5 target).
+
+Response surface at 10m (which knobs the edge depends on):
+- **Threshold 3 is the sweet spot** — thr2 over-trades to −0.24; thr4 starves to 0.4/day (+0.54 but
+  130 trades). Load-bearing.
+- **Regime-slope gate isn't pulling weight** — slope0 (off) +0.59 / 3.8/day beats the anchor's +0.52;
+  the momentum entry doesn't need it at 10m. Candidate to drop for cadence.
+- **Positive skew confirmed on the tier axis** — tiers 2.0/4.0 (wider) +0.77 net / avgR 0.12 at 47%
+  win; tiers 1.0/2.0 (tighter) +0.26 at 62% win. Wider = bigger winners, the intended shape.
+- stop 1.0 too tight (41% win); breakout lookback 10–30 all similar (~+0.4 to +0.5).
+
+**Next: 15m→10m is a clean single-parameter improvement** (same entry/exit that already passed 15m
+OOS, just a better timeframe, every-quarter-positive in-sample). Pre-committing the anchor @10m for
+ONE OOS shot before re-promoting. Richer surface cells (wider tiers, slope off) are follow-on tuning
+to do IN-SAMPLE with walk-forward — not to stack onto the same OOS peek. See iteration 18.
+
+**Where a fresh session should pick up (momentum is the live lead — 2026-07-04):**
 1. **Stabilize the choppy-quarter bleed (Q1'25 / Q1'26).** Momentum loses in non-trending months.
    A trend-quality / chop filter (e.g. ADX or an efficiency-ratio gate, or the regime-slope gate the
    noSlope variant dropped — revisit it now that the base thesis is proven) could cut the Jan–Mar
