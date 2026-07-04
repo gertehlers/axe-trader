@@ -9,6 +9,7 @@ public class BacktestProperties {
     private int limit;
     private int timeframeMinutes;
     private Strategy strategy = new Strategy();
+    private Contract contract = new Contract();
 
     public String getEpic() {
         return epic;
@@ -42,6 +43,31 @@ public class BacktestProperties {
         this.strategy = strategy;
     }
 
+    public Contract getContract() {
+        return contract;
+    }
+
+    public void setContract(Contract contract) {
+        this.contract = contract;
+    }
+
+    /**
+     * How an index-point move translates to money, so backtest expectancy can be read in $ instead
+     * of raw S&amp;P points. {@code valuePerPoint} is the account's P&amp;L per 1.0 index point per 1
+     * unit/contract (Capital.com's standard US500 CFD is ~$1/pt); default 1.0 keeps output in points.
+     */
+    public static class Contract {
+        private double valuePerPoint = 1.0;
+
+        public double getValuePerPoint() {
+            return valuePerPoint;
+        }
+
+        public void setValuePerPoint(double valuePerPoint) {
+            this.valuePerPoint = valuePerPoint;
+        }
+    }
+
     public static class Strategy {
         private int rsiPeriod;
         private int rsiSmoothPeriod;
@@ -55,6 +81,7 @@ public class BacktestProperties {
         private double targetAtrMultiple;
         private int maxHoldingBars;         // force-exit after N bars if neither stop nor target hit (0 = disabled)
         private int trendEmaPeriod;         // hard directional gate: long only above / short only below this EMA (0 = disabled)
+        private double trendEmaMaxAtr;      // proximity ceiling: only enter within this many ATR of the trend EMA (0 = disabled)
 
         // Confluence (5-pillar voting)
         private int confluenceThreshold;     // votes required to enter
@@ -162,6 +189,14 @@ public class BacktestProperties {
 
         public void setTrendEmaPeriod(int trendEmaPeriod) {
             this.trendEmaPeriod = trendEmaPeriod;
+        }
+
+        public double getTrendEmaMaxAtr() {
+            return trendEmaMaxAtr;
+        }
+
+        public void setTrendEmaMaxAtr(double trendEmaMaxAtr) {
+            this.trendEmaMaxAtr = trendEmaMaxAtr;
         }
 
         public int getConfluenceThreshold() {

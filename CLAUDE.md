@@ -1,6 +1,6 @@
 # axe-trader
 
-Spring Boot 4 / Java 26 trading bot framework. Capital.com integration for live market data; TA4j-powered backtest engine for strategy development. Target instrument: US500 (S&P 500).
+Spring Boot 4 / Java 21 trading bot framework. Capital.com integration for live market data; TA4j-powered backtest engine for strategy development. Target instrument: US500 (S&P 500).
 
 ## Current Phase
 
@@ -17,10 +17,12 @@ Read this before touching strategy code — it's the bar every change is judged 
   "more trades" change that costs win rate without an explicit ask.
 - **Cadence: ~5 quality trades/day per instrument, not scalping.** If a config change increases trade
   count, that is a signal the filters got looser, not a win — check win rate moved the right way too.
-  Current best (2026-07-04, US500 5m, tuned profile in `application.yaml`): **80% win rate held
-  out-of-sample** (Jan–May'26) at ~1 trade/day, LONG-only, net +0.12 pts/trade after spread. The
-  cadence gap vs ~5/day is expected to close via additional instruments (each with its own profile),
-  not looser filters. See `TODO.md` for the full tuning log.
+  Current best (2026-07-04, US500 5m, `application.yaml`): **80% win rate holds in- and out-of-sample**,
+  ~1 trade/day, LONG-only — but the **2026-07-04 pnl audit falsified its expectancy**: under honest
+  intrabar fills it is net **negative** (IS −0.14, OOS −0.29 pts/trade), not the +0.12 the close-based
+  model showed. The 80% entry edge is real; the tight 0.75:3.0 target:stop geometry throws it away.
+  **Next lever is exits (3-tier scale-out), not entries** — see `docs/observability-and-exits-design.md`
+  §4 and `TODO.md` (iteration 9). Do not treat the profile as profitable.
 - **Reproducibility via 5-pillar confluence.** Every entry/exit must be explainable as a vote count
   across the 5 pillars below (`ConfluenceStrategies` / `PillarVote`) — not a black-box ML signal.
   Confluence threshold, pillar enable flags, and thresholds are the tuning knobs; see
@@ -52,6 +54,11 @@ only durable state:
   committed `data/axe-trader.sqlite.gz` snapshot (see `DatabaseBootstrap`).
 
 ## Build & Run
+
+> **Ephemeral-session setup**: on a fresh container the history DB must be decompressed before any
+> test (`gzip -dc data/axe-trader.sqlite.gz > data/axe-trader.sqlite` — `DatabaseBootstrap` only runs
+> in `main()`, not under `@SpringBootTest`). See `docs/dev-environment.md` for that and the sweep
+> commands.
 
 ```bash
 ./mvnw clean package -DskipTests   # build

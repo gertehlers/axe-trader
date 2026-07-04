@@ -41,9 +41,12 @@ import java.util.stream.Collectors;
  * <p>Default window is the IN-SAMPLE period (Dec 2024 → Dec 2025). The Jan–May 2026 tail is
  * reserved for out-of-sample validation of tuned candidates — do not tune against it.
  *
- * <p>Known modeling gaps (both flatter results live): fills are on mid prices, and the ATR
- * stop/target rules trigger on bar <em>close</em>, not intrabar wicks. The "net" columns
- * subtract the average bid/ask spread per round trip; the wick gap is not yet modeled.
+ * <p>Modeling: entries fill at the next bar's close on mid prices; the "net" columns subtract one
+ * average bid/ask spread per round trip (the mid-fill correction). Exits are modeled intrabar by
+ * {@code BacktestRunner} — the stop/target bracket fills at the level on the first bar whose
+ * high/low touches it, with a conservative stop-wins tie-break — so the old close-only optimism is
+ * gone. The {@code $net/trade} and {@code $net/day} columns translate points via
+ * {@code backtest.contract.value-per-point}.
  */
 @SpringBootTest
 class ConfluenceSweepTest {
@@ -131,12 +134,17 @@ class ConfluenceSweepTest {
 
         results.sort((a, b) -> Double.compare(b.netWinRate, a.netWinRate));
 
-        System.out.printf("%n%-34s %6s %8s %6s %9s %7s %9s %10s%n",
-                "config", "trades", "per-day", "win%", "netWin%", "avgR", "avgPnl", "netAvgPnl");
+        double valuePerPoint = backtestProperties.getContract().getValuePerPoint();
+        System.out.printf("%n(net = after one bid/ask spread per round trip; $ at %.2f per point)%n",
+                valuePerPoint);
+        System.out.printf("%-34s %6s %8s %6s %9s %7s %10s %11s %10s%n",
+                "config", "trades", "per-day", "win%", "netWin%", "avgR", "netAvgPnl", "$net/trade", "$net/day");
         for (SweepResult r : results) {
-            System.out.printf("%-34s %6d %8.1f %5.0f%% %8.0f%% %7.2f %9.2f %10.2f%n",
+            System.out.printf("%-34s %6d %8.1f %5.0f%% %8.0f%% %7.2f %10.2f %11.2f %10.2f%n",
                     r.id, r.trades, r.tradesPerDay, r.winRate * 100, r.netWinRate * 100,
-                    r.avgR, r.avgPnl, r.netAvgPnl);
+                    r.avgR, r.netAvgPnl,
+                    r.netAvgPnl * valuePerPoint,
+                    r.netAvgPnl * r.tradesPerDay * valuePerPoint);
         }
     }
 
@@ -185,14 +193,23 @@ class ConfluenceSweepTest {
             s.setTargetAtrMultiple(0.75);
         }));
         // Promoted final candidate (iteration 8): long-only + trend-EMA-200 gate.
-        grid.put("final_longOnly_trend200", variant(pregate, s -> {
+        BacktestProperties.Strategy promoted = variant(pregate, s -> {
             s.setEnableShort(false);
             s.setProximityAtrMultiple(0.5);
             s.setSwingLookbackBars(10);
             s.setStopAtrMultiple(3.0);
             s.setTargetAtrMultiple(0.75);
             s.setTrendEmaPeriod(200);
-        }));
+        });
+        grid.put("final_longOnly_trend200", promoted);
+
+        // Iteration 10 experiment: dist-to-trend-EMA proximity ceiling (US500 personality lead —
+        // the edge lives within ~2 ATR of the EMA). Sweep the ceiling on top of the promoted config
+        // to find the level, then validate the winner out-of-sample. maxAtr 0 = the promoted anchor.
+        for (double maxAtr : new double[] {1.0, 1.5, 2.0, 2.5, 3.0}) {
+            grid.put("emaCeil_%.1fatr".formatted(maxAtr),
+                    variant(promoted, s -> s.setTrendEmaMaxAtr(maxAtr)));
+        }
 
         return grid;
     }
@@ -233,6 +250,7 @@ class ConfluenceSweepTest {
         c.setTargetAtrMultiple(s.getTargetAtrMultiple());
         c.setMaxHoldingBars(s.getMaxHoldingBars());
         c.setTrendEmaPeriod(s.getTrendEmaPeriod());
+        c.setTrendEmaMaxAtr(s.getTrendEmaMaxAtr());
         c.setConfluenceThreshold(s.getConfluenceThreshold());
         c.setProximityAtrMultiple(s.getProximityAtrMultiple());
         c.setSwingLookbackBars(s.getSwingLookbackBars());

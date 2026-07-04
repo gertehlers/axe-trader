@@ -44,6 +44,9 @@ backtest:
   limit: 10000          # number of 1-minute bars to load from DB
   timeframe-minutes: 5  # aggregate target (5 = 5m chart)
 
+  contract:
+    value-per-point: 1.0  # account P&L per 1.0 index point per unit (Capital.com US500 CFD ~$1/pt); translates backtest points to $
+
   # US500 profile — tuned 2026-07-04 (see TODO.md tuning log iterations 1-8).
   # Validated: 79% win in-sample (Dec'24-Dec'25), 80% win / net +0.12 pts out-of-sample (Jan-May'26), ~1 trade/day.
   strategy:
@@ -59,6 +62,7 @@ backtest:
     target-atr-multiple: 0.75
     max-holding-bars: 0   # force-exit after N bars if neither stop nor target hit (0 = disabled)
     trend-ema-period: 200 # hard directional gate: long only above / short only below this EMA (0 = disabled)
+    trend-ema-max-atr: 0  # proximity ceiling: only enter within N ATR of the trend EMA (0 = disabled; ~2 is the US500 lead, pending OOS validation)
 
     # 5-pillar confluence voting
     confluence-threshold: 3        # votes (pillars) that must agree before entering; tune for quality vs. frequency
