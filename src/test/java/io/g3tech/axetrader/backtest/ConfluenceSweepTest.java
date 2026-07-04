@@ -118,11 +118,11 @@ class ConfluenceSweepTest {
     }
 
     /**
-     * Iteration 3 grid (see TODO.md tuning log for prior iterations). Composes iteration 2's
-     * two independent wins at th3/noStruct/RSI 25/75: the cadence gates (S/R proximity + swing
-     * lookback, which doubled trades while raising win rate) crossed with the win-rate geometry
-     * corner (wide stop / tight target, which crossed 80% in-sample). RSI stays at 25/75 —
-     * iteration 2 showed loosening it goes net-negative after spread.
+     * Out-of-sample validation grid (see TODO.md tuning log, iteration 3): exactly the four
+     * candidates picked from the in-sample plateau, to be run ONCE on the held-out window
+     * ({@code -Dsweep.from=2026-01-01T00:00:00Z -Dsweep.to=2026-05-02T00:00:00Z}). No retuning
+     * against that window — if these crater out-of-sample, go back to in-sample sweeps with
+     * walk-forward splits instead.
      */
     private static Map<String, BacktestProperties.Strategy> buildGrid(BacktestProperties.Strategy base) {
         Map<String, BacktestProperties.Strategy> grid = new LinkedHashMap<>();
@@ -132,22 +132,25 @@ class ConfluenceSweepTest {
             s.setEnableStructure(false);
         });
 
-        double[][] geometries = {{3.0, 0.75}, {3.5, 0.5}, {3.5, 0.75}, {4.0, 0.5}, {4.0, 0.75}};
-        for (double proximity : new double[] {0.4, 0.5, 0.6}) {
-            for (int lookback : new int[] {8, 10, 14}) {
-                for (double[] geometry : geometries) {
-                    double stop = geometry[0];
-                    double target = geometry[1];
-                    grid.put("prox%.1f_look%d_stop%.1f_tgt%.2f".formatted(
-                                    proximity, lookback, stop, target),
-                            variant(anchor, s -> {
-                                s.setProximityAtrMultiple(proximity);
-                                s.setSwingLookbackBars(lookback);
-                                s.setStopAtrMultiple(stop);
-                                s.setTargetAtrMultiple(target);
-                            }));
-                }
-            }
+        // {proximityAtr, swingLookback, stopAtr, targetAtr}
+        double[][] candidates = {
+                {0.5, 8, 4.0, 0.5},   // win-rate champion: 84% @ 2.4/day in-sample
+                {0.6, 8, 4.0, 0.5},   // cadence variant:   84% @ 2.8/day
+                {0.5, 10, 4.0, 0.75}, // balanced:          81% @ 2.1/day
+                {0.5, 10, 3.0, 0.75}, // expectancy champ:  78% @ 2.1/day, net +0.86
+        };
+        for (double[] candidate : candidates) {
+            double proximity = candidate[0];
+            int lookback = (int) candidate[1];
+            double stop = candidate[2];
+            double target = candidate[3];
+            grid.put("prox%.1f_look%d_stop%.1f_tgt%.2f".formatted(proximity, lookback, stop, target),
+                    variant(anchor, s -> {
+                        s.setProximityAtrMultiple(proximity);
+                        s.setSwingLookbackBars(lookback);
+                        s.setStopAtrMultiple(stop);
+                        s.setTargetAtrMultiple(target);
+                    }));
         }
 
         return grid;
