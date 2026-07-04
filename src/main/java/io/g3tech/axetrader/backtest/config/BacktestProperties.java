@@ -9,6 +9,7 @@ public class BacktestProperties {
     private int limit;
     private int timeframeMinutes;
     private Strategy strategy = new Strategy();
+    private Contract contract = new Contract();
 
     public String getEpic() {
         return epic;
@@ -40,6 +41,31 @@ public class BacktestProperties {
 
     public void setStrategy(Strategy strategy) {
         this.strategy = strategy;
+    }
+
+    public Contract getContract() {
+        return contract;
+    }
+
+    public void setContract(Contract contract) {
+        this.contract = contract;
+    }
+
+    /**
+     * How an index-point move translates to money, so backtest expectancy can be read in $ instead
+     * of raw S&amp;P points. {@code valuePerPoint} is the account's P&amp;L per 1.0 index point per 1
+     * unit/contract (Capital.com's standard US500 CFD is ~$1/pt); default 1.0 keeps output in points.
+     */
+    public static class Contract {
+        private double valuePerPoint = 1.0;
+
+        public double getValuePerPoint() {
+            return valuePerPoint;
+        }
+
+        public void setValuePerPoint(double valuePerPoint) {
+            this.valuePerPoint = valuePerPoint;
+        }
     }
 
     public static class Strategy {

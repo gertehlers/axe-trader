@@ -5,6 +5,7 @@ import io.g3tech.axetrader.backtest.indicators.IndicatorBundle;
 import io.g3tech.axetrader.backtest.strategy.ConfluenceStrategies;
 import io.g3tech.axetrader.backtest.strategy.PillarVote;
 import org.springframework.stereotype.Component;
+import org.ta4j.core.Bar;
 import org.ta4j.core.BarSeries;
 import org.ta4j.core.Position;
 import org.ta4j.core.Strategy;
@@ -72,16 +73,45 @@ public class BacktestRunner {
             BarSeries series, IndicatorBundle indicators, Position position, List<PillarVote> votes,
             BacktestProperties.Strategy config) {
         Trade entry = position.getEntry();
-        Trade exit = position.getExit();
 
         int entryIndex = entry.getIndex();
-        int exitIndex = exit.getIndex();
         double entryPrice = entry.getPricePerAsset(series).doubleValue();
-        double exitPrice = exit.getPricePerAsset(series).doubleValue();
         Direction direction = direction(entry);
+        double atrAtEntry = indicators.atr.getValue(entryIndex).doubleValue();
+
+        int exitIndex;
+        double exitPrice;
+        ExitReason exitReason;
+        double riskPerUnit;
+
+        if (config == null) {
+            // Legacy fixed-rule path (no stop/target config): trust ta4j's close-based exit and
+            // normalise R by ATR, as before. Kept for the simple non-confluence backtests/tests.
+            Trade exit = position.getExit();
+            exitIndex = exit.getIndex();
+            exitPrice = exit.getPricePerAsset(series).doubleValue();
+            exitReason = classifyExit(series, exitIndex, pnl(direction, entryPrice, exitPrice));
+            riskPerUnit = atrAtEntry;
+        } else {
+            // Confluence path: model the stop/target as a fixed bracket posted at entry (entry price
+            // ± multiple x ATR-at-entry, the way a real OCO order rests) and fill AT the level on the
+            // first bar whose intrabar range touches it — not at bar close. This removes the
+            // optimism of the old close-based rules (which never stopped out on a bar that pierced
+            // the stop but closed back inside, and filled past the level on gap bars). R is measured
+            // against the actual stop distance, so a target win is +targetAtr/stopAtr R, not inflated.
+            double stopDist = config.getStopAtrMultiple() * atrAtEntry;
+            double targetDist = config.getTargetAtrMultiple() * atrAtEntry;
+            ExitOutcome outcome = intrabarExit(
+                    series, direction, entryIndex, entryPrice, stopDist, targetDist,
+                    config.getMaxHoldingBars());
+            exitIndex = outcome.index();
+            exitPrice = outcome.price();
+            exitReason = outcome.reason();
+            riskPerUnit = stopDist == 0.0 ? atrAtEntry : stopDist;
+        }
+
         double pnl = pnl(direction, entryPrice, exitPrice);
-        double risk = indicators.atr.getValue(entryIndex).doubleValue();
-        double rMultiple = risk == 0.0 ? 0.0 : pnl / risk;
+        double rMultiple = riskPerUnit == 0.0 ? 0.0 : pnl / riskPerUnit;
         List<String> reasons = reasonsAt(votes, entryIndex);
 
         return new TradeResult(
@@ -94,9 +124,50 @@ public class BacktestRunner {
                 rMultiple,
                 classifyVolatility(indicators, entryIndex),
                 pnl > 0.0,
-                classifyExit(series, exitIndex, pnl),
+                exitReason,
                 config == null ? null : featuresAt(series, indicators, config, entryIndex, reasons.size()),
                 reasons);
+    }
+
+    /**
+     * Walks bars forward from the fill and returns the first stop/target/time exit, filled at the
+     * bracket <em>level</em> (not bar close). Tie-break is deliberately <b>conservative</b>: when a
+     * single bar's high–low range spans both the stop and the target, OHLC cannot tell which was
+     * touched first, so the stop is assumed — we never book an intrabar win we can't prove. A
+     * position that touches neither before {@code maxHoldingBars} exits at that bar's close (TIME);
+     * one that survives to the last bar is force-closed at the last close (END).
+     */
+    static ExitOutcome intrabarExit(
+            BarSeries series, Direction direction, int entryIndex, double entryPrice,
+            double stopDist, double targetDist, int maxHoldingBars) {
+        double stopLevel = direction == Direction.LONG ? entryPrice - stopDist : entryPrice + stopDist;
+        double targetLevel = direction == Direction.LONG ? entryPrice + targetDist : entryPrice - targetDist;
+        int lastIndex = series.getEndIndex();
+
+        for (int i = entryIndex + 1; i <= lastIndex; i++) {
+            Bar bar = series.getBar(i);
+            double high = bar.getHighPrice().doubleValue();
+            double low = bar.getLowPrice().doubleValue();
+
+            boolean stopHit = direction == Direction.LONG ? low <= stopLevel : high >= stopLevel;
+            boolean targetHit = direction == Direction.LONG ? high >= targetLevel : low <= targetLevel;
+
+            if (stopHit) {
+                return new ExitOutcome(i, stopLevel, ExitReason.STOP);
+            }
+            if (targetHit) {
+                return new ExitOutcome(i, targetLevel, ExitReason.TARGET);
+            }
+            if (maxHoldingBars > 0 && (i - entryIndex) >= maxHoldingBars) {
+                return new ExitOutcome(i, bar.getClosePrice().doubleValue(), ExitReason.TIME);
+            }
+        }
+
+        return new ExitOutcome(lastIndex, series.getBar(lastIndex).getClosePrice().doubleValue(), ExitReason.END);
+    }
+
+    /** One resolved exit: the bar it happened on, the fill price, and why. */
+    record ExitOutcome(int index, double price, ExitReason reason) {
     }
 
     /**
@@ -166,15 +237,9 @@ public class BacktestRunner {
     }
 
     /**
-     * Classifies why the position closed. The confluence exit rule is
-     * {@code stopLoss OR stopGain OR timeStop}, and stopGain only fires in profit / stopLoss only
-     * in loss — so for a mid-series exit the pnl sign identifies the trigger. A position still open
-     * at the last bar is force-closed ({@link ExitReason#END}).
-     *
-     * <p>TIME exits are not distinguished here (this method has no access to {@code max-holding-bars});
-     * with the time stop disabled — as in the promoted profile and every tuned candidate — no TIME
-     * exits occur, so the classification is exact. When a config enables the time stop, the
-     * experiment-writer (which has the config) will refine this; see the design spec.
+     * Legacy exit classifier for the no-config fixed-rule path only (the confluence path now gets an
+     * exact reason from {@link #intrabarExit}). The fixed-rule exit fires on bar close, so the pnl
+     * sign approximates the trigger; a position still open at the last bar is {@link ExitReason#END}.
      */
     private static ExitReason classifyExit(BarSeries series, int exitIndex, double pnl) {
         if (exitIndex >= series.getEndIndex()) {

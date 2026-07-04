@@ -44,6 +44,9 @@ backtest:
   limit: 10000          # number of 1-minute bars to load from DB
   timeframe-minutes: 5  # aggregate target (5 = 5m chart)
 
+  contract:
+    value-per-point: 1.0  # account P&L per 1.0 index point per unit (Capital.com US500 CFD ~$1/pt); translates backtest points to $
+
   # US500 profile — tuned 2026-07-04 (see TODO.md tuning log iterations 1-8).
   # Validated: 79% win in-sample (Dec'24-Dec'25), 80% win / net +0.12 pts out-of-sample (Jan-May'26), ~1 trade/day.
   strategy:
