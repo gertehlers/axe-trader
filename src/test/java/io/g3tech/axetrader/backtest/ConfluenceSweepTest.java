@@ -203,22 +203,25 @@ class ConfluenceSweepTest {
         });
         grid.put("final_longOnly_trend200", promoted);
 
-        // Iteration 11 experiment: 3-tier scale-out with an aggressive-trail ratchet (user pick,
-        // 2026-07-04). The pnl audit (item 2) proved the single 0.75/3.0 target:stop bracket is
-        // net-negative under honest fills because the ~20% full-stop losers swamp the capped 0.75
-        // winners. Scale-out keeps the SAME entries (promoted config) but banks ⅓ at T1=0.75
-        // (stop→BE), ⅓ at T2=1.5 (stop→T1), and trails the final ⅓ — so winners can run past 0.75
-        // while post-T1 trades can no longer become net losers. Sweep the trail distance; the
-        // promoted single-target row above is the A/B control. Gate on worst-quarter net ≥ ~0
-        // in-sample before the one OOS shot.
-        for (double trailAtr : new double[] {1.0, 1.5, 2.0}) {
-            grid.put("scaleOut_t1_0.75_t2_1.5_trail%.1f".formatted(trailAtr),
-                    variant(promoted, s -> {
-                        s.setScaleOutEnabled(true);
-                        s.setTier1AtrMultiple(0.75);
-                        s.setTier2AtrMultiple(1.5);
-                        s.setTrailAtrMultiple(trailAtr);
-                    }));
+        // Iteration 11 (done): 3-tier scale-out, aggressive-trail ratchet (user pick, 2026-07-04).
+        // Same entries as the promoted profile: bank ⅓ at T1=0.75 (stop→BE), ⅓ at T2=1.5 (stop→T1),
+        // trail the final ⅓. trail 1.0 won (net −0.06 IS vs baseline −0.14) but stayed net-negative
+        // with 2 negative quarters — because scale-out only acts AFTER T1 and can't touch the ~18%
+        // that hit the 3.0-ATR stop first. Keep trail 1.0 fixed as the scale-out anchor below.
+        BacktestProperties.Strategy scaleOut = variant(promoted, s -> {
+            s.setScaleOutEnabled(true);
+            s.setTier1AtrMultiple(0.75);
+            s.setTier2AtrMultiple(1.5);
+            s.setTrailAtrMultiple(1.0);
+        });
+
+        // Iteration 12: tighten the pre-T1 initial stop (the untested exit lever). 3.0 ATR is very
+        // wide for a quick mean-reversion bounce; cutting the loser size should lift expectancy even
+        // at the cost of more, smaller losers (expectancy — not win rate — is the gate). Sweep the
+        // initial stop with scale-out on. Gate on worst-quarter net ≥ ~0 in-sample before any OOS.
+        for (double stopAtr : new double[] {1.5, 2.0, 2.5, 3.0}) {
+            grid.put("scaleOut_trail1.0_stop%.1f".formatted(stopAtr),
+                    variant(scaleOut, s -> s.setStopAtrMultiple(stopAtr)));
         }
 
         return grid;

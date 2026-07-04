@@ -395,25 +395,47 @@ NOT promoted; NOT taken out-of-sample yet.
 anchor, and no post-T1 exit change can touch it. **The untested exit lever is the pre-T1 initial
 stop itself** (3.0 ATR is very wide for a quick mean-reversion bounce).
 
-### Iteration 12 — initial-stop tightening × scale-out (IN PROGRESS)
+### Iteration 12 — initial-stop × scale-out: converges to break-even, doesn't cross (2026-07-04)
 
-Next experiment: sweep the **initial stop** {1.5, 2.0, 2.5, 3.0 ATR} on top of scaleOut trail1.0,
-in-sample. Hypothesis: cutting the pre-T1 loser size lifts expectancy even at the cost of more
-(smaller) losers, since expectancy — not win rate — is the gate. Watch that it doesn't just trade
-one negative quarter for another. Gate: every quarter net ≥ ~0 in-sample BEFORE any OOS shot; the
-Jan–May'26 window stays clean until a single pre-committed config is ready.
+Swept the **initial (pre-T1) stop** on top of scaleOut trail1.0, in-sample. Tightening the wide
+3.0-ATR stop helps up to a point, then the win-rate loss outweighs the smaller losers:
 
-**Where a fresh session should pick up:**
-1. **Iteration 12 (above): initial-stop × scale-out sweep.** The scale-out plumbing is done and
-   unit-tested; this is a pure config sweep in `ConfluenceSweepTest.buildGrid`. If a config clears
-   every quarter ≥ 0 in-sample, take the ONE out-of-sample shot (no retuning on the result).
-2. If exit-geometry tuning plateaus below net-positive: the honest conclusion may be that this
-   single mean-reversion entry on US500 5m is a real ~80%-win but structurally break-even edge, and
-   the path to "makes money" is **breadth** (a second instrument's own profile) rather than more
-   US500 exit tuning. Flag this tradeoff to the user before spending many more iterations here.
-3. Cadence via breadth: second instrument with its own profile (per-instrument config design).
-4. Risk controls before any live use (position sizing, max drawdown, circuit breaker).
-5. MONITOR-mode validation remains open (needs Capital.com network access + credentials).
+| Config (scaleOut trail1.0) | Trades | Win% | netAvgPnl |
+|---|---|---|---|
+| stop 3.0 | 309 | 82% | −0.06 |
+| **stop 2.5** | 312 | 78% | **−0.02** (best) |
+| stop 2.0 | 315 | 74% | −0.12 |
+| stop 1.5 | 322 | 68% | −0.14 |
+
+Best config all session: **scaleOut trail1.0 + stop2.5 → net −0.02/trade in-sample** (avgR +0.03).
+Exit-geometry progress across the session: single-target −0.14 → scale-out −0.06 → +stop2.5 −0.02.
+A real ~85% cut in the loss, **asymptotically approaching zero from below — but not crossing it.**
+stop2.5 quarters: Q4'24 −0.89 (16 trades, Dec selloff), Q1'25 −0.40, Q2'25 +0.38, Q3'25 −0.02,
+Q4'25 +0.09 — **still 2 negative quarters**, so it FAILS the every-quarter gate → no OOS shot taken.
+
+**Conclusion — the exit lever is now exhausted around break-even.** Both entry filtering (iters 1–10,
+all failed OOS) and exit geometry (iters 11–12, plateau at −0.02) have been worked hard. The same
+1–2 quarters (Dec'24 selloff, Q1'25) stay negative under every config — they lose on *genuine*
+stop-outs in choppy/down regimes, which only entry avoidance could fix, and entry avoidance doesn't
+generalize. **The honest read: this single long-only mean-reversion entry on US500 5m is a real
+~80%-win but structurally break-even edge.** Micro-tuning US500 exits further has low expected value.
+
+**Where a fresh session should pick up (STRATEGIC FORK — surfaced to user 2026-07-04):**
+The near-break-even plateau is a genuine fork, not a bug to grind on. Options, highest-value first:
+1. **Breadth, not more US500 exit tuning.** Add a second instrument with its own tuned "personality"
+   profile (per-instrument config design, already on the backlog). Uncorrelated edges are how a thin
+   per-instrument edge becomes a portfolio that makes money + raises cadence toward ~5/day. This is
+   the recommended direction if the user wants "makes money" progress.
+2. **Rethink the entry, not just tune it.** The plateau is entry-shaped: ~80% win but wins ≈ losses
+   in size. A different entry thesis (momentum/breakout continuation instead of mean-reversion, or a
+   higher-timeframe filter for the two bad-quarter regimes) is a redesign, not a finetune.
+3. Accept scaleOut trail1.0+stop2.5 as the best-documented US500 profile (near-break-even, honest)
+   and take its one OOS shot purely to document — knowing it fails the in-sample gate, so it's a
+   record, not a promotion.
+4. Risk controls before any live use; MONITOR-mode validation (needs Capital.com creds) — both open.
+
+Scale-out plumbing (`BacktestRunner.scaleOutExit` + config knobs + unit tests) is done and reusable
+for whatever instrument/entry comes next.
 
 ---
 
