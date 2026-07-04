@@ -42,17 +42,20 @@ axe-trader:
 backtest:
   epic: US500
   limit: 10000          # number of 1-minute bars to load from DB
-  timeframe-minutes: 15 # aggregate target (15 = 15m chart); the momentum profile's edge lives here (iter 15-16)
+  timeframe-minutes: 10 # aggregate target (10 = 10m chart); the momentum edge peaks here (iter 17-18)
 
   contract:
     value-per-point: 1.0  # account P&L per 1.0 index point per unit (Capital.com US500 CFD ~$1/pt); translates backtest points to $
 
-  # US500 profile — MOMENTUM @ 15m, promoted 2026-07-04 (TODO.md tuning log iterations 14-16).
-  # First net-positive, OOS-validated config: IS +0.31 pts/trade (53% win, 4/5 quarters positive),
-  # OOS Jan-May'26 +0.10 pts/trade (51% win, sign held positive) at ~2.1 trades/day. Positive skew
-  # (small stops, winners trail). Thin & trend-dependent — makes money in trending months, bleeds in
-  # choppy ones (Q1); stabilising that is the next work. Supersedes the 5m mean-reversion profile
-  # (iterations 1-13), which held ~80% win but was structurally break-even under honest fills.
+  # US500 profile — MOMENTUM @ 10m, promoted 2026-07-04 (TODO.md tuning log iterations 14-18).
+  # Best result in the project, validated in AND out of sample with EVERY quarter positive:
+  #   In-sample  (Dec'24-Dec'25): +0.52 pts/trade, 53% win, 3.0 trades/day, all 5 quarters positive.
+  #   Out-of-sample (Jan-May'26): +0.45 pts/trade, 53% win, 2.7 trades/day, both quarters positive.
+  # Positive skew (small stops, winners trail via the scale-out exit). The duration scan (iter 17)
+  # found 10m beats 15m/5m — 5m mean-reverts (dip-buying wins ~80% but is break-even), while at 10m
+  # moves clear the spread and breakouts trend. Supersedes the 5m mean-reversion profile (iters 1-13,
+  # kept as mode: MEAN_REVERSION for reference). Next: refine the 10m surface via walk-forward (wider
+  # tiers and dropping the slope gate both looked better in-sample but are not yet OOS-validated).
   strategy:
     mode: MOMENTUM  # entry thesis: MOMENTUM (breakout continuation, positive-skew) | MEAN_REVERSION (dip-buying, ~80% win but break-even at 5m)
     rsi-period: 7

@@ -18,12 +18,13 @@ Read this before touching strategy code — it's the bar every change is judged 
 - **Cadence: ~5 quality trades/day per instrument, not scalping.** For MOMENTUM this is a natural fit
   (it trades more); for MEAN_REVERSION more trades usually meant looser filters — always check the
   expectancy moved the right way, not just the count.
-  Current best (2026-07-04, US500 **15m MOMENTUM**, promoted to `application.yaml`, TODO.md iterations
-  14-16): the **first net-positive, OOS-validated profile** — IS +0.31 pts/trade (53% win, 4/5
-  quarters positive), OOS Jan-May'26 **+0.10 pts/trade** (51% win, sign held positive) at ~2.1
-  trades/day. Positive skew (small stops, winners trail). ⚠️ **Thin & trend-dependent**: it makes
-  money in trending months and bleeds in choppy ones (Q1) — positive-expectancy-that-generalizes, not
-  yet makes-money-every-month; stabilising the choppy-quarter bleed is the open work.
+  Current best (2026-07-04, US500 **10m MOMENTUM**, promoted to `application.yaml`, TODO.md iterations
+  14-18): the project's first profitable, OOS-validated profile with **every quarter positive** — IS
+  +0.52 pts/trade (53% win, all 5 quarters positive), OOS Jan-May'26 **+0.45 pts/trade** (53% win,
+  both quarters positive) at ~2.7-3.0 trades/day. Positive skew (small stops, winners trail). The
+  duration scan (iter 17) found 10m is the sweet spot — 8m too noisy, 25m+ too slow, and 10m fixed
+  the choppy-Q1 bleed that 15m still had, in AND out of sample. Open refinement: the 10m surface
+  (wider tiers, dropping the slope gate looked better in-sample) still needs walk-forward validation.
   **Key lesson: timeframe was the hidden lever.** US500 mean-reverts at 5m (why dip-buying wins ~80%
   but is structurally break-even — wins ≈ losses); at 15m moves clear the spread and breakouts trend,
   so a MOMENTUM entry flips net-positive. The old 5m mean-reversion profile (iterations 1-13) held

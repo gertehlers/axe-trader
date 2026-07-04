@@ -576,7 +576,39 @@ OOS, just a better timeframe, every-quarter-positive in-sample). Pre-committing 
 ONE OOS shot before re-promoting. Richer surface cells (wider tiers, slope off) are follow-on tuning
 to do IN-SAMPLE with walk-forward — not to stack onto the same OOS peek. See iteration 18.
 
-**Where a fresh session should pick up (momentum is the live lead — 2026-07-04):**
+### Iteration 18 — OOS at 10m: every quarter positive in AND out of sample; re-promoted (2026-07-04)
+
+Pre-committed anchor @10m (same entry/exit that passed 15m OOS, timeframe 15→10) taken to Jan–May'26:
+
+| Window | Trades | /day | Win% | avgR | netAvgPnl | quarters |
+|---|---|---|---|---|---|---|
+| In-sample (Dec'24→Dec'25) | 998 | 3.0 | 53% | 0.09 | **+0.52** | all 5 positive |
+| **Out-of-sample (Jan–May'26)** | 283 | 2.7 | 53% | 0.13 | **+0.45** | Q1'26 +0.09, Q2'26 +0.96 |
+
+**10m holds out-of-sample far better than 15m** (+0.45 vs +0.10; both OOS quarters positive vs 15m's
+Q1'26 −1.73). Only 1 of 5 OOS months negative (Mar −1.34). This is the project's **first profitable,
+every-quarter-positive result in and out of sample.** Re-promoted `application.yaml` to 10m.
+
+**Honest status vs. north star:** makes money ✅ (+0.45 OOS, ~$1.2/day per unit @ $1/pt); every
+quarter positive ✅ (in + out of sample); cadence 2.7–3.0/day (toward the ~5 target) ✅-ish;
+reproducible/explainable ✅ (4 momentum pillar votes + regime gate + scale-out, all in yaml).
+Win-rate 53% ❌ vs the old 80% goal — but that goal was the thing making the strategy *lose*; the
+positive-skew trade (win rate for money) was the whole unlock. The remaining risk is the usual one:
+this is still a backtest on ~17 months of one instrument; live needs risk controls first.
+
+**Where a fresh session should pick up (momentum @ 10m is the live, validated lead — 2026-07-04):**
+1. **Refine the 10m surface with walk-forward** (NOT another single OOS peek — 2026 is now used twice).
+   In-sample leads not yet OOS-validated: wider tiers (2.0/4.0 → +0.77 IS, avgR 0.12), dropping the
+   slope gate (slope0 → +0.59 IS, 3.8/day). Validate via walk-forward splits inside Dec'24–Dec'25.
+2. **Stabilise the one weak month (Mar'26 −1.34)** if a clean, few-parameter filter exists — but do
+   not overfit to a single month.
+3. **Risk controls before any live use** (position sizing, max drawdown, circuit breaker) — now the
+   highest-value non-strategy work, since there's finally a profitable edge to protect.
+4. Cadence toward ~5/day: 10m already gives ~3/day; a 2nd instrument's profile (breadth) is the
+   principled way to more, once data ingestion is unblocked (needs Capital.com creds).
+5. MONITOR-mode validation remains open (needs Capital.com network access + credentials).
+
+--- earlier live-lead notes (15m, superseded by 10m in iteration 18) ---
 1. **Stabilize the choppy-quarter bleed (Q1'25 / Q1'26).** Momentum loses in non-trending months.
    A trend-quality / chop filter (e.g. ADX or an efficiency-ratio gate, or the regime-slope gate the
    noSlope variant dropped — revisit it now that the base thesis is proven) could cut the Jan–Mar
