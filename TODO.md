@@ -326,13 +326,38 @@ once stops actually fill intrabar at the level. The +0.12/+0.45 was close-fill o
 - Makes money: ❌ **net negative** under intrabar fills. The entry edge (80% win) is genuine; the
   exit geometry throws it away. Fixing *exits*, not entries, is the path forward.
 
-**Where a fresh session should pick up:**
-1. **3-tier scale-out (design spec §4) — THE priority.** Stop capping winners at 0.75 ATR; bank ⅓
+### US500 personality — honest-pnl feature slices (2026-07-04)
+
+Regenerated `experiments.sqlite` under the intrabar model, then `query.py slice`d the promoted
+profile (#4, baseline 82% win / **−0.14** net). Conditional expectancy per entry-feature bucket
+(the signal, not outcomes) — this is what "US500 personality" means in practice:
+
+| Feature | Best bucket | Worst bucket | Read |
+|---|---|---|---|
+| **dist_to_trend_ema_atr** | 0–1.85 ATR: **90% / +1.30** | 3.7–5.8 ATR: 72% / −1.21 | **Strongest, monotonic.** Buy the dip *near* the EMA; chasing extension bleeds. |
+| atr_percentile (regime) | 0.52–0.74: 84% / +1.01 | 0.74–1.0: 77% / −1.41 | Mid-vol is the sweet spot; dead-calm and high-vol both drag. |
+| rsi_value | 31–40: 87% / +0.55 | 9–31 (deep oversold): 74% / −1.31 | Counterintuitive — deepest oversold = knife-catch, not the best dip. |
+| volume_ratio | ~1.0: 80% / +0.55 | >3.2× (spike): 25% / −5.97* | Avoid panic-volume bars. *only 4 trades. |
+| hour_utc | 18–23 UTC: 85% / +0.17 | 13–18 UTC: 77% / −0.38 | Weak. |
+| day_of_week | Tue: 87% / +0.74 | Wed: 85% / −0.83 | Likely noise (base-rate trap). |
+
+**Headline personality trait: the edge lives within ~2 ATR of the trend EMA.** The near-EMA bucket
+is 90% win / **+1.30 net** vs the −0.14 baseline — i.e. today only ~20% of entries sit in the
+profitable zone and the extended 80% drag the average negative. A `dist_to_trend_ema_atr` **ceiling
+(~2 ATR)** is the #1 candidate filter: it could turn the strategy net-positive by dropping extended
+entries, *without* touching exits. In-sample lead on 61 trades — **must be wired as a real knob and
+validated out-of-sample before belief** (base-rate caution per design-spec §Guiding rule).
+
+**Where a fresh session should pick up (two independent levers, both live):**
+1. **`dist_to_trend_ema_atr` ceiling filter (entry quality) — being pursued now.** Only enter when
+   close is within N ATR *above* the trend EMA. Add the knob, sweep N in-sample to find the level,
+   then ONE out-of-sample shot. Direct from the personality analysis above.
+2. **3-tier scale-out (design spec §4, exit geometry).** Stop capping winners at 0.75 ATR; bank ⅓
    at T1/T2/T3 with a ratcheting stop. Confirm exact levels with the user, then extend
-   `intrabarExit`. This is the direct fix for the negative expectancy above.
-2. Cadence via breadth: second instrument with its own profile (per-instrument config design).
-3. Risk controls before any live use (position sizing, max drawdown, circuit breaker).
-4. MONITOR-mode validation remains open (needs Capital.com network access + credentials).
+   `intrabarExit`. The other half of the fix for the negative expectancy.
+3. Cadence via breadth: second instrument with its own profile (per-instrument config design).
+4. Risk controls before any live use (position sizing, max drawdown, circuit breaker).
+5. MONITOR-mode validation remains open (needs Capital.com network access + credentials).
 
 ---
 
