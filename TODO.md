@@ -143,6 +143,38 @@ zero net expectancy everywhere (stale swing levels). Best rows per profile:
 within a few points of in-sample and net expectancy stays clearly positive. No retuning against
 this window — if candidates crater, back to in-sample with walk-forward splits instead.
 
+### Out-of-sample validation — FAILED on expectancy (2026-07-04)
+
+Window 2026-01-01 → 2026-05-02: 24,126 5m bars, 104 trading days, avg spread 0.55 pts (vs 0.48 IS).
+
+| Config                          | IS win% / net | OOS win% / net |
+|---------------------------------|---------------|----------------|
+| prox0.5 look8 stop4.0 tgt0.5    | 84% / +0.52   | 79% / **−1.68** |
+| prox0.6 look8 stop4.0 tgt0.5    | 84% / +0.44   | 79% / **−1.64** |
+| prox0.5 look10 stop4.0 tgt0.75  | 81% / +0.69   | 78% / **−1.29** |
+| prox0.5 look10 stop3.0 tgt0.75  | 78% / +0.86   | 75% / **−0.79** |
+
+**Read:** win rate survived (−3 to −5 pts, normal shrinkage — the entry logic generalizes), but
+**net expectancy flipped hard negative**. Jan–May 2026 is a different volatility regime (higher
+spread, cadence 2.4→3.0/day), and the wide-stop/tight-target geometry pays for its high win rate
+with catastrophic-sized rare losses — in a hotter regime those swamp the small wins. Also the
+close-triggered stop understates real losses most in fast markets (close can land far beyond the
+stop level), so live would be worse still.
+
+**Decisions:**
+1. The 2026 window is now *burned* for candidate selection (we looked at it). Future config
+   selection must come from walk-forward splits inside Dec'24–Dec'25; 2026 gets one final look
+   only for the single end-stage config.
+2. Win rate alone is officially a misleading objective for this strategy shape — every future
+   iteration gates on **net expectancy ≥ 0 in every regime/quarter**, then maximizes win rate.
+
+**Next (iteration 4):** find where the losses live. `TradeResult` already carries a per-trade
+`VolatilityRegime` (LOW/NORMAL/HIGH, rolling ATR percentile — no look-ahead). Extend the harness to
+break down win%/net expectancy per regime and per quarter, run on IS. If losses concentrate in the
+HIGH regime, add a regime gate (skip entries when ATR is in the top rolling percentile band) — an
+explainable filter consistent with the 5-pillar reproducibility ethos — then re-check stability
+across 2025 quarters via walk-forward before ever touching 2026 again.
+
 ---
 
 ## Infrastructure
