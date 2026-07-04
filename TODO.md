@@ -197,6 +197,21 @@ Add a `max-holding-bars` knob (exit after N bars if neither stop nor target hit 
 `OpenedPositionMinimumBarCountRule` OR'd into the exit), sweep N × the two sane geometries, and
 gate candidates on **every quarter net ≥ ~0**, not the aggregate.
 
+### Tuning iteration 5 — time stop falsified (2026-07-04)
+
+`max-holding-bars` knob implemented (kept — useful risk control), but it's not the stabilizer:
+hold 24–48 bars ≈ no change vs hold 0; hold 6–12 cuts win rate to 63–77% while the bad quarters
+stay negative (hold12 on 4.0/0.5: Q4'24 −1.35, Q1'25 −0.10, Q3'25 −0.02). **The bad quarters lose
+via genuine stop-outs, not drifting trades.** Quarter pattern is consistent across all geometries:
+Q4'24 always worst (−1.4 to −2.7 — note: Dec 2024 is the window the original 32% baseline came
+from), Q1'25/Q3'25 mildly negative, Q2'25/Q4'25 strongly positive.
+
+**Next (iteration 6): trend-direction diagnosis.** All entries are mean-reversion (RSI extreme +
+BB touch + near S/R); clustered stop-outs are the signature of fighting a strong trend. Add a
+LONG/SHORT × quarter breakdown to the harness — if bad quarters bleed on one side only, the fix is
+a hard higher-timeframe trend gate (only long when trend up/flat, only short when down/flat),
+which is explainable and pillar-consistent. No strategy code until the data confirms.
+
 ---
 
 ## Infrastructure

@@ -111,6 +111,10 @@ class ConfluenceSweepTest {
             printBreakdown("quarter", trades,
                     t -> t.entryTime().getYear() + "Q" + ((t.entryTime().getMonthValue() - 1) / 3 + 1),
                     avgSpread);
+            printBreakdown("q+dir", trades,
+                    t -> t.entryTime().getYear() + "Q" + ((t.entryTime().getMonthValue() - 1) / 3 + 1)
+                            + "_" + t.direction().name(),
+                    avgSpread);
         }
 
         results.sort((a, b) -> Double.compare(b.netWinRate, a.netWinRate));
@@ -125,11 +129,10 @@ class ConfluenceSweepTest {
     }
 
     /**
-     * Iteration 5 grid (see TODO.md tuning log): time-stop sweep. Iteration 4 showed win rate is
-     * stable but quarterly expectancy whipsaws — trades that hit neither the tight target nor the
-     * wide stop drift for hours carrying full stop-size tail risk. Sweeps {@code maxHoldingBars}
-     * across the three geometry/gate profiles; candidates are judged on the per-quarter breakdown
-     * (every quarter net ≥ ~0), not the aggregate row.
+     * Iteration 6 grid (see TODO.md tuning log): trend-direction diagnosis. The time stop was
+     * falsified (bad quarters lose via genuine stop-outs, not drifting trades); since all entries
+     * are mean-reversion, the suspect is counter-trend trades in strongly trending quarters. The
+     * LONG/SHORT × quarter breakdown on the two lead profiles tests that before any filter code.
      */
     private static Map<String, BacktestProperties.Strategy> buildGrid(BacktestProperties.Strategy base) {
         Map<String, BacktestProperties.Strategy> grid = new LinkedHashMap<>();
@@ -139,27 +142,25 @@ class ConfluenceSweepTest {
             s.setEnableStructure(false);
         });
 
+        // Iteration 6 diagnostic: LONG/SHORT × quarter split on the two lead profiles,
+        // hunting the trend-direction signature behind the negative quarters.
         // {proximityAtr, swingLookback, stopAtr, targetAtr}
         double[][] profiles = {
                 {0.5, 8, 4.0, 0.5},   // in-sample win-rate champion (fragile quarters)
                 {0.5, 10, 3.0, 0.75}, // most robust per iteration 4 (all regimes positive)
-                {0.5, 10, 2.5, 0.75}, // tighter-stop variant: cheaper losses, lower win rate
         };
         for (double[] profile : profiles) {
             double proximity = profile[0];
             int lookback = (int) profile[1];
             double stop = profile[2];
             double target = profile[3];
-            for (int holdingBars : new int[] {0, 6, 12, 24, 48}) {
-                grid.put("stop%.1f_tgt%.2f_hold%d".formatted(stop, target, holdingBars),
-                        variant(anchor, s -> {
-                            s.setProximityAtrMultiple(proximity);
-                            s.setSwingLookbackBars(lookback);
-                            s.setStopAtrMultiple(stop);
-                            s.setTargetAtrMultiple(target);
-                            s.setMaxHoldingBars(holdingBars);
-                        }));
-            }
+            grid.put("stop%.1f_tgt%.2f".formatted(stop, target),
+                    variant(anchor, s -> {
+                        s.setProximityAtrMultiple(proximity);
+                        s.setSwingLookbackBars(lookback);
+                        s.setStopAtrMultiple(stop);
+                        s.setTargetAtrMultiple(target);
+                    }));
         }
 
         return grid;
