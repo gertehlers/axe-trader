@@ -21,7 +21,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Parameter-sweep harness for the 5-pillar confluence strategy. Loads the bar series once,
@@ -104,6 +107,10 @@ class ConfluenceSweepTest {
             results.add(SweepResult.of(entry.getKey(), trades, tradingDays, avgSpread));
             System.out.printf("  ran %-34s %5d trades in %.1fs%n",
                     entry.getKey(), trades.size(), (System.currentTimeMillis() - runStart) / 1000.0);
+            printBreakdown("regime", trades, t -> t.regime().name(), avgSpread);
+            printBreakdown("quarter", trades,
+                    t -> t.entryTime().getYear() + "Q" + ((t.entryTime().getMonthValue() - 1) / 3 + 1),
+                    avgSpread);
         }
 
         results.sort((a, b) -> Double.compare(b.netWinRate, a.netWinRate));
@@ -154,6 +161,21 @@ class ConfluenceSweepTest {
         }
 
         return grid;
+    }
+
+    /** Win%/net-expectancy breakdown of one config's trades, grouped by the given key. */
+    private static void printBreakdown(
+            String label, List<TradeResult> trades, Function<TradeResult, String> keyFn, double avgSpread) {
+        Map<String, List<TradeResult>> groups = trades.stream()
+                .collect(Collectors.groupingBy(keyFn, TreeMap::new, Collectors.toList()));
+        for (Map.Entry<String, List<TradeResult>> group : groups.entrySet()) {
+            List<TradeResult> groupTrades = group.getValue();
+            long wins = groupTrades.stream().filter(t -> t.pnl() > 0).count();
+            double avgPnl = groupTrades.stream().mapToDouble(TradeResult::pnl).average().orElse(0);
+            System.out.printf("      %-8s %-8s %5d trades  win %3.0f%%  netAvgPnl %+7.2f%n",
+                    label, group.getKey(), groupTrades.size(),
+                    100.0 * wins / groupTrades.size(), avgPnl - avgSpread);
+        }
     }
 
     private static BacktestProperties.Strategy variant(
