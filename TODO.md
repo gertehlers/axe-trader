@@ -362,16 +362,58 @@ warns about. **Conclusion: the near-EMA "edge" is not a real edge.** The knob st
 (disabled, `trend-ema-max-atr: 0`) as a documented dead-end; do not retune it against the test set.
 The lesson reinforces the audit: entry filtering isn't the lever — **exit geometry is.**
 
+### Iteration 11 — 3-tier scale-out (aggressive trail): helps, not enough yet (2026-07-04)
+
+Built the scale-out exit (user picks, this session): **aggressive-trail ratchet** with tiers
+**T1 0.75 / T2 1.5 ATR**. Bank ⅓ at T1 (stop→breakeven), ⅓ at T2 (stop→T1), final ⅓ trails at
+`peak − trail·ATR` floored at T1. Code: `BacktestRunner.scaleOutExit` (money accounting +
+conservative adverse-first intrabar ordering, unit-tested in `BacktestRunnerIntrabarTest`); config
+`backtest.strategy.scale-out-enabled` + `tier1/tier2/trail-atr-multiple` (reuses `stop-atr-multiple`
+as the pre-T1 stop). **Same 309 entries** as the promoted profile — isolates the exit effect.
+
+In-sample (Dec'24→Dec'25), swept trail distance; tighter trail wins:
+
+| Config (on promoted entries) | Trades | Win% | netAvgPnl | worst quarter |
+|---|---|---|---|---|
+| baseline single-target 0.75/3.0 | 309 | 82% | −0.14 | Q1'25 −0.74 |
+| **scaleOut trail 1.0** | 309 | 82% | **−0.06** | Q4'24 −0.70 |
+| scaleOut trail 1.5 | 309 | 82% | −0.11 | — |
+| scaleOut trail 2.0 | 309 | 82% | −0.17 | — |
+
+Per-quarter, trail1.0 vs baseline: Q4'24 −0.06→**−0.70**, Q1'25 −0.74→−0.63, Q2'25 −0.36→**+0.18**,
+Q3'25 −0.05→**+0.04**, Q4'25 +0.59→+0.29.
+
+**Read:** scale-out **flips the choppy/trending quarters positive (Q2, Q3)** by letting winners run
+past the 0.75 cap, but **gives back on quarters where the tight target already worked** (Q4'24,
+Q4'25) — trades that would've banked +0.75 now reverse to breakeven on the held ⅔. Net aggregate
+improves (−0.14 → −0.06, the best honest-fill result so far) but is **still slightly negative and
+still has 2 negative quarters**. Best variant: **trail 1.0** (tightest = bank fast, give back least).
+NOT promoted; NOT taken out-of-sample yet.
+
+**Why it's capped:** scale-out only acts *after* T1. The ~18% of trades that hit the 3.0-ATR stop
+*before* T1 still lose the full position — that tail (~0.5 ATR of drag/trade) is the structural
+anchor, and no post-T1 exit change can touch it. **The untested exit lever is the pre-T1 initial
+stop itself** (3.0 ATR is very wide for a quick mean-reversion bounce).
+
+### Iteration 12 — initial-stop tightening × scale-out (IN PROGRESS)
+
+Next experiment: sweep the **initial stop** {1.5, 2.0, 2.5, 3.0 ATR} on top of scaleOut trail1.0,
+in-sample. Hypothesis: cutting the pre-T1 loser size lifts expectancy even at the cost of more
+(smaller) losers, since expectancy — not win rate — is the gate. Watch that it doesn't just trade
+one negative quarter for another. Gate: every quarter net ≥ ~0 in-sample BEFORE any OOS shot; the
+Jan–May'26 window stays clean until a single pre-committed config is ready.
+
 **Where a fresh session should pick up:**
-1. **3-tier scale-out (design spec §4, exit geometry) — the remaining primary lever.** The entry
-   edge (80% win) is genuine but every entry-side filter tried has failed to add net edge; the
-   0.75:3.0 target:stop geometry is what makes it net-negative. Stop capping winners: bank ⅓ at
-   T1/T2/T3 with a ratcheting stop. **Confirm exact levels + ratchet rule with the user**, then
-   extend `intrabarExit` (it already walks bars checking levels — bank a third at each tier instead
-   of returning on first touch).
-2. Cadence via breadth: second instrument with its own profile (per-instrument config design).
-3. Risk controls before any live use (position sizing, max drawdown, circuit breaker).
-4. MONITOR-mode validation remains open (needs Capital.com network access + credentials).
+1. **Iteration 12 (above): initial-stop × scale-out sweep.** The scale-out plumbing is done and
+   unit-tested; this is a pure config sweep in `ConfluenceSweepTest.buildGrid`. If a config clears
+   every quarter ≥ 0 in-sample, take the ONE out-of-sample shot (no retuning on the result).
+2. If exit-geometry tuning plateaus below net-positive: the honest conclusion may be that this
+   single mean-reversion entry on US500 5m is a real ~80%-win but structurally break-even edge, and
+   the path to "makes money" is **breadth** (a second instrument's own profile) rather than more
+   US500 exit tuning. Flag this tradeoff to the user before spending many more iterations here.
+3. Cadence via breadth: second instrument with its own profile (per-instrument config design).
+4. Risk controls before any live use (position sizing, max drawdown, circuit breaker).
+5. MONITOR-mode validation remains open (needs Capital.com network access + credentials).
 
 ---
 
