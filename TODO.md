@@ -12,14 +12,20 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
 ## In Progress
 
 - [ ] Validate MONITOR mode end-to-end (auth → WebSocket → SQLite writes confirmed)
-- [ ] Strategy fine-tuning — iterating toward ~5 quality trades/day with a win rate that shows real edge
+- [ ] Execution realism in the backtest: intrabar stop/target triggers + bid/ask fills, then
+      re-validate the promoted profile (current numbers use mid-price fills and close-triggered
+      stops — optimistic)
 
 ---
 
 ## Strategy
 
-- [ ] Establish RSI-only baseline — measure win rate before adding complexity
-- [ ] Fix entry/exit rules — see pillar analysis below; current win rate ~32%
+- [x] Strategy tuning round 1 complete (2026-07-04): **80% win rate held out-of-sample** at ~1
+      trade/day, LONG-only, net +0.12 pts/trade after spread — config promoted to
+      `application.yaml`; full history in the tuning log below. Cadence gap (~1/day vs ~5) to be
+      closed via additional instruments, not looser filters.
+- [x] ~~Establish RSI-only baseline~~ superseded by the sweep-harness iterations below
+- [x] ~~Fix entry/exit rules — current win rate ~32%~~ fixed: geometry + trend gate (iterations 2–7)
 - [x] Implement SHORT entries — confluence runs bullish votes LONG, bearish votes SHORT
 - [x] Layer in 5-pillar confluence toward >85% accuracy target (scoring/voting, threshold-tunable):
   - [x] Pillar 1: Technical indicators — RSI extreme + Bollinger Band touch (bull/bear votes)
@@ -257,6 +263,35 @@ net ≈ +0.46/trade, worst quarter −0.38.
 monthly breakdown; then ONE shot on 2026 with exactly this config — no retuning on the result. If
 it holds (net ≥ 0, win ≥ ~75%): promote to `application.yaml` as the US500 profile and surface the
 cadence question (0.9/day vs ~5 target) to the user. If it fails: stop and reassess with the user.
+
+### Iteration 8 — FINAL: out-of-sample PASS, config promoted (2026-07-04)
+
+**Config (now in `application.yaml`):** LONG-only, threshold 3, structure off, prox 0.5, look 10,
+stop 3.0 ATR, target 0.75 ATR, trend-EMA 200, RSI 25/75.
+
+| Window                        | Trades | /day | Win% | netAvgPnl |
+|-------------------------------|--------|------|------|-----------|
+| In-sample (Dec'24 → Dec'25)   | 309    | 0.9  | 79%  | +0.45     |
+| **Out-of-sample (Jan–May'26)**| 101    | 1.0  | **80%** | **+0.12** |
+
+Win rate held with zero overfit gap; net expectancy stayed positive where the pre-gate candidates
+lost −0.79 to −1.68 on the same window. Monthly variance is high (IS worst −3.32, best +5.77;
+OOS Feb +2.46 carried Jan/Mar slight negatives) — the edge is real but thin.
+
+**Current best result. Honest scorecard vs. north star:**
+- Win rate 80%+: ✅ hit, in- and out-of-sample.
+- Reproducible/explainable: ✅ 3-of-4 pillar votes + trend gate + geometry, all in yaml.
+- ~5 trades/day: ❌ ~1/day. At this quality bar US500 may simply be a ~1/day instrument —
+  cadence likely comes from adding instruments (each with its own profile), not looser filters.
+- Makes money: ⚠️ thin (+0.12/trade OOS after spread ≈ breakeven-plus). Known optimistic biases
+  remain: mid-price fills, close-triggered stops (no intrabar wicks). Execution realism work
+  (bid/ask fills, intrabar stop checks) should come before believing the backtest number.
+
+**Where a fresh session should pick up:**
+1. Execution realism: intrabar stop/target triggers + bid/ask fills in `BacktestRunner`, re-validate.
+2. Cadence via breadth: second instrument with its own profile (per-instrument config design).
+3. Risk controls before any live use (position sizing, max drawdown, circuit breaker).
+4. MONITOR-mode validation remains open (needs Capital.com network access + credentials).
 
 ---
 
