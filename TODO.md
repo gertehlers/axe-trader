@@ -236,6 +236,28 @@ LONG/SHORT × quarter split on the robust profile (th3/noStruct/prox0.5/look10/s
 {100, 200, 400} × the two lead profiles. Pass bar unchanged: every quarter net ≥ ~0 in-sample, then
 walk-forward check, and only then the final one-shot on 2026.
 
+### Tuning iteration 7 — trend gate works; shorts unmasked as a crash lottery (2026-07-04)
+
+Trend gate {0,100,200,400} × two profiles. EMA 200 on stop3.0/tgt0.75 fixes Dec'24 exactly as
+designed (−1.90 → +0.30) and Q1'25; EMA 400 over-filters (net negative aggregate). But the
+per-direction view is the real finding:
+
+- **LONGS (3.0/0.75 + trend200): 4/5 quarters positive** (+0.39, +0.81, −0.38, +0.61, +0.88),
+  ~80% win, ~0.9/day, net +0.46/trade. The residual Q2'25 −0.38 is the gate blocking recovery
+  dip-buys — a far smaller leak than the Dec'24 one it closed.
+- **SHORTS: the entire profit is one quarter** (+5.54/trade in the Q2'25 selloff); −1.3 to −3.2
+  everywhere else, gated or ungated. On an upward-drifting index this is not an edge — it's crash
+  insurance that occasionally pays. Cut them from the base profile.
+
+**Final candidate (pre-committed before the 2026 one-shot):** LONG-only, th3, structure off,
+prox 0.5, look 10, stop 3.0, tgt 0.75, trend-EMA 200, RSI 25/75. Expected IS: ~80% win, ~0.9/day,
+net ≈ +0.46/trade, worst quarter −0.38.
+
+**Next (iteration 8):** add `enable-long`/`enable-short` knobs; confirm candidate in-sample with a
+monthly breakdown; then ONE shot on 2026 with exactly this config — no retuning on the result. If
+it holds (net ≥ 0, win ≥ ~75%): promote to `application.yaml` as the US500 profile and surface the
+cadence question (0.9/day vs ~5 target) to the user. If it fails: stop and reassess with the user.
+
 ---
 
 ## Infrastructure
