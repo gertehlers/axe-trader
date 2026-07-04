@@ -44,6 +44,8 @@ backtest:
   limit: 10000          # number of 1-minute bars to load from DB
   timeframe-minutes: 5  # aggregate target (5 = 5m chart)
 
+  # US500 profile — tuned 2026-07-04 (see TODO.md tuning log iterations 1-8).
+  # Validated: 79% win in-sample (Dec'24-Dec'25), 80% win / net +0.12 pts out-of-sample (Jan-May'26), ~1 trade/day.
   strategy:
     rsi-period: 7
     rsi-smooth-period: 7
@@ -51,20 +53,24 @@ backtest:
     bb-multiplier: 2.0
     ema-period: 50
     atr-period: 14
-    rsi-oversold: 25
+    rsi-oversold: 25      # load-bearing quality gate — loosening goes net-negative (iteration 2)
     rsi-overbought: 75
-    stop-atr-multiple: 1.5
-    target-atr-multiple: 3.0
+    stop-atr-multiple: 3.0    # wide stop / tight target = high win rate geometry (iterations 2-4)
+    target-atr-multiple: 0.75
+    max-holding-bars: 0   # force-exit after N bars if neither stop nor target hit (0 = disabled)
+    trend-ema-period: 200 # hard directional gate: long only above / short only below this EMA (0 = disabled)
 
     # 5-pillar confluence voting
-    confluence-threshold: 2        # votes (pillars) that must agree before entering; tune for quality vs. frequency
-    proximity-atr-multiple: 0.3    # "near" a swing level, in ATR units (pillar 3)
-    swing-lookback-bars: 20        # backward window for support/resistance & structure (pillars 3 & 4)
+    confluence-threshold: 3        # votes (pillars) that must agree before entering; tune for quality vs. frequency
+    proximity-atr-multiple: 0.5    # "near" a swing level, in ATR units (pillar 3)
+    swing-lookback-bars: 10        # backward window for support/resistance & structure (pillars 3 & 4)
     volume-sma-period: 20          # volume baseline (pillar 5)
     enable-candles: true           # pillar 2 — added in step 2
     enable-support-resistance: true # pillar 3 — added in step 3
-    enable-structure: true         # pillar 4 — added in step 4
+    enable-structure: false        # pillar 4 — correlated with Vol+Trend, adds noise (iteration 1)
     enable-volume-trend: true      # pillar 5 — added in step 5
+    enable-long: true              # take LONG entries
+    enable-short: false            # shorts on US500 are crash-only lottery tickets (iteration 7)
 
 logging:
   file:

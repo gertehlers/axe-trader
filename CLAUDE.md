@@ -17,8 +17,10 @@ Read this before touching strategy code — it's the bar every change is judged 
   "more trades" change that costs win rate without an explicit ask.
 - **Cadence: ~5 quality trades/day per instrument, not scalping.** If a config change increases trade
   count, that is a signal the filters got looser, not a win — check win rate moved the right way too.
-  Current baseline (2026-06-14, US500 5m): 168 trades / 26.6 days ≈ 6.3/day at 32% win rate — too
-  frequent and nowhere near the accuracy bar. See `TODO.md` for the live tuning log.
+  Current best (2026-07-04, US500 5m, tuned profile in `application.yaml`): **80% win rate held
+  out-of-sample** (Jan–May'26) at ~1 trade/day, LONG-only, net +0.12 pts/trade after spread. The
+  cadence gap vs ~5/day is expected to close via additional instruments (each with its own profile),
+  not looser filters. See `TODO.md` for the full tuning log.
 - **Reproducibility via 5-pillar confluence.** Every entry/exit must be explainable as a vote count
   across the 5 pillars below (`ConfluenceStrategies` / `PillarVote`) — not a black-box ML signal.
   Confluence threshold, pillar enable flags, and thresholds are the tuning knobs; see
@@ -136,20 +138,24 @@ backtest:
     bb-multiplier: 2.0
     ema-period: 50
     atr-period: 14
-    rsi-oversold: 25       # entry threshold
+    rsi-oversold: 25       # entry threshold — load-bearing, don't loosen (tuning log iter. 2)
     rsi-overbought: 75     # exit threshold
-    stop-atr-multiple: 1.5
-    target-atr-multiple: 3.0
+    stop-atr-multiple: 3.0     # wide stop / tight target = high-win-rate geometry
+    target-atr-multiple: 0.75
+    max-holding-bars: 0        # optional time stop (0 = off)
+    trend-ema-period: 200      # hard gate: long only above / short only below this EMA
 
     # 5-pillar confluence voting
-    confluence-threshold: 2        # votes (pillars) that must agree before entering; tune for quality vs. frequency
-    proximity-atr-multiple: 0.3    # "near" a swing level, in ATR units (pillar 3)
-    swing-lookback-bars: 20        # backward window for support/resistance & structure (pillars 3 & 4)
+    confluence-threshold: 3        # votes (pillars) that must agree before entering
+    proximity-atr-multiple: 0.5    # "near" a swing level, in ATR units (pillar 3)
+    swing-lookback-bars: 10        # backward window for support/resistance & structure (pillars 3 & 4)
     volume-sma-period: 20          # volume baseline (pillar 5)
     enable-candles: true            # pillar 2
     enable-support-resistance: true # pillar 3
-    enable-structure: true          # pillar 4
+    enable-structure: false         # pillar 4 — correlated with Vol+Trend, noise (tuning log iter. 1)
     enable-volume-trend: true       # pillar 5
+    enable-long: true
+    enable-short: false             # US500 shorts are crash-only lottery (tuning log iter. 7)
 
 brokers.capital.api.url: https://demo-api-capital.backend-capital.com  # demo (not live)
 ```

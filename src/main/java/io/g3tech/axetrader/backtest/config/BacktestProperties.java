@@ -53,6 +53,8 @@ public class BacktestProperties {
         private double rsiOverbought;
         private double stopAtrMultiple;
         private double targetAtrMultiple;
+        private int maxHoldingBars;         // force-exit after N bars if neither stop nor target hit (0 = disabled)
+        private int trendEmaPeriod;         // hard directional gate: long only above / short only below this EMA (0 = disabled)
 
         // Confluence (5-pillar voting)
         private int confluenceThreshold;     // votes required to enter
@@ -63,6 +65,8 @@ public class BacktestProperties {
         private boolean enableSupportResistance;
         private boolean enableStructure;
         private boolean enableVolumeTrend;
+        private boolean enableLong = true;   // take LONG entries
+        private boolean enableShort = true;  // take SHORT entries (off for upward-drift instruments where shorts are crash-only)
 
         public int getRsiPeriod() {
             return rsiPeriod;
@@ -144,6 +148,22 @@ public class BacktestProperties {
             this.targetAtrMultiple = targetAtrMultiple;
         }
 
+        public int getMaxHoldingBars() {
+            return maxHoldingBars;
+        }
+
+        public void setMaxHoldingBars(int maxHoldingBars) {
+            this.maxHoldingBars = maxHoldingBars;
+        }
+
+        public int getTrendEmaPeriod() {
+            return trendEmaPeriod;
+        }
+
+        public void setTrendEmaPeriod(int trendEmaPeriod) {
+            this.trendEmaPeriod = trendEmaPeriod;
+        }
+
         public int getConfluenceThreshold() {
             return confluenceThreshold;
         }
@@ -206,6 +226,22 @@ public class BacktestProperties {
 
         public void setEnableVolumeTrend(boolean enableVolumeTrend) {
             this.enableVolumeTrend = enableVolumeTrend;
+        }
+
+        public boolean isEnableLong() {
+            return enableLong;
+        }
+
+        public void setEnableLong(boolean enableLong) {
+            this.enableLong = enableLong;
+        }
+
+        public boolean isEnableShort() {
+            return enableShort;
+        }
+
+        public void setEnableShort(boolean enableShort) {
+            this.enableShort = enableShort;
         }
     }
 }

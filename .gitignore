@@ -7,6 +7,12 @@ data/*.sqlite
 data/*.sqlite-journal
 data/*.sqlite-wal
 data/*.sqlite-shm
+
+### Experiment results DB — regenerable from the sweep harness (-Dsweep.persist=true); not committed ###
+experiments/*.sqlite
+experiments/*.sqlite-journal
+experiments/*.sqlite-wal
+experiments/*.sqlite-shm
 .DS_Store
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/

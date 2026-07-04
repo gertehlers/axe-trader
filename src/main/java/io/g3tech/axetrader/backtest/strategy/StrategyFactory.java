@@ -11,6 +11,8 @@ import org.ta4j.core.indicators.numeric.NumericIndicator;
 import org.ta4j.core.rules.AverageTrueRangeStopGainRule;
 import org.ta4j.core.rules.AverageTrueRangeStopLossRule;
 import org.ta4j.core.rules.BooleanIndicatorRule;
+import org.ta4j.core.rules.BooleanRule;
+import org.ta4j.core.rules.OpenedPositionMinimumBarCountRule;
 import org.ta4j.core.rules.OverIndicatorRule;
 import org.ta4j.core.rules.OverOrEqualIndicatorRule;
 import org.ta4j.core.rules.UnderIndicatorRule;
@@ -93,24 +95,49 @@ public class StrategyFactory {
                     highVolume.and(new UnderIndicatorRule(indicators.closePrice, indicators.ema))));
         }
 
-        Strategy longStrategy = directionStrategy("CONFLUENCE_LONG", indicators, config, bullishVotes);
-        Strategy shortStrategy = directionStrategy("CONFLUENCE_SHORT", indicators, config, bearishVotes);
+        // Hard higher-timeframe trend gate (not a vote): mean-reversion longs only above the
+        // trend EMA ("buy the dip in an uptrend"), shorts only below it. Cuts counter-trend
+        // knife-catching, which the tuning log showed drives the losing quarters.
+        Rule longGate = null;
+        Rule shortGate = null;
+        if (config.getTrendEmaPeriod() > 0) {
+            longGate = new OverIndicatorRule(indicators.closePrice, indicators.trendEma);
+            shortGate = new UnderIndicatorRule(indicators.closePrice, indicators.trendEma);
+        }
+        if (!config.isEnableLong()) {
+            longGate = BooleanRule.FALSE;
+        }
+        if (!config.isEnableShort()) {
+            shortGate = BooleanRule.FALSE;
+        }
+
+        Strategy longStrategy = directionStrategy("CONFLUENCE_LONG", indicators, config, bullishVotes, longGate);
+        Strategy shortStrategy = directionStrategy("CONFLUENCE_SHORT", indicators, config, bearishVotes, shortGate);
         return new ConfluenceStrategies(longStrategy, shortStrategy, bullishVotes, bearishVotes);
     }
 
     private Strategy directionStrategy(
-            String name, IndicatorBundle indicators, BacktestProperties.Strategy config, List<PillarVote> votes) {
+            String name, IndicatorBundle indicators, BacktestProperties.Strategy config,
+            List<PillarVote> votes, Rule trendGate) {
         List<Rule> rules = votes.stream().map(PillarVote::rule).toList();
         var score = new ConfluenceScoreIndicator(indicators.series, rules);
         Rule entry = new OverIndicatorRule(score, config.getConfluenceThreshold() - 0.5);
+        if (trendGate != null) {
+            entry = entry.and(trendGate);
+        }
 
         Rule exit = new AverageTrueRangeStopLossRule(
                 indicators.closePrice, indicators.atr, config.getStopAtrMultiple())
                 .or(new AverageTrueRangeStopGainRule(
                         indicators.closePrice, indicators.atr, config.getTargetAtrMultiple()));
+        if (config.getMaxHoldingBars() > 0) {
+            // Time stop: with a tight target and wide stop, trades that hit neither level drift
+            // for hours carrying full stop-size tail risk — cap the holding time instead.
+            exit = exit.or(new OpenedPositionMinimumBarCountRule(config.getMaxHoldingBars()));
+        }
 
         Strategy strategy = new BaseStrategy(name, entry, exit);
-        strategy.setUnstableBars(config.getEmaPeriod());
+        strategy.setUnstableBars(Math.max(config.getEmaPeriod(), config.getTrendEmaPeriod()));
         return strategy;
     }
 }
