@@ -78,6 +78,9 @@ class ConfluenceSweepTest {
 
         Instant from = Instant.parse(System.getProperty("sweep.from", IN_SAMPLE_FROM.toString()));
         Instant to = Instant.parse(System.getProperty("sweep.to", IN_SAMPLE_TO.toString()));
+        // Timeframe override (iteration 15): aggregate to a different bar size without editing yaml,
+        // e.g. -Dsweep.tf=30. All ATR-relative configs scale automatically. Defaults to yaml (5m).
+        int timeframe = Integer.getInteger("sweep.tf", backtestProperties.getTimeframeMinutes());
 
         long loadStart = System.currentTimeMillis();
         List<HistoricalPrice> prices =
@@ -88,7 +91,7 @@ class ConfluenceSweepTest {
                 .average()
                 .orElse(0.0);
         BarSeries series = barSeriesFactory.fromPrices(
-                backtestProperties.getEpic(), prices, backtestProperties.getTimeframeMinutes());
+                backtestProperties.getEpic(), prices, timeframe);
         prices = null; // 1m entities no longer needed; let ~400k rows go to GC
 
         long tradingDays = series.getBarData().stream()
@@ -97,7 +100,7 @@ class ConfluenceSweepTest {
                 .count();
 
         System.out.printf("%nSweep window %s → %s: %d %dm bars, %d trading days, avg spread %.2f pts (load %.1fs)%n%n",
-                from, to, series.getBarCount(), backtestProperties.getTimeframeMinutes(),
+                from, to, series.getBarCount(), timeframe,
                 tradingDays, avgSpread, (System.currentTimeMillis() - loadStart) / 1000.0);
 
         Map<String, BacktestProperties.Strategy> grid = buildGrid(backtestProperties.getStrategy());
@@ -114,7 +117,7 @@ class ConfluenceSweepTest {
                 results.add(SweepResult.of(entry.getKey(), trades, tradingDays, avgSpread));
                 if (store != null) {
                     long id = store.save(entry.getKey(), config, backtestProperties.getEpic(),
-                            backtestProperties.getTimeframeMinutes(), from, to, trades, avgSpread, tradingDays);
+                            timeframe, from, to, trades, avgSpread, tradingDays);
                     System.out.printf("  persisted experiment #%d%n", id);
                 }
                 System.out.printf("  ran %-34s %5d trades in %.1fs%n",

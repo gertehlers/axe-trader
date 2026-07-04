@@ -486,6 +486,40 @@ moves are small relative to the ~0.5-pt spread and intrabar noise dominates. Hig
 per trade vs. a fixed spread and cleaner structure, which could make *either* thesis net-positive.
 This is the next cheap, high-value lever (iteration 15).
 
+### Iteration 15 — TIMEFRAME BREAKTHROUGH: momentum at 15m is net-POSITIVE in-sample (2026-07-04)
+
+Added a `-Dsweep.tf=N` timeframe override to the harness and scanned the full grid at 15m and 30m
+(all configs are ATR-relative, so they scale automatically). **This is the first net-positive result
+in the project.** The 5m assumption was the hidden constraint the whole time.
+
+In-sample (Dec'24→Dec'25), best rows per timeframe:
+
+| Config | TF | Trades | /day | Win% | avgR | netAvgPnl |
+|---|---|---|---|---|---|---|
+| mean-reversion final_longOnly | 5m | 309 | 0.9 | 82% | 0.02 | −0.14 |
+| mean-reversion scaleOut stop2.5 | 5m | 312 | 0.9 | 78% | 0.03 | −0.02 |
+| mean-reversion (both) | 15m | ~102 | 0.3 | 78% | −0.01 | **−1.4 to −1.7** (worse!) |
+| i14_momo_noSlope | 15m | 877 | 2.6 | 60% | 0.05 | **+0.41** |
+| **i14_momo_wideTiers** | 15m | 695 | 2.1 | 53% | **0.10** | **+0.31** |
+| i14_momo_stop1.0 | 30m | 437 | 1.3 | 51% | 0.07 | +0.16 |
+| momentum (most) | 30m | — | — | ~56% | — | negative again |
+
+**Coherent story:** mean-reversion *degrades* at 15m while momentum *improves* — bigger moves clear
+the fixed ~0.5-pt spread and 15m breakouts trend where 5m breakouts chop. 15m is a genuine sweet
+spot (30m mostly reverts to negative), not a monotonic effect. Positive skew is now real and paying:
+win 53–60%, avgR +0.05 to +0.10, cadence 2–2.6/day.
+
+Per-quarter (the gate). **noSlope +0.41**: Q4'24 +3.62, Q1'25 −1.10, Q2'25 +1.95, Q3'25 −0.14, Q4'25
++0.06 — top-heavy, 2 negative quarters. **wideTiers +0.31**: Q4'24 +1.89, Q1'25 −0.78, Q2'25 +0.27,
+Q3'25 +0.54, Q4'25 +0.76 — **4 of 5 quarters positive**, only Q1'25 negative, and the positives are
+large-sample (180–200 trades), not one jackpot. wideTiers is the more robust candidate despite the
+lower aggregate.
+
+⚠️ **In-sample, selected from a wide search (~9 configs × 3 timeframes) — multiple-comparison risk is
+high.** Pre-committing **wideTiers @ 15m** (mode MOMENTUM, thr3, look20, slope50, stop1.5, tiers
+1.5/3.0, trail2.5) as the single OOS candidate; the untouched Jan–May'26 window is the referee. See
+the iteration-16 result below for whether it survived.
+
 **Where a fresh session should pick up (STRATEGIC FORK — surfaced to user 2026-07-04):**
 The near-break-even plateau is a genuine fork, not a bug to grind on. Options, highest-value first:
 1. **Breadth, not more US500 exit tuning.** Add a second instrument with its own tuned "personality"
