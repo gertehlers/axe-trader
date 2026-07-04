@@ -520,22 +520,51 @@ high.** Pre-committing **wideTiers @ 15m** (mode MOMENTUM, thr3, look20, slope50
 1.5/3.0, trail2.5) as the single OOS candidate; the untouched Jan–May'26 window is the referee. See
 the iteration-16 result below for whether it survived.
 
-**Where a fresh session should pick up (STRATEGIC FORK — surfaced to user 2026-07-04):**
-The near-break-even plateau is a genuine fork, not a bug to grind on. Options, highest-value first:
-1. **Breadth, not more US500 exit tuning.** Add a second instrument with its own tuned "personality"
-   profile (per-instrument config design, already on the backlog). Uncorrelated edges are how a thin
-   per-instrument edge becomes a portfolio that makes money + raises cadence toward ~5/day. This is
-   the recommended direction if the user wants "makes money" progress.
-2. **Rethink the entry, not just tune it.** The plateau is entry-shaped: ~80% win but wins ≈ losses
-   in size. A different entry thesis (momentum/breakout continuation instead of mean-reversion, or a
-   higher-timeframe filter for the two bad-quarter regimes) is a redesign, not a finetune.
-3. Accept scaleOut trail1.0+stop2.5 as the best-documented US500 profile (near-break-even, honest)
-   and take its one OOS shot purely to document — knowing it fails the in-sample gate, so it's a
-   record, not a promotion.
-4. Risk controls before any live use; MONITOR-mode validation (needs Capital.com creds) — both open.
+### Iteration 16 — OOS referee: momentum @ 15m SURVIVES (first positive-OOS result) (2026-07-04)
 
-Scale-out plumbing (`BacktestRunner.scaleOutExit` + config knobs + unit tests) is done and reusable
-for whatever instrument/entry comes next.
+Pre-committed **wideTiers @ 15m** taken to the untouched Jan–May'26 window (one shot, no retuning):
+
+| Window | Trades | /day | Win% | avgR | netAvgPnl |
+|---|---|---|---|---|---|
+| In-sample (Dec'24→Dec'25) | 695 | 2.1 | 53% | 0.10 | +0.31 |
+| **Out-of-sample (Jan–May'26)** | 216 | 2.1 | 51% | 0.06 | **+0.10** |
+
+**The sign held positive out-of-sample** — the first candidate ever to do so (every mean-reversion
+candidate flipped −0.79 to −2.02 OOS). Cadence and win rate held (2.1/day, 51–53%). This is a real,
+generalizing positive-skew edge, not an in-sample mirage.
+
+**But it's thin and trend-dependent, not yet every-month-positive.** OOS by month: Jan −1.64, Feb
+−2.40, Mar −0.80, **Apr +2.43** — April's trend leg carried the quarter; Q1'26 was −1.73, echoing the
+in-sample Q1'25 −0.78 weakness. Momentum makes money in trending months and bleeds in choppy ones
+(Jan–Mar). So: **positive expectancy that survives OOS ✅, but consistency/every-quarter ❌.**
+
+**This is the project's turning point.** After 15 iterations of break-even/negative mean-reversion,
+momentum @ 15m is the first approach with a genuine, OOS-validated positive edge. It is the thing to
+*develop*, not abandon. Not promoted to `application.yaml` yet (still 5m mean-reversion) — it's a
+validated lead, not a robust every-quarter strategy; promoting the running default is a user call.
+
+**Where a fresh session should pick up (momentum @ 15m is the live lead — 2026-07-04):**
+1. **Stabilize the choppy-quarter bleed (Q1'25 / Q1'26).** Momentum loses in non-trending months.
+   A trend-quality / chop filter (e.g. ADX or an efficiency-ratio gate, or the regime-slope gate the
+   noSlope variant dropped — revisit it now that the base thesis is proven) could cut the Jan–Mar
+   drawdowns without killing the April-type winners. Tune IN-SAMPLE with walk-forward — the 2026 OOS
+   window is now partially burned for wideTiers, so don't re-tune against it; a fresh honest read
+   needs walk-forward splits inside Dec'24–Dec'25 or new data.
+2. **Refine the momentum entry/exit** (RSI band, breakout lookback, tier/trail geometry) at 15m —
+   only the 5m→15m + a handful of exit knobs were swept; the 15m response surface is barely mapped.
+3. **Scan 10m and 20m** — 15m beat 5m and 30m, but the optimum between them is unmapped.
+4. Consider promoting momentum @ 15m to `application.yaml` as the documented best profile (user call
+   — it changes the running default from 5m mean-reversion; it's the first net-positive config).
+5. Still open: risk controls (position sizing, max drawdown, circuit breaker) before any live use;
+   per-instrument config profiles for breadth; MONITOR-mode validation (needs Capital.com creds).
+
+Reusable plumbing built this session: `BacktestRunner.scaleOutExit` (3-tier aggressive-trail exit),
+`StrategyMode.MOMENTUM` + momentum pillars, `trend-ema-slope-lookback` regime gate, `-Dsweep.tf`
+timeframe override — all config-driven and unit-tested where it matters.
+
+--- superseded fork notes (kept for history) ---
+Near-break-even mean-reversion plateau options (pre-breakthrough): breadth via 2nd instrument;
+rethink entry (→ done, momentum won); document break-even profile. The entry rethink resolved this.
 
 ---
 
