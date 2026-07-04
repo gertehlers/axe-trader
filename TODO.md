@@ -122,6 +122,27 @@ Same window/harness as iteration 1. All configs: threshold 3, structure off, RSI
 (stop 3.0–4.0 × tgt 0.5–0.75), all at th3/noStruct/RSI 25/75. If effects stack: ~2/day at ~80%.
 Then pick 2–3 candidates and run the held-out Jan–May 2026 window ONCE as the out-of-sample referee.
 
+### Tuning iteration 3 — compose holds: 84% at 2.4/day in-sample (2026-07-03)
+
+Same window/harness. 45 configs: prox {0.4,0.5,0.6} × look {8,10,14} × geometry
+{3.0/0.75, 3.5/0.5, 3.5/0.75, 4.0/0.5, 4.0/0.75}, all th3/noStruct/RSI 25/75.
+
+The cadence and geometry effects stack. The entire look 8–10 × prox 0.4–0.6 × stop4.0/tgt0.5
+region sits at **83–84% win** on 620–950 trades — a plateau, not a spike. look 14 degrades toward
+zero net expectancy everywhere (stale swing levels). Best rows per profile:
+
+| Profile               | Config                          | Trades | /day | Win% | netAvgPnl |
+|-----------------------|---------------------------------|--------|------|------|-----------|
+| Win-rate champion     | prox0.5 look8 stop4.0 tgt0.5    | 812    | 2.4  | 84%  | +0.52     |
+| Cadence variant       | prox0.6 look8 stop4.0 tgt0.5    | 941    | 2.8  | 84%  | +0.44     |
+| Balanced              | prox0.5 look10 stop4.0 tgt0.75  | 710    | 2.1  | 81%  | +0.69     |
+| Expectancy champion   | prox0.5 look10 stop3.0 tgt0.75  | 722    | 2.1  | 78%  | +0.86     |
+
+**Out-of-sample validation (next, one shot):** run exactly these candidates on the held-out
+2026-01-01 → 2026-05-01 window (~85 trading days, expect ~200 trades each). Pass = win rate holds
+within a few points of in-sample and net expectancy stays clearly positive. No retuning against
+this window — if candidates crater, back to in-sample with walk-forward splits instead.
+
 ---
 
 ## Infrastructure
