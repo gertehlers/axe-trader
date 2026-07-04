@@ -175,6 +175,28 @@ HIGH regime, add a regime gate (skip entries when ATR is in the top rolling perc
 explainable filter consistent with the 5-pillar reproducibility ethos — then re-check stability
 across 2025 quarters via walk-forward before ever touching 2026 again.
 
+### Tuning iteration 4 — regime hypothesis dead; quarter instability is the disease (2026-07-04)
+
+Per-regime / per-quarter breakdown of the four candidates on IS:
+
+1. **Regime gate is the wrong fix**: HIGH-vol is the *best* regime (+0.96 to +1.18 net across
+   candidates); LOW-vol is the drag (−0.29 to +0.23). A skip-high-vol filter would hurt. Hypothesis
+   falsified before writing any filter code — that's the breakdown doing its job.
+2. **The real disease: expectancy whipsaws by quarter even in-sample.** E.g. win-rate champion:
+   2024Q4 −1.86, 2025Q1 −0.39, Q2 +2.19, Q3 −0.41, Q4 +1.42. The aggregate +0.52 was two great
+   quarters subsidizing three negative ones. OOS didn't reveal a regime shift; it revealed that
+   "profitable on average" was never "profitable consistently".
+3. Win rate is stable everywhere (77–89% per quarter) — the entries are fine. With wins ~0.5 ATR vs
+   losses ~4 ATR, the quarter's sign hinges on 2–3 extra stop-outs — the geometry is knife-edge.
+4. Most robust candidate: **stop3.0/tgt0.75** (all regime rows positive, only 2024Q4 clearly
+   negative, least-bad OOS). The extreme 4.0/0.5 geometry is the fragile one.
+
+**Next (iteration 5): time-based exit.** With target 0.5–0.75 ATR vs stop 3–4 ATR there's a hole in
+the exit logic: trades that hit neither level drift for hours carrying full stop-size tail risk.
+Add a `max-holding-bars` knob (exit after N bars if neither stop nor target hit — ta4j
+`OpenedPositionMinimumBarCountRule` OR'd into the exit), sweep N × the two sane geometries, and
+gate candidates on **every quarter net ≥ ~0**, not the aggregate.
+
 ---
 
 ## Infrastructure
