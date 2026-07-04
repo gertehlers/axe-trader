@@ -341,23 +341,37 @@ profile (#4, baseline 82% win / **−0.14** net). Conditional expectancy per ent
 | hour_utc | 18–23 UTC: 85% / +0.17 | 13–18 UTC: 77% / −0.38 | Weak. |
 | day_of_week | Tue: 87% / +0.74 | Wed: 85% / −0.83 | Likely noise (base-rate trap). |
 
-**Headline personality trait: the edge lives within ~2 ATR of the trend EMA.** The near-EMA bucket
-is 90% win / **+1.30 net** vs the −0.14 baseline — i.e. today only ~20% of entries sit in the
-profitable zone and the extended 80% drag the average negative. A `dist_to_trend_ema_atr` **ceiling
-(~2 ATR)** is the #1 candidate filter: it could turn the strategy net-positive by dropping extended
-entries, *without* touching exits. In-sample lead on 61 trades — **must be wired as a real knob and
-validated out-of-sample before belief** (base-rate caution per design-spec §Guiding rule).
+**In-sample headline was: the edge lives within ~2 ATR of the trend EMA** (near-EMA bucket 90% win /
++1.30 vs −0.14 baseline). This motivated iteration 10 — **but it did NOT survive out-of-sample.**
 
-**Where a fresh session should pick up (two independent levers, both live):**
-1. **`dist_to_trend_ema_atr` ceiling filter (entry quality) — being pursued now.** Only enter when
-   close is within N ATR *above* the trend EMA. Add the knob, sweep N in-sample to find the level,
-   then ONE out-of-sample shot. Direct from the personality analysis above.
-2. **3-tier scale-out (design spec §4, exit geometry).** Stop capping winners at 0.75 ATR; bank ⅓
-   at T1/T2/T3 with a ratcheting stop. Confirm exact levels with the user, then extend
-   `intrabarExit`. The other half of the fix for the negative expectancy.
-3. Cadence via breadth: second instrument with its own profile (per-instrument config design).
-4. Risk controls before any live use (position sizing, max drawdown, circuit breaker).
-5. MONITOR-mode validation remains open (needs Capital.com network access + credentials).
+### Iteration 10 — dist-to-trend-EMA ceiling filter: FALSIFIED out-of-sample (2026-07-04)
+
+Wired the personality lead as a real knob (`backtest.strategy.trend-ema-max-atr`: only enter within
+N ATR of the trend EMA; `StrategyFactory` gate + config). Swept N on top of the promoted profile
+in-sample, pre-committed to **2.0 ATR** (best expectancy, matched the ~2 ATR read), took ONE
+out-of-sample shot — no retuning:
+
+| Config (2.0 ATR ceiling) | Window | Trades | Win% | netAvgPnl |
+|---|---|---|---|---|
+| emaCeil_2.0atr | In-sample | 73 | 89% | **+1.43** |
+| emaCeil_2.0atr | **Out-of-sample** | 26 | 77% | **−2.02** |
+
+Every ceiling level (1.0–3.0 ATR) was net-**negative** OOS and worse than the unfiltered −0.29. The
+in-sample lift was small-sample overfit (73→26 trades), the exact base-rate trap the design spec
+warns about. **Conclusion: the near-EMA "edge" is not a real edge.** The knob stays in code
+(disabled, `trend-ema-max-atr: 0`) as a documented dead-end; do not retune it against the test set.
+The lesson reinforces the audit: entry filtering isn't the lever — **exit geometry is.**
+
+**Where a fresh session should pick up:**
+1. **3-tier scale-out (design spec §4, exit geometry) — the remaining primary lever.** The entry
+   edge (80% win) is genuine but every entry-side filter tried has failed to add net edge; the
+   0.75:3.0 target:stop geometry is what makes it net-negative. Stop capping winners: bank ⅓ at
+   T1/T2/T3 with a ratcheting stop. **Confirm exact levels + ratchet rule with the user**, then
+   extend `intrabarExit` (it already walks bars checking levels — bank a third at each tier instead
+   of returning on first touch).
+2. Cadence via breadth: second instrument with its own profile (per-instrument config design).
+3. Risk controls before any live use (position sizing, max drawdown, circuit breaker).
+4. MONITOR-mode validation remains open (needs Capital.com network access + credentials).
 
 ---
 

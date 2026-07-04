@@ -193,14 +193,23 @@ class ConfluenceSweepTest {
             s.setTargetAtrMultiple(0.75);
         }));
         // Promoted final candidate (iteration 8): long-only + trend-EMA-200 gate.
-        grid.put("final_longOnly_trend200", variant(pregate, s -> {
+        BacktestProperties.Strategy promoted = variant(pregate, s -> {
             s.setEnableShort(false);
             s.setProximityAtrMultiple(0.5);
             s.setSwingLookbackBars(10);
             s.setStopAtrMultiple(3.0);
             s.setTargetAtrMultiple(0.75);
             s.setTrendEmaPeriod(200);
-        }));
+        });
+        grid.put("final_longOnly_trend200", promoted);
+
+        // Iteration 10 experiment: dist-to-trend-EMA proximity ceiling (US500 personality lead —
+        // the edge lives within ~2 ATR of the EMA). Sweep the ceiling on top of the promoted config
+        // to find the level, then validate the winner out-of-sample. maxAtr 0 = the promoted anchor.
+        for (double maxAtr : new double[] {1.0, 1.5, 2.0, 2.5, 3.0}) {
+            grid.put("emaCeil_%.1fatr".formatted(maxAtr),
+                    variant(promoted, s -> s.setTrendEmaMaxAtr(maxAtr)));
+        }
 
         return grid;
     }
@@ -241,6 +250,7 @@ class ConfluenceSweepTest {
         c.setTargetAtrMultiple(s.getTargetAtrMultiple());
         c.setMaxHoldingBars(s.getMaxHoldingBars());
         c.setTrendEmaPeriod(s.getTrendEmaPeriod());
+        c.setTrendEmaMaxAtr(s.getTrendEmaMaxAtr());
         c.setConfluenceThreshold(s.getConfluenceThreshold());
         c.setProximityAtrMultiple(s.getProximityAtrMultiple());
         c.setSwingLookbackBars(s.getSwingLookbackBars());

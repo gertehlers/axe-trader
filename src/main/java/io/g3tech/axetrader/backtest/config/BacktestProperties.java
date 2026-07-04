@@ -81,6 +81,7 @@ public class BacktestProperties {
         private double targetAtrMultiple;
         private int maxHoldingBars;         // force-exit after N bars if neither stop nor target hit (0 = disabled)
         private int trendEmaPeriod;         // hard directional gate: long only above / short only below this EMA (0 = disabled)
+        private double trendEmaMaxAtr;      // proximity ceiling: only enter within this many ATR of the trend EMA (0 = disabled)
 
         // Confluence (5-pillar voting)
         private int confluenceThreshold;     // votes required to enter
@@ -188,6 +189,14 @@ public class BacktestProperties {
 
         public void setTrendEmaPeriod(int trendEmaPeriod) {
             this.trendEmaPeriod = trendEmaPeriod;
+        }
+
+        public double getTrendEmaMaxAtr() {
+            return trendEmaMaxAtr;
+        }
+
+        public void setTrendEmaMaxAtr(double trendEmaMaxAtr) {
+            this.trendEmaMaxAtr = trendEmaMaxAtr;
         }
 
         public int getConfluenceThreshold() {

@@ -62,6 +62,7 @@ backtest:
     target-atr-multiple: 0.75
     max-holding-bars: 0   # force-exit after N bars if neither stop nor target hit (0 = disabled)
     trend-ema-period: 200 # hard directional gate: long only above / short only below this EMA (0 = disabled)
+    trend-ema-max-atr: 0  # proximity ceiling: only enter within N ATR of the trend EMA (0 = disabled; ~2 is the US500 lead, pending OOS validation)
 
     # 5-pillar confluence voting
     confluence-threshold: 3        # votes (pillars) that must agree before entering; tune for quality vs. frequency

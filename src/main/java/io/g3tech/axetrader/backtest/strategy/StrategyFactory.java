@@ -103,6 +103,19 @@ public class StrategyFactory {
         if (config.getTrendEmaPeriod() > 0) {
             longGate = new OverIndicatorRule(indicators.closePrice, indicators.trendEma);
             shortGate = new UnderIndicatorRule(indicators.closePrice, indicators.trendEma);
+
+            // Proximity ceiling: the US500 personality slices (TODO.md, 2026-07-04) show the edge
+            // lives within ~2 ATR of the trend EMA — extended entries bleed. When set, require the
+            // close to be no more than trendEmaMaxAtr x ATR away from the EMA (still on the gated
+            // side), so we "buy the dip near the EMA" instead of chasing extension.
+            if (config.getTrendEmaMaxAtr() > 0) {
+                NumericIndicator trendEma = NumericIndicator.of(indicators.trendEma);
+                NumericIndicator ceiling = NumericIndicator.of(indicators.atr)
+                        .multipliedBy(config.getTrendEmaMaxAtr());
+                // close within [trendEma, trendEma + ceiling] for longs; mirror for shorts.
+                longGate = longGate.and(close.isLessThan(trendEma.plus(ceiling)));
+                shortGate = shortGate.and(close.isGreaterThan(trendEma.minus(ceiling)));
+            }
         }
         if (!config.isEnableLong()) {
             longGate = BooleanRule.FALSE;
