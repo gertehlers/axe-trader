@@ -11,6 +11,7 @@ import org.ta4j.core.indicators.numeric.NumericIndicator;
 import org.ta4j.core.rules.AverageTrueRangeStopGainRule;
 import org.ta4j.core.rules.AverageTrueRangeStopLossRule;
 import org.ta4j.core.rules.BooleanIndicatorRule;
+import org.ta4j.core.rules.OpenedPositionMinimumBarCountRule;
 import org.ta4j.core.rules.OverIndicatorRule;
 import org.ta4j.core.rules.OverOrEqualIndicatorRule;
 import org.ta4j.core.rules.UnderIndicatorRule;
@@ -108,6 +109,11 @@ public class StrategyFactory {
                 indicators.closePrice, indicators.atr, config.getStopAtrMultiple())
                 .or(new AverageTrueRangeStopGainRule(
                         indicators.closePrice, indicators.atr, config.getTargetAtrMultiple()));
+        if (config.getMaxHoldingBars() > 0) {
+            // Time stop: with a tight target and wide stop, trades that hit neither level drift
+            // for hours carrying full stop-size tail risk — cap the holding time instead.
+            exit = exit.or(new OpenedPositionMinimumBarCountRule(config.getMaxHoldingBars()));
+        }
 
         Strategy strategy = new BaseStrategy(name, entry, exit);
         strategy.setUnstableBars(config.getEmaPeriod());

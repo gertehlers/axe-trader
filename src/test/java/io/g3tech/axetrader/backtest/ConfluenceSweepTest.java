@@ -125,11 +125,11 @@ class ConfluenceSweepTest {
     }
 
     /**
-     * Out-of-sample validation grid (see TODO.md tuning log, iteration 3): exactly the four
-     * candidates picked from the in-sample plateau, to be run ONCE on the held-out window
-     * ({@code -Dsweep.from=2026-01-01T00:00:00Z -Dsweep.to=2026-05-02T00:00:00Z}). No retuning
-     * against that window — if these crater out-of-sample, go back to in-sample sweeps with
-     * walk-forward splits instead.
+     * Iteration 5 grid (see TODO.md tuning log): time-stop sweep. Iteration 4 showed win rate is
+     * stable but quarterly expectancy whipsaws — trades that hit neither the tight target nor the
+     * wide stop drift for hours carrying full stop-size tail risk. Sweeps {@code maxHoldingBars}
+     * across the three geometry/gate profiles; candidates are judged on the per-quarter breakdown
+     * (every quarter net ≥ ~0), not the aggregate row.
      */
     private static Map<String, BacktestProperties.Strategy> buildGrid(BacktestProperties.Strategy base) {
         Map<String, BacktestProperties.Strategy> grid = new LinkedHashMap<>();
@@ -140,24 +140,26 @@ class ConfluenceSweepTest {
         });
 
         // {proximityAtr, swingLookback, stopAtr, targetAtr}
-        double[][] candidates = {
-                {0.5, 8, 4.0, 0.5},   // win-rate champion: 84% @ 2.4/day in-sample
-                {0.6, 8, 4.0, 0.5},   // cadence variant:   84% @ 2.8/day
-                {0.5, 10, 4.0, 0.75}, // balanced:          81% @ 2.1/day
-                {0.5, 10, 3.0, 0.75}, // expectancy champ:  78% @ 2.1/day, net +0.86
+        double[][] profiles = {
+                {0.5, 8, 4.0, 0.5},   // in-sample win-rate champion (fragile quarters)
+                {0.5, 10, 3.0, 0.75}, // most robust per iteration 4 (all regimes positive)
+                {0.5, 10, 2.5, 0.75}, // tighter-stop variant: cheaper losses, lower win rate
         };
-        for (double[] candidate : candidates) {
-            double proximity = candidate[0];
-            int lookback = (int) candidate[1];
-            double stop = candidate[2];
-            double target = candidate[3];
-            grid.put("prox%.1f_look%d_stop%.1f_tgt%.2f".formatted(proximity, lookback, stop, target),
-                    variant(anchor, s -> {
-                        s.setProximityAtrMultiple(proximity);
-                        s.setSwingLookbackBars(lookback);
-                        s.setStopAtrMultiple(stop);
-                        s.setTargetAtrMultiple(target);
-                    }));
+        for (double[] profile : profiles) {
+            double proximity = profile[0];
+            int lookback = (int) profile[1];
+            double stop = profile[2];
+            double target = profile[3];
+            for (int holdingBars : new int[] {0, 6, 12, 24, 48}) {
+                grid.put("stop%.1f_tgt%.2f_hold%d".formatted(stop, target, holdingBars),
+                        variant(anchor, s -> {
+                            s.setProximityAtrMultiple(proximity);
+                            s.setSwingLookbackBars(lookback);
+                            s.setStopAtrMultiple(stop);
+                            s.setTargetAtrMultiple(target);
+                            s.setMaxHoldingBars(holdingBars);
+                        }));
+            }
         }
 
         return grid;
@@ -197,6 +199,7 @@ class ConfluenceSweepTest {
         c.setRsiOverbought(s.getRsiOverbought());
         c.setStopAtrMultiple(s.getStopAtrMultiple());
         c.setTargetAtrMultiple(s.getTargetAtrMultiple());
+        c.setMaxHoldingBars(s.getMaxHoldingBars());
         c.setConfluenceThreshold(s.getConfluenceThreshold());
         c.setProximityAtrMultiple(s.getProximityAtrMultiple());
         c.setSwingLookbackBars(s.getSwingLookbackBars());

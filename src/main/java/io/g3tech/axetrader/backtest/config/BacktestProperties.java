@@ -53,6 +53,7 @@ public class BacktestProperties {
         private double rsiOverbought;
         private double stopAtrMultiple;
         private double targetAtrMultiple;
+        private int maxHoldingBars;         // force-exit after N bars if neither stop nor target hit (0 = disabled)
 
         // Confluence (5-pillar voting)
         private int confluenceThreshold;     // votes required to enter
@@ -142,6 +143,14 @@ public class BacktestProperties {
 
         public void setTargetAtrMultiple(double targetAtrMultiple) {
             this.targetAtrMultiple = targetAtrMultiple;
+        }
+
+        public int getMaxHoldingBars() {
+            return maxHoldingBars;
+        }
+
+        public void setMaxHoldingBars(int maxHoldingBars) {
+            this.maxHoldingBars = maxHoldingBars;
         }
 
         public int getConfluenceThreshold() {
