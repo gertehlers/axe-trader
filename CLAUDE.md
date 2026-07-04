@@ -15,14 +15,19 @@ Read this before touching strategy code — it's the bar every change is judged 
 - **Win rate target: 80%+** (stretch: >85%). This is the whole game — a strategy that trades often but
   wins less than this does not make money once spread/slippage are accounted for. Do not ship a
   "more trades" change that costs win rate without an explicit ask.
-- **Cadence: ~5 quality trades/day per instrument, not scalping.** If a config change increases trade
-  count, that is a signal the filters got looser, not a win — check win rate moved the right way too.
-  Current best (2026-07-04, US500 5m, `application.yaml`): **80% win rate holds in- and out-of-sample**,
-  ~1 trade/day, LONG-only — but the **2026-07-04 pnl audit falsified its expectancy**: under honest
-  intrabar fills it is net **negative** (IS −0.14, OOS −0.29 pts/trade), not the +0.12 the close-based
-  model showed. The 80% entry edge is real; the tight 0.75:3.0 target:stop geometry throws it away.
-  **Next lever is exits (3-tier scale-out), not entries** — see `docs/observability-and-exits-design.md`
-  §4 and `TODO.md` (iteration 9). Do not treat the profile as profitable.
+- **Cadence: ~5 quality trades/day per instrument, not scalping.** For MOMENTUM this is a natural fit
+  (it trades more); for MEAN_REVERSION more trades usually meant looser filters — always check the
+  expectancy moved the right way, not just the count.
+  Current best (2026-07-04, US500 **15m MOMENTUM**, promoted to `application.yaml`, TODO.md iterations
+  14-16): the **first net-positive, OOS-validated profile** — IS +0.31 pts/trade (53% win, 4/5
+  quarters positive), OOS Jan-May'26 **+0.10 pts/trade** (51% win, sign held positive) at ~2.1
+  trades/day. Positive skew (small stops, winners trail). ⚠️ **Thin & trend-dependent**: it makes
+  money in trending months and bleeds in choppy ones (Q1) — positive-expectancy-that-generalizes, not
+  yet makes-money-every-month; stabilising the choppy-quarter bleed is the open work.
+  **Key lesson: timeframe was the hidden lever.** US500 mean-reverts at 5m (why dip-buying wins ~80%
+  but is structurally break-even — wins ≈ losses); at 15m moves clear the spread and breakouts trend,
+  so a MOMENTUM entry flips net-positive. The old 5m mean-reversion profile (iterations 1-13) held
+  ~80% win but never made money under honest fills — kept as `mode: MEAN_REVERSION` for reference.
 - **Reproducibility via 5-pillar confluence.** Every entry/exit must be explainable as a vote count
   across the 5 pillars below (`ConfluenceStrategies` / `PillarVote`) — not a black-box ML signal.
   Confluence threshold, pillar enable flags, and thresholds are the tuning knobs; see
