@@ -94,16 +94,30 @@ public class StrategyFactory {
                     highVolume.and(new UnderIndicatorRule(indicators.closePrice, indicators.ema))));
         }
 
-        Strategy longStrategy = directionStrategy("CONFLUENCE_LONG", indicators, config, bullishVotes);
-        Strategy shortStrategy = directionStrategy("CONFLUENCE_SHORT", indicators, config, bearishVotes);
+        // Hard higher-timeframe trend gate (not a vote): mean-reversion longs only above the
+        // trend EMA ("buy the dip in an uptrend"), shorts only below it. Cuts counter-trend
+        // knife-catching, which the tuning log showed drives the losing quarters.
+        Rule longGate = null;
+        Rule shortGate = null;
+        if (config.getTrendEmaPeriod() > 0) {
+            longGate = new OverIndicatorRule(indicators.closePrice, indicators.trendEma);
+            shortGate = new UnderIndicatorRule(indicators.closePrice, indicators.trendEma);
+        }
+
+        Strategy longStrategy = directionStrategy("CONFLUENCE_LONG", indicators, config, bullishVotes, longGate);
+        Strategy shortStrategy = directionStrategy("CONFLUENCE_SHORT", indicators, config, bearishVotes, shortGate);
         return new ConfluenceStrategies(longStrategy, shortStrategy, bullishVotes, bearishVotes);
     }
 
     private Strategy directionStrategy(
-            String name, IndicatorBundle indicators, BacktestProperties.Strategy config, List<PillarVote> votes) {
+            String name, IndicatorBundle indicators, BacktestProperties.Strategy config,
+            List<PillarVote> votes, Rule trendGate) {
         List<Rule> rules = votes.stream().map(PillarVote::rule).toList();
         var score = new ConfluenceScoreIndicator(indicators.series, rules);
         Rule entry = new OverIndicatorRule(score, config.getConfluenceThreshold() - 0.5);
+        if (trendGate != null) {
+            entry = entry.and(trendGate);
+        }
 
         Rule exit = new AverageTrueRangeStopLossRule(
                 indicators.closePrice, indicators.atr, config.getStopAtrMultiple())
@@ -116,7 +130,7 @@ public class StrategyFactory {
         }
 
         Strategy strategy = new BaseStrategy(name, entry, exit);
-        strategy.setUnstableBars(config.getEmaPeriod());
+        strategy.setUnstableBars(Math.max(config.getEmaPeriod(), config.getTrendEmaPeriod()));
         return strategy;
     }
 }

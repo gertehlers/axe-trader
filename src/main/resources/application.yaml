@@ -56,6 +56,7 @@ backtest:
     stop-atr-multiple: 1.5
     target-atr-multiple: 3.0
     max-holding-bars: 0   # force-exit after N bars if neither stop nor target hit (0 = disabled)
+    trend-ema-period: 0   # hard directional gate: long only above / short only below this EMA (0 = disabled)
 
     # 5-pillar confluence voting
     confluence-threshold: 2        # votes (pillars) that must agree before entering; tune for quality vs. frequency

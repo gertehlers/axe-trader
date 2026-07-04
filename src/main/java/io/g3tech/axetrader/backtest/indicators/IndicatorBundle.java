@@ -24,6 +24,8 @@ public class IndicatorBundle {
     public final BarSeries series;
     public final ClosePriceIndicator closePrice;
     public final EMAIndicator ema;
+    /** Higher-timeframe trend gate EMA; null when {@code trend-ema-period} is 0 (gate disabled). */
+    public final EMAIndicator trendEma;
     public final RSIIndicator rsi;
     public final SMAIndicator smoothRsi;
     public final BollingerBandsMiddleIndicator bbMiddle;
@@ -47,6 +49,7 @@ public class IndicatorBundle {
         this.series = b.series;
         this.closePrice = b.closePrice;
         this.ema = b.ema;
+        this.trendEma = b.trendEma;
         this.rsi = b.rsi;
         this.smoothRsi = b.smoothRsi;
         this.bbMiddle = b.bbMiddle;
@@ -68,6 +71,9 @@ public class IndicatorBundle {
         b.series = series;
         b.closePrice = new ClosePriceIndicator(series);
         b.ema = new EMAIndicator(b.closePrice, config.getEmaPeriod());
+        b.trendEma = config.getTrendEmaPeriod() > 0
+                ? new EMAIndicator(b.closePrice, config.getTrendEmaPeriod())
+                : null;
         b.rsi = new RSIIndicator(b.closePrice, config.getRsiPeriod());
         b.smoothRsi = new SMAIndicator(b.rsi, config.getRsiSmoothPeriod());
 
@@ -97,6 +103,7 @@ public class IndicatorBundle {
         private BarSeries series;
         private ClosePriceIndicator closePrice;
         private EMAIndicator ema;
+        private EMAIndicator trendEma;
         private RSIIndicator rsi;
         private SMAIndicator smoothRsi;
         private BollingerBandsMiddleIndicator bbMiddle;
