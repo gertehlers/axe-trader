@@ -67,6 +67,8 @@ backtest:
     enable-support-resistance: true # pillar 3 — added in step 3
     enable-structure: true         # pillar 4 — added in step 4
     enable-volume-trend: true      # pillar 5 — added in step 5
+    enable-long: true              # take LONG entries
+    enable-short: true             # take SHORT entries (see TODO.md iteration 7: shorts on US500 are crash-only)
 
 logging:
   file:

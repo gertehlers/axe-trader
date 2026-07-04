@@ -11,6 +11,7 @@ import org.ta4j.core.indicators.numeric.NumericIndicator;
 import org.ta4j.core.rules.AverageTrueRangeStopGainRule;
 import org.ta4j.core.rules.AverageTrueRangeStopLossRule;
 import org.ta4j.core.rules.BooleanIndicatorRule;
+import org.ta4j.core.rules.BooleanRule;
 import org.ta4j.core.rules.OpenedPositionMinimumBarCountRule;
 import org.ta4j.core.rules.OverIndicatorRule;
 import org.ta4j.core.rules.OverOrEqualIndicatorRule;
@@ -102,6 +103,12 @@ public class StrategyFactory {
         if (config.getTrendEmaPeriod() > 0) {
             longGate = new OverIndicatorRule(indicators.closePrice, indicators.trendEma);
             shortGate = new UnderIndicatorRule(indicators.closePrice, indicators.trendEma);
+        }
+        if (!config.isEnableLong()) {
+            longGate = BooleanRule.FALSE;
+        }
+        if (!config.isEnableShort()) {
+            shortGate = BooleanRule.FALSE;
         }
 
         Strategy longStrategy = directionStrategy("CONFLUENCE_LONG", indicators, config, bullishVotes, longGate);

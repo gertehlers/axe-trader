@@ -65,6 +65,8 @@ public class BacktestProperties {
         private boolean enableSupportResistance;
         private boolean enableStructure;
         private boolean enableVolumeTrend;
+        private boolean enableLong = true;   // take LONG entries
+        private boolean enableShort = true;  // take SHORT entries (off for upward-drift instruments where shorts are crash-only)
 
         public int getRsiPeriod() {
             return rsiPeriod;
@@ -224,6 +226,22 @@ public class BacktestProperties {
 
         public void setEnableVolumeTrend(boolean enableVolumeTrend) {
             this.enableVolumeTrend = enableVolumeTrend;
+        }
+
+        public boolean isEnableLong() {
+            return enableLong;
+        }
+
+        public void setEnableLong(boolean enableLong) {
+            this.enableLong = enableLong;
+        }
+
+        public boolean isEnableShort() {
+            return enableShort;
+        }
+
+        public void setEnableShort(boolean enableShort) {
+            this.enableShort = enableShort;
         }
     }
 }

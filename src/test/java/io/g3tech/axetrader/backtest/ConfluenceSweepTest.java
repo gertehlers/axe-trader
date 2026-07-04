@@ -115,6 +115,9 @@ class ConfluenceSweepTest {
                     t -> t.entryTime().getYear() + "Q" + ((t.entryTime().getMonthValue() - 1) / 3 + 1)
                             + "_" + t.direction().name(),
                     avgSpread);
+            printBreakdown("month", trades,
+                    t -> "%d-%02d".formatted(t.entryTime().getYear(), t.entryTime().getMonthValue()),
+                    avgSpread);
         }
 
         results.sort((a, b) -> Double.compare(b.netWinRate, a.netWinRate));
@@ -129,40 +132,26 @@ class ConfluenceSweepTest {
     }
 
     /**
-     * Iteration 7 grid (see TODO.md tuning log): hard trend gate sweep. Iteration 6 confirmed the
-     * directional signature — longs profitable every 2025 quarter but knife-catching in the Dec'24
-     * selloff, shorts bleeding except in the Q2'25 correction. {@code trendEmaPeriod} gates longs
-     * above / shorts below the EMA; swept against both lead profiles, judged per quarter.
+     * Iteration 8 grid (see TODO.md tuning log): the pre-committed final candidate, LONG-only —
+     * iteration 7 unmasked shorts as crash-only on US500. Run once on the in-sample window to
+     * confirm the standalone long-only metrics (with monthly distribution), then ONCE on 2026
+     * ({@code -Dsweep.from=2026-01-01T00:00:00Z -Dsweep.to=2026-05-02T00:00:00Z}) as the final
+     * out-of-sample check. No retuning on the 2026 result.
      */
     private static Map<String, BacktestProperties.Strategy> buildGrid(BacktestProperties.Strategy base) {
         Map<String, BacktestProperties.Strategy> grid = new LinkedHashMap<>();
 
-        BacktestProperties.Strategy anchor = variant(base, s -> {
-            s.setConfluenceThreshold(3);
-            s.setEnableStructure(false);
-        });
-
-        // {proximityAtr, swingLookback, stopAtr, targetAtr}
-        double[][] profiles = {
-                {0.5, 8, 4.0, 0.5},   // in-sample win-rate champion (fragile quarters)
-                {0.5, 10, 3.0, 0.75}, // most robust per iteration 4 (all regimes positive)
-        };
-        for (double[] profile : profiles) {
-            double proximity = profile[0];
-            int lookback = (int) profile[1];
-            double stop = profile[2];
-            double target = profile[3];
-            for (int trendEma : new int[] {0, 100, 200, 400}) {
-                grid.put("stop%.1f_tgt%.2f_trend%d".formatted(stop, target, trendEma),
-                        variant(anchor, s -> {
-                            s.setProximityAtrMultiple(proximity);
-                            s.setSwingLookbackBars(lookback);
-                            s.setStopAtrMultiple(stop);
-                            s.setTargetAtrMultiple(target);
-                            s.setTrendEmaPeriod(trendEma);
-                        }));
-            }
-        }
+        grid.put("final_longOnly_th3_prox0.5_look10_stop3.0_tgt0.75_trend200",
+                variant(base, s -> {
+                    s.setConfluenceThreshold(3);
+                    s.setEnableStructure(false);
+                    s.setEnableShort(false);
+                    s.setProximityAtrMultiple(0.5);
+                    s.setSwingLookbackBars(10);
+                    s.setStopAtrMultiple(3.0);
+                    s.setTargetAtrMultiple(0.75);
+                    s.setTrendEmaPeriod(200);
+                }));
 
         return grid;
     }
@@ -211,6 +200,8 @@ class ConfluenceSweepTest {
         c.setEnableSupportResistance(s.isEnableSupportResistance());
         c.setEnableStructure(s.isEnableStructure());
         c.setEnableVolumeTrend(s.isEnableVolumeTrend());
+        c.setEnableLong(s.isEnableLong());
+        c.setEnableShort(s.isEnableShort());
         return c;
     }
 
