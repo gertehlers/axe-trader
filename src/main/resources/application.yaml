@@ -50,6 +50,7 @@ backtest:
   # US500 profile — tuned 2026-07-04 (see TODO.md tuning log iterations 1-8).
   # Validated: 79% win in-sample (Dec'24-Dec'25), 80% win / net +0.12 pts out-of-sample (Jan-May'26), ~1 trade/day.
   strategy:
+    mode: MEAN_REVERSION  # entry thesis: MEAN_REVERSION (dip-buying, ~80% win/break-even) | MOMENTUM (breakout continuation, positive-skew; iteration 14)
     rsi-period: 7
     rsi-smooth-period: 7
     bb-period: 20

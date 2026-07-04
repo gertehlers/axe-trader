@@ -450,6 +450,42 @@ edge. The 80%-win-rate north star and the make-money north star appear to be in 
 this instrument+thesis** — the high win rate is *bought* with wins≈losses geometry that can't be
 net-positive after costs. See the fork below; decided with the user before spending more iterations.
 
+### Iteration 14 — MOMENTUM thesis: positive skew confirmed, but US500 5m is mean-reverting (2026-07-04)
+
+Thesis pivot (user pick): built a full **MOMENTUM entry** (`StrategyMode.MOMENTUM`, `strategy.mode`
+config) in the same confluence-voting framework — votes: RSI>50 & rising, break of prior swing high,
+volume thrust, continuation candle; regime-slope gate; **inverted positive-skew exit** (tight stop
+1.0–1.5 ATR, tiers pushed out, wide trail so losers cut small / winners run). Long-only. Swept
+threshold, breakout lookback, slope, and exit geometry in-sample:
+
+| Config | Trades | /day | Win% | avgR | netAvgPnl |
+|---|---|---|---|---|---|
+| mean-reversion scaleOut stop2.5 (ref) | 312 | 0.9 | 78% | 0.03 | −0.02 |
+| i14_momo_wideTiers (T1 1.5/T2 3.0/trail 2.5) | 1912 | 5.7 | 51% | 0.03 | **−0.10** (best momo) |
+| i14_momo_base (thr3, stop1.5, slope50) | 1912 | 5.7 | 59% | 0.01 | −0.26 |
+| i14_momo_stop1.0 | 2066 | 6.1 | 51% | 0.03 | −0.26 |
+| i14_momo_look10 | 2186 | 6.5 | 59% | 0.01 | −0.27 |
+| i14_momo_trail3.0 | 1912 | 5.7 | 59% | 0.01 | −0.28 |
+| i14_momo_noSlope | 2446 | 7.3 | 60% | 0.01 | −0.22 |
+| i14_momo_thr2 | 3985 | 11.9 | 59% | 0.01 | −0.34 |
+
+**Read:** the positive-skew shape is real (win rate 80%→~59%/51%, cadence 0.9→5.7–12/day — finally
+near the ~5/day target), but **every momentum variant is net-negative** (best −0.10). Momentum
+breakouts on US500 5m get chopped by false breakouts — the instrument **mean-reverts at 5m**, which
+is exactly why the dip-buying entry wins 80%. Momentum fights the instrument's nature and loses more.
+Widening targets/trail helped (avgR 0.01→0.03, net −0.26→−0.10) but nowhere near enough.
+
+**Both theses now tested and both net-negative at 5m** (mean-reversion −0.02 break-even, momentum
+−0.10 worse). The best result overall remains the mean-reversion scaleOut at −0.02. Neither makes
+money at the 5-minute timeframe. Code (`StrategyMode`, momentum pillars, positive-skew exit) is kept
+and reusable.
+
+**The untested dimension is TIMEFRAME.** Everything across all 14 iterations ran on 5m bars, where
+moves are small relative to the ~0.5-pt spread and intrabar noise dominates. Higher timeframes
+(15m / 30m / 1h — free to aggregate from the 1m history via `timeframe-minutes`) mean bigger moves
+per trade vs. a fixed spread and cleaner structure, which could make *either* thesis net-positive.
+This is the next cheap, high-value lever (iteration 15).
+
 **Where a fresh session should pick up (STRATEGIC FORK — surfaced to user 2026-07-04):**
 The near-break-even plateau is a genuine fork, not a bug to grind on. Options, highest-value first:
 1. **Breadth, not more US500 exit tuning.** Add a second instrument with its own tuned "personality"

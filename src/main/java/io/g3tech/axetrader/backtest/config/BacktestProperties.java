@@ -69,6 +69,7 @@ public class BacktestProperties {
     }
 
     public static class Strategy {
+        private StrategyMode mode = StrategyMode.MEAN_REVERSION;  // entry thesis: dip-buying vs momentum/continuation
         private int rsiPeriod;
         private int rsiSmoothPeriod;
         private int bbPeriod;
@@ -103,6 +104,14 @@ public class BacktestProperties {
         private boolean enableVolumeTrend;
         private boolean enableLong = true;   // take LONG entries
         private boolean enableShort = true;  // take SHORT entries (off for upward-drift instruments where shorts are crash-only)
+
+        public StrategyMode getMode() {
+            return mode;
+        }
+
+        public void setMode(StrategyMode mode) {
+            this.mode = mode;
+        }
 
         public int getRsiPeriod() {
             return rsiPeriod;

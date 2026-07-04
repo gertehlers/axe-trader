@@ -1,6 +1,7 @@
 package io.g3tech.axetrader.backtest.strategy;
 
 import io.g3tech.axetrader.backtest.config.BacktestProperties;
+import io.g3tech.axetrader.backtest.config.StrategyMode;
 import io.g3tech.axetrader.backtest.indicators.ConfluenceScoreIndicator;
 import io.g3tech.axetrader.backtest.indicators.IndicatorBundle;
 import org.springframework.stereotype.Component;
@@ -43,7 +44,69 @@ public class StrategyFactory {
         List<PillarVote> bearishVotes = new ArrayList<>();
 
         NumericIndicator close = NumericIndicator.of(indicators.closePrice);
-        NumericIndicator atrBand = NumericIndicator.of(indicators.atr).multipliedBy(config.getProximityAtrMultiple());
+
+        // The pillars express the configured entry thesis (both vote through the same machinery).
+        if (config.getMode() == StrategyMode.MOMENTUM) {
+            addMomentumVotes(bullishVotes, bearishVotes, indicators, config, close);
+        } else {
+            addMeanReversionVotes(bullishVotes, bearishVotes, indicators, config, close);
+        }
+
+        // Hard higher-timeframe trend gate (not a vote): mean-reversion longs only above the
+        // trend EMA ("buy the dip in an uptrend"), shorts only below it. Cuts counter-trend
+        // knife-catching, which the tuning log showed drives the losing quarters.
+        Rule longGate = null;
+        Rule shortGate = null;
+        if (config.getTrendEmaPeriod() > 0) {
+            longGate = new OverIndicatorRule(indicators.closePrice, indicators.trendEma);
+            shortGate = new UnderIndicatorRule(indicators.closePrice, indicators.trendEma);
+
+            // Proximity ceiling: the US500 personality slices (TODO.md, 2026-07-04) show the edge
+            // lives within ~2 ATR of the trend EMA — extended entries bleed. When set, require the
+            // close to be no more than trendEmaMaxAtr x ATR away from the EMA (still on the gated
+            // side), so we "buy the dip near the EMA" instead of chasing extension.
+            if (config.getTrendEmaMaxAtr() > 0) {
+                NumericIndicator trendEma = NumericIndicator.of(indicators.trendEma);
+                NumericIndicator ceiling = NumericIndicator.of(indicators.atr)
+                        .multipliedBy(config.getTrendEmaMaxAtr());
+                // close within [trendEma, trendEma + ceiling] for longs; mirror for shorts.
+                longGate = longGate.and(close.isLessThan(trendEma.plus(ceiling)));
+                shortGate = shortGate.and(close.isGreaterThan(trendEma.minus(ceiling)));
+            }
+
+            // Regime-slope gate (iteration 13): the price-vs-EMA gate above is same-timeframe and
+            // whipsaws in choppy/down regimes (the Dec'24 / Q1'25 losers), so "above the EMA" still
+            // buys into downtrends. Require the trend EMA itself to be RISING over the last N bars
+            // for longs (FALLING for shorts) — a coarse, few-parameter higher-timeframe regime proxy
+            // that sits out sustained downtrends instead of slicing in-sample loser features.
+            if (config.getTrendEmaSlopeLookback() > 0) {
+                NumericIndicator trendEma = NumericIndicator.of(indicators.trendEma);
+                NumericIndicator prior = trendEma.previous(config.getTrendEmaSlopeLookback());
+                longGate = longGate.and(trendEma.isGreaterThan(prior));
+                shortGate = shortGate.and(trendEma.isLessThan(prior));
+            }
+        }
+        if (!config.isEnableLong()) {
+            longGate = BooleanRule.FALSE;
+        }
+        if (!config.isEnableShort()) {
+            shortGate = BooleanRule.FALSE;
+        }
+
+        Strategy longStrategy = directionStrategy("CONFLUENCE_LONG", indicators, config, bullishVotes, longGate);
+        Strategy shortStrategy = directionStrategy("CONFLUENCE_SHORT", indicators, config, bearishVotes, shortGate);
+        return new ConfluenceStrategies(longStrategy, shortStrategy, bullishVotes, bearishVotes);
+    }
+
+    /**
+     * MEAN_REVERSION pillars — buy oversold dips near support. The original 5-pillar set: high win
+     * rate, break-even expectancy (TODO.md iterations 1–13).
+     */
+    private void addMeanReversionVotes(
+            List<PillarVote> bullishVotes, List<PillarVote> bearishVotes,
+            IndicatorBundle indicators, BacktestProperties.Strategy config, NumericIndicator close) {
+        NumericIndicator atrBand =
+                NumericIndicator.of(indicators.atr).multipliedBy(config.getProximityAtrMultiple());
 
         // Pillar 1 — Technical indicators: RSI extreme confirmed by a Bollinger Band touch.
         bullishVotes.add(new PillarVote("RSI+BB",
@@ -94,51 +157,54 @@ public class StrategyFactory {
             bearishVotes.add(new PillarVote("Vol+Trend",
                     highVolume.and(new UnderIndicatorRule(indicators.closePrice, indicators.ema))));
         }
+    }
 
-        // Hard higher-timeframe trend gate (not a vote): mean-reversion longs only above the
-        // trend EMA ("buy the dip in an uptrend"), shorts only below it. Cuts counter-trend
-        // knife-catching, which the tuning log showed drives the losing quarters.
-        Rule longGate = null;
-        Rule shortGate = null;
-        if (config.getTrendEmaPeriod() > 0) {
-            longGate = new OverIndicatorRule(indicators.closePrice, indicators.trendEma);
-            shortGate = new UnderIndicatorRule(indicators.closePrice, indicators.trendEma);
+    /**
+     * MOMENTUM pillars — buy strength / continuation (iteration 14). Same voting machinery, inverted
+     * thesis: trend-strength RSI (above midline and rising) instead of oversold, break of the prior
+     * swing high instead of proximity to support, volume thrust, continuation candle. Paired with the
+     * regime-slope gate and a tight-stop/trailing exit, this aims for positive skew (lower win rate,
+     * wins &gt; losses) where mean-reversion was break-even.
+     */
+    private void addMomentumVotes(
+            List<PillarVote> bullishVotes, List<PillarVote> bearishVotes,
+            IndicatorBundle indicators, BacktestProperties.Strategy config, NumericIndicator close) {
+        NumericIndicator rsi = NumericIndicator.of(indicators.rsi);
 
-            // Proximity ceiling: the US500 personality slices (TODO.md, 2026-07-04) show the edge
-            // lives within ~2 ATR of the trend EMA — extended entries bleed. When set, require the
-            // close to be no more than trendEmaMaxAtr x ATR away from the EMA (still on the gated
-            // side), so we "buy the dip near the EMA" instead of chasing extension.
-            if (config.getTrendEmaMaxAtr() > 0) {
-                NumericIndicator trendEma = NumericIndicator.of(indicators.trendEma);
-                NumericIndicator ceiling = NumericIndicator.of(indicators.atr)
-                        .multipliedBy(config.getTrendEmaMaxAtr());
-                // close within [trendEma, trendEma + ceiling] for longs; mirror for shorts.
-                longGate = longGate.and(close.isLessThan(trendEma.plus(ceiling)));
-                shortGate = shortGate.and(close.isGreaterThan(trendEma.minus(ceiling)));
-            }
+        // Pillar 1 — trend strength: RSI above the 50 midline AND rising (mirror for shorts). The
+        // momentum answer to the mean-reversion RSI-extreme pillar: buy strength, not exhaustion.
+        bullishVotes.add(new PillarVote("MomoRSI",
+                new OverIndicatorRule(indicators.rsi, 50).and(rsi.isGreaterThan(rsi.previous(1)))));
+        bearishVotes.add(new PillarVote("MomoRSI",
+                new UnderIndicatorRule(indicators.rsi, 50).and(rsi.isLessThan(rsi.previous(1)))));
 
-            // Regime-slope gate (iteration 13): the price-vs-EMA gate above is same-timeframe and
-            // whipsaws in choppy/down regimes (the Dec'24 / Q1'25 losers), so "above the EMA" still
-            // buys into downtrends. Require the trend EMA itself to be RISING over the last N bars
-            // for longs (FALLING for shorts) — a coarse, few-parameter higher-timeframe regime proxy
-            // that sits out sustained downtrends instead of slicing in-sample loser features.
-            if (config.getTrendEmaSlopeLookback() > 0) {
-                NumericIndicator trendEma = NumericIndicator.of(indicators.trendEma);
-                NumericIndicator prior = trendEma.previous(config.getTrendEmaSlopeLookback());
-                longGate = longGate.and(trendEma.isGreaterThan(prior));
-                shortGate = shortGate.and(trendEma.isLessThan(prior));
-            }
-        }
-        if (!config.isEnableLong()) {
-            longGate = BooleanRule.FALSE;
-        }
-        if (!config.isEnableShort()) {
-            shortGate = BooleanRule.FALSE;
+        // Pillar 2 — continuation candle (shared candlestick indicators).
+        if (config.isEnableCandles()) {
+            bullishVotes.add(new PillarVote("Candle",
+                    new BooleanIndicatorRule(indicators.bullishEngulfing)
+                            .or(new BooleanIndicatorRule(indicators.bullishHarami))
+                            .or(new BooleanIndicatorRule(indicators.hammer))));
+            bearishVotes.add(new PillarVote("Candle",
+                    new BooleanIndicatorRule(indicators.bearishEngulfing)
+                            .or(new BooleanIndicatorRule(indicators.bearishHarami))
+                            .or(new BooleanIndicatorRule(indicators.shootingStar))));
         }
 
-        Strategy longStrategy = directionStrategy("CONFLUENCE_LONG", indicators, config, bullishVotes, longGate);
-        Strategy shortStrategy = directionStrategy("CONFLUENCE_SHORT", indicators, config, bearishVotes, shortGate);
-        return new ConfluenceStrategies(longStrategy, shortStrategy, bullishVotes, bearishVotes);
+        // Pillar 3 — breakout of structure: close above the prior lookback high (below prior low for
+        // shorts). The same break that was NOISE for mean-reversion is the SIGNAL here.
+        int lookback = config.getSwingLookbackBars();
+        NumericIndicator priorHigh = close.highest(lookback).previous(1);
+        NumericIndicator priorLow = close.lowest(lookback).previous(1);
+        bullishVotes.add(new PillarVote("Breakout", close.isGreaterThan(priorHigh)));
+        bearishVotes.add(new PillarVote("Breakout", close.isLessThan(priorLow)));
+
+        // Pillar 5 — volume thrust: above-average participation on the move (direction from the
+        // other pillars + the trend gate).
+        if (config.isEnableVolumeTrend()) {
+            Rule highVolume = new OverIndicatorRule(indicators.volume, indicators.volumeSma);
+            bullishVotes.add(new PillarVote("VolThrust", highVolume));
+            bearishVotes.add(new PillarVote("VolThrust", highVolume));
+        }
     }
 
     private Strategy directionStrategy(

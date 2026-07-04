@@ -1,6 +1,7 @@
 package io.g3tech.axetrader.backtest;
 
 import io.g3tech.axetrader.backtest.config.BacktestProperties;
+import io.g3tech.axetrader.backtest.config.StrategyMode;
 import io.g3tech.axetrader.backtest.experiment.ExperimentStore;
 import io.g3tech.axetrader.backtest.indicators.IndicatorBundle;
 import io.g3tech.axetrader.backtest.runner.BacktestRunner;
@@ -221,17 +222,44 @@ class ConfluenceSweepTest {
         BacktestProperties.Strategy bestExit = variant(scaleOut, s -> s.setStopAtrMultiple(2.5));
         grid.put("scaleOut_trail1.0_stop2.5", bestExit);
 
-        // Iteration 13 (entry redesign — user pick, 2026-07-04): regime-slope gate. The price-vs-EMA
-        // trend gate is same-timeframe and whipsaws in the Dec'24/Q1'25 chop, so "above the EMA"
-        // still buys downtrends. Require the trend EMA to be RISING over the last N bars (a coarse
-        // higher-timeframe regime proxy) on top of the best exit. Sweep N; keep the 80%-win
-        // mean-reversion thesis intact. Gate: net > 0 AND every quarter ≥ ~0 in-sample before the
-        // ONE out-of-sample shot — a regime gate is still an entry filter, so hold the OOS discipline
-        // that iteration 10 taught us.
-        for (int slope : new int[] {20, 50, 100}) {
-            grid.put("i13_regimeSlope%d".formatted(slope),
-                    variant(bestExit, s -> s.setTrendEmaSlopeLookback(slope)));
-        }
+        // Iteration 13 (done): regime-slope gate reached exactly break-even (slope100 → 0.00) by
+        // fixing Q1'25 but worsening Q4'24 / Q3'25 — moved the bleed, didn't stop it. Confirmed the
+        // mean-reversion edge is structurally ~break-even.
+
+        // Iteration 14 (thesis pivot — user pick, 2026-07-04): MOMENTUM entry with an inverted,
+        // positive-skew exit. Mean-reversion's ~80% win is bought with wins≈losses geometry that
+        // can't be net-positive. Momentum buys strength (RSI>50 rising + break of prior swing high +
+        // volume thrust + continuation candle) in an up-regime, with a TIGHT stop and a wide trail so
+        // losers are cut small and winners run. Expect lower win rate but positive expectancy — the
+        // opposite shape. Long-only first (US500 upward drift). Sweep entry threshold, breakout
+        // lookback, regime slope, and the positive-skew exit geometry. Gate: net > 0 AND every
+        // quarter ≥ ~0 in-sample before the ONE out-of-sample shot.
+        BacktestProperties.Strategy momoBase = variant(promoted, s -> {
+            s.setMode(StrategyMode.MOMENTUM);
+            s.setConfluenceThreshold(3);          // 3 of 4 momentum votes
+            s.setEnableCandles(true);
+            s.setEnableVolumeTrend(true);
+            s.setSwingLookbackBars(20);           // breakout lookback
+            s.setTrendEmaPeriod(200);
+            s.setTrendEmaSlopeLookback(50);       // up-regime only
+            // Positive-skew exit: tight stop, tiers pushed out, wide trail (winners run).
+            s.setScaleOutEnabled(true);
+            s.setStopAtrMultiple(1.5);
+            s.setTier1AtrMultiple(1.0);
+            s.setTier2AtrMultiple(2.0);
+            s.setTrailAtrMultiple(2.0);
+        });
+        grid.put("i14_momo_base", momoBase);
+        grid.put("i14_momo_thr2", variant(momoBase, s -> s.setConfluenceThreshold(2)));
+        grid.put("i14_momo_look10", variant(momoBase, s -> s.setSwingLookbackBars(10)));
+        grid.put("i14_momo_noSlope", variant(momoBase, s -> s.setTrendEmaSlopeLookback(0)));
+        grid.put("i14_momo_stop1.0", variant(momoBase, s -> s.setStopAtrMultiple(1.0)));
+        grid.put("i14_momo_trail3.0", variant(momoBase, s -> s.setTrailAtrMultiple(3.0)));
+        grid.put("i14_momo_wideTiers", variant(momoBase, s -> {
+            s.setTier1AtrMultiple(1.5);
+            s.setTier2AtrMultiple(3.0);
+            s.setTrailAtrMultiple(2.5);
+        }));
 
         return grid;
     }
@@ -260,6 +288,7 @@ class ConfluenceSweepTest {
 
     private static BacktestProperties.Strategy copy(BacktestProperties.Strategy s) {
         BacktestProperties.Strategy c = new BacktestProperties.Strategy();
+        c.setMode(s.getMode());
         c.setRsiPeriod(s.getRsiPeriod());
         c.setRsiSmoothPeriod(s.getRsiSmoothPeriod());
         c.setBbPeriod(s.getBbPeriod());
