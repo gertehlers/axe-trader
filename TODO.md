@@ -12,9 +12,13 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
 ## In Progress
 
 - [ ] Validate MONITOR mode end-to-end (auth → WebSocket → SQLite writes confirmed)
+- [ ] **Observability + exits round** — see `docs/observability-and-exits-design.md` for the full spec.
+      Order: (1) experiment SQLite DB + per-trade feature capture + `exit_reason`, backfilled;
+      (2) pnl audit + $ translation; (3) phone trade-review dashboard (self-describing SVG cards,
+      50 bars each side); (4) 3-tier scale-out exit experiment.
 - [ ] Execution realism in the backtest: intrabar stop/target triggers + bid/ask fills, then
       re-validate the promoted profile (current numbers use mid-price fills and close-triggered
-      stops — optimistic)
+      stops — optimistic). Folded into the pnl audit (item 2 above).
 
 ---
 
