@@ -64,6 +64,14 @@ backtest:
     trend-ema-period: 200 # hard directional gate: long only above / short only below this EMA (0 = disabled)
     trend-ema-max-atr: 0  # proximity ceiling: only enter within N ATR of the trend EMA (0 = disabled; ~2 is the US500 lead, pending OOS validation)
 
+    # 3-tier scale-out exit (iteration 11, aggressive-trail ratchet). Disabled by default until it
+    # beats the single-target baseline on net expectancy across quarters. When on, stop-atr-multiple
+    # is the initial stop and target-atr-multiple is ignored.
+    scale-out-enabled: false
+    tier1-atr-multiple: 0.75   # bank 1/3 here, then stop -> breakeven
+    tier2-atr-multiple: 1.5    # bank 1/3 here, then stop -> tier1
+    trail-atr-multiple: 1.5    # final 1/3 trails at peak - N*ATR, floored at tier1
+
     # 5-pillar confluence voting
     confluence-threshold: 3        # votes (pillars) that must agree before entering; tune for quality vs. frequency
     proximity-atr-multiple: 0.5    # "near" a swing level, in ATR units (pillar 3)

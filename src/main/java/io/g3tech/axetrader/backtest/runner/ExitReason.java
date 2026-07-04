@@ -13,6 +13,12 @@ public enum ExitReason {
     TARGET,
     /** Hit the ATR stop-loss (a losing, non-time, non-end exit). */
     STOP,
+    /**
+     * Scale-out only: the final tranche exited on its trailing stop (peak − trail·ATR, floored at
+     * T1), a profitable exit distinct from a hard {@link #TARGET}. The trade's reason reflects how
+     * the <em>last</em> tranche closed, so an early stop before any tier still reads {@link #STOP}.
+     */
+    TRAIL,
     /** Force-exit after {@code max-holding-bars} with neither stop nor target reached. */
     TIME,
     /** Position still open when the data ran out; closed on the final bar. */

@@ -203,12 +203,22 @@ class ConfluenceSweepTest {
         });
         grid.put("final_longOnly_trend200", promoted);
 
-        // Iteration 10 experiment: dist-to-trend-EMA proximity ceiling (US500 personality lead —
-        // the edge lives within ~2 ATR of the EMA). Sweep the ceiling on top of the promoted config
-        // to find the level, then validate the winner out-of-sample. maxAtr 0 = the promoted anchor.
-        for (double maxAtr : new double[] {1.0, 1.5, 2.0, 2.5, 3.0}) {
-            grid.put("emaCeil_%.1fatr".formatted(maxAtr),
-                    variant(promoted, s -> s.setTrendEmaMaxAtr(maxAtr)));
+        // Iteration 11 experiment: 3-tier scale-out with an aggressive-trail ratchet (user pick,
+        // 2026-07-04). The pnl audit (item 2) proved the single 0.75/3.0 target:stop bracket is
+        // net-negative under honest fills because the ~20% full-stop losers swamp the capped 0.75
+        // winners. Scale-out keeps the SAME entries (promoted config) but banks ⅓ at T1=0.75
+        // (stop→BE), ⅓ at T2=1.5 (stop→T1), and trails the final ⅓ — so winners can run past 0.75
+        // while post-T1 trades can no longer become net losers. Sweep the trail distance; the
+        // promoted single-target row above is the A/B control. Gate on worst-quarter net ≥ ~0
+        // in-sample before the one OOS shot.
+        for (double trailAtr : new double[] {1.0, 1.5, 2.0}) {
+            grid.put("scaleOut_t1_0.75_t2_1.5_trail%.1f".formatted(trailAtr),
+                    variant(promoted, s -> {
+                        s.setScaleOutEnabled(true);
+                        s.setTier1AtrMultiple(0.75);
+                        s.setTier2AtrMultiple(1.5);
+                        s.setTrailAtrMultiple(trailAtr);
+                    }));
         }
 
         return grid;
@@ -251,6 +261,10 @@ class ConfluenceSweepTest {
         c.setMaxHoldingBars(s.getMaxHoldingBars());
         c.setTrendEmaPeriod(s.getTrendEmaPeriod());
         c.setTrendEmaMaxAtr(s.getTrendEmaMaxAtr());
+        c.setScaleOutEnabled(s.isScaleOutEnabled());
+        c.setTier1AtrMultiple(s.getTier1AtrMultiple());
+        c.setTier2AtrMultiple(s.getTier2AtrMultiple());
+        c.setTrailAtrMultiple(s.getTrailAtrMultiple());
         c.setConfluenceThreshold(s.getConfluenceThreshold());
         c.setProximityAtrMultiple(s.getProximityAtrMultiple());
         c.setSwingLookbackBars(s.getSwingLookbackBars());
