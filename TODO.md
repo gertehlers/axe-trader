@@ -20,22 +20,33 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
         *near* the trend EMA (0–1.5 ATR above) win 92% @ net +2.68, while extended entries (>10 ATR
         above, and the 3–4.7 ATR band) drag — i.e. "buy the dip near the EMA," don't chase extension.
         A `dist_to_trend_ema_atr` ceiling is a candidate filter once pnl is trusted.
-      - [ ] (2) **pnl audit + $ translation** ← NEXT, needs deep review (money-critical). Verify
-        sign/spread/fill-price and the intrabar-vs-close stop problem before trusting any expectancy.
+      - [x] (2) **pnl audit + $ translation** DONE (2026-07-04) — sign ✅, spread ✅ (one full spread
+        per round trip, not double-counted), fill=mid ✅ (corrected by spread). Found + fixed the
+        bias: exits were close-based; now a fixed intrabar bracket (`BacktestRunner.intrabarExit`)
+        fills **at the stop/target level** with a conservative stop-wins tie-break. Also fixed
+        `rMultiple` (was pnl/ATR → now pnl/stop-distance). Added `backtest.contract.value-per-point`
+        + `$net` sweep columns. **Re-validation falsified the promoted profile's expectancy** (see
+        the scorecard below): win rate holds ~80% but net is **negative** under honest fills
+        (IS −0.14, OOS −0.29 pts/trade). See `docs/observability-and-exits-design.md` §2.
       - [ ] (3) phone trade-review dashboard (self-describing SVG cards, 50 bars each side).
-      - [ ] (4) 3-tier scale-out exit experiment.
-- [ ] Execution realism in the backtest: intrabar stop/target triggers + bid/ask fills, then
-      re-validate the promoted profile (current numbers use mid-price fills and close-triggered
-      stops — optimistic). Folded into the pnl audit (item 2 above).
+      - [ ] (4) **3-tier scale-out exit experiment ← NOW THE PRIORITY.** Item 2 proved the tight
+        single-target geometry is net-negative, so this is the fix, not a nice-to-have. Extend
+        `intrabarExit` to bank ⅓ at each of T1/T2/T3 with a ratcheting stop (defaults T1 0.75 /
+        T2 1.5 / T3 3.0 ATR — **confirm exact levels + ratchet rule with user before coding**).
+        See design spec §4.
+- [x] Execution realism in the backtest: intrabar stop/target triggers modeled (2026-07-04, item 2
+      above). Remaining realism gap: fills are still mid-price + a modeled spread rather than true
+      per-bar bid/ask; acceptable for now.
 
 ---
 
 ## Strategy
 
-- [x] Strategy tuning round 1 complete (2026-07-04): **80% win rate held out-of-sample** at ~1
-      trade/day, LONG-only, net +0.12 pts/trade after spread — config promoted to
-      `application.yaml`; full history in the tuning log below. Cadence gap (~1/day vs ~5) to be
-      closed via additional instruments, not looser filters.
+- [x] Strategy tuning round 1 complete (2026-07-04): 80% win rate held out-of-sample, LONG-only,
+      config promoted to `application.yaml`. ⚠️ **Superseded by the 2026-07-04 pnl audit**: the win
+      rate is real but the +0.12/+0.45 net was close-fill optimism — under honest intrabar fills the
+      profile is net-**negative** (IS −0.14, OOS −0.29 pts/trade). Win rate ✅, money ❌. Next lever is
+      the 3-tier scale-out (Observability item 4), not more entry tuning.
 - [x] ~~Establish RSI-only baseline~~ superseded by the sweep-harness iterations below
 - [x] ~~Fix entry/exit rules — current win rate ~32%~~ fixed: geometry + trend gate (iterations 2–7)
 - [x] Implement SHORT entries — confluence runs bullish votes LONG, bearish votes SHORT
@@ -290,17 +301,35 @@ Win rate held with zero overfit gap; net expectancy stayed positive where the pr
 lost −0.79 to −1.68 on the same window. Monthly variance is high (IS worst −3.32, best +5.77;
 OOS Feb +2.46 carried Jan/Mar slight negatives) — the edge is real but thin.
 
-**Current best result. Honest scorecard vs. north star:**
+Win rate held with zero overfit gap. ⚠️ **The net expectancy here was measured with the old
+close-based exit model and does not survive the pnl audit — see the re-validation below.**
+
+### Iteration 9 — pnl audit re-validation: expectancy FALSIFIED (2026-07-04)
+
+Item 2 of the observability round rebuilt exits as an honest intrabar bracket (fill at the
+stop/target level, conservative stop-wins tie-break; see design spec §2 and
+`docs/dev-environment.md`). Re-ran the **exact same promoted config** on both windows:
+
+| Window                        | Trades | /day | Win% | netAvgPnl (old → new) | $net/day @ $1/pt |
+|-------------------------------|--------|------|------|------------------------|-------------------|
+| In-sample (Dec'24 → Dec'25)   | 309    | 0.9  | 82%  | +0.45 → **−0.14**      | −$0.13            |
+| **Out-of-sample (Jan–May'26)**| 101    | 1.0  | 79%  | +0.12 → **−0.29**      | −$0.28            |
+
+**Win rate is real and holds (~80%); the profit was not.** The 0.75:3.0 target:stop geometry loses
+more on the ~20% full-stop losers than the tight target makes on the ~80% winners → net negative
+once stops actually fill intrabar at the level. The +0.12/+0.45 was close-fill optimism.
+
+**Current best result: none makes money under honest fills.** Honest scorecard vs. north star:
 - Win rate 80%+: ✅ hit, in- and out-of-sample.
 - Reproducible/explainable: ✅ 3-of-4 pillar votes + trend gate + geometry, all in yaml.
-- ~5 trades/day: ❌ ~1/day. At this quality bar US500 may simply be a ~1/day instrument —
-  cadence likely comes from adding instruments (each with its own profile), not looser filters.
-- Makes money: ⚠️ thin (+0.12/trade OOS after spread ≈ breakeven-plus). Known optimistic biases
-  remain: mid-price fills, close-triggered stops (no intrabar wicks). Execution realism work
-  (bid/ask fills, intrabar stop checks) should come before believing the backtest number.
+- ~5 trades/day: ❌ ~1/day (cadence comes from adding instruments, not looser filters).
+- Makes money: ❌ **net negative** under intrabar fills. The entry edge (80% win) is genuine; the
+  exit geometry throws it away. Fixing *exits*, not entries, is the path forward.
 
 **Where a fresh session should pick up:**
-1. Execution realism: intrabar stop/target triggers + bid/ask fills in `BacktestRunner`, re-validate.
+1. **3-tier scale-out (design spec §4) — THE priority.** Stop capping winners at 0.75 ATR; bank ⅓
+   at T1/T2/T3 with a ratcheting stop. Confirm exact levels with the user, then extend
+   `intrabarExit`. This is the direct fix for the negative expectancy above.
 2. Cadence via breadth: second instrument with its own profile (per-instrument config design).
 3. Risk controls before any live use (position sizing, max drawdown, circuit breaker).
 4. MONITOR-mode validation remains open (needs Capital.com network access + credentials).
@@ -309,6 +338,9 @@ OOS Feb +2.46 carried Jan/Mar slight negatives) — the edge is real but thin.
 
 ## Infrastructure
 
+- [ ] Install JDK 26 in the web-session container (setup script / SessionStart hook) — today
+      containers ship JDK 21 only and `./mvnw` fails on `release version 26`. Interim workaround is
+      `-Djava.version=21` (see `docs/dev-environment.md`); the hook is the durable fix.
 - [ ] Implement TRADE mode order execution (blocked until strategy accuracy is proven)
 - [ ] Add risk controls before any live trading (position sizing, max drawdown, circuit breaker)
 - [ ] Design per-instrument config profiles ("personality") — today `backtest.strategy` is one flat

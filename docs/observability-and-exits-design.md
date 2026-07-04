@@ -45,7 +45,7 @@ bar against stop/target/time). Prerequisite for everything else.
 
 Backfill: re-run all 8 iterations (cheap, ~2s each) to populate trade-level features.
 
-### 2. pnl audit + $ translation (verify the ruler before optimizing against it)
+### 2. pnl audit + $ translation (verify the ruler before optimizing against it) — ✅ DONE (2026-07-04)
 
 `+0.12` = 0.12 S&P **index points**/trade net of an approximated spread on **mid-price fills** —
 NOT dollars (~$30/yr per unit at ~$1/pt). Audit `BacktestRunner` pnl path for: (1) sign per
@@ -53,6 +53,25 @@ direction, (2) spread single- vs double-count, (3) fill price = mid vs bid/ask a
 (4) **intrabar problem** — stops/targets trigger on bar *close*, so a trade that hits target
 intrabar then closes past the stop is misrecorded (can flip win↔loss; most likely bug/bias site).
 Add $/contract translation to the dashboard so "does it make money" is answerable at a glance.
+
+**Audit outcome:** (1) sign correct; (2) spread correct — one full spread per round trip, not
+double-counted; (3) mid fills, corrected in aggregate by the spread deduction; (4) **confirmed the
+bias site.** Exits were close-based (trigger *and* fill), which never stopped out on a bar that
+pierced the stop but closed back inside. Replaced with a fixed intrabar bracket
+(`BacktestRunner.intrabarExit`) filling **at the level** with a conservative stop-wins tie-break.
+Also fixed: `rMultiple` was `pnl/ATR`, now `pnl/(stop-distance)` = true R. Added
+`backtest.contract.value-per-point` ($/pt) + `$net/trade`/`$net/day` sweep columns.
+
+**Result — the promoted profile is falsified on expectancy** (win rate holds, money does not):
+
+| Window | win% (was) | net pts/trade (was) | $/day @ $1/pt |
+|---|---|---|---|
+| In-sample (Dec'24–Dec'25) | 82% (79%) | **−0.14 (+0.45)** | −$0.13 |
+| Out-of-sample (Jan–May'26) | 79% (80%) | **−0.29 (+0.12)** | −$0.28 |
+
+The +0.12/+0.45 was close-fill optimism. The 0.75:3.0 target:stop geometry loses more on the
+~20% losers than it makes on the ~80% winners → **net negative under honest fills.** This is the
+direct case for item 4 below.
 
 ### 3. Phone-first trade-review dashboard (the visual)
 
@@ -73,20 +92,29 @@ so a single screenshot is a complete GH-issue bug report. Also emit losers as st
 files. Not a live server — a static artifact regenerated per run (batch backtests gain nothing from
 a server; revisit only for live MONITOR-mode phone alerts).
 
-### 4. Tiered (3-tier) exit experiment — the expectancy lever
+### 4. Tiered (3-tier) exit experiment — the expectancy lever ← NEXT (prerequisite met)
+
+**Now the priority.** Item 2 is done and proved the single all-or-nothing bracket is net-negative
+under honest fills — so the tight target capping winners is not a nuance, it's *the* problem to fix.
+This is also the "multi stop / 3 exits per entry to optimize profit takes" the user asked about.
 
 Current geometry (whole position off at target 0.75 ATR / stop 3.0 ATR) caps every winner and lets
-losers run — the direct cause of thin expectancy despite 80% wins. Model a **3-equal-thirds
+losers run — the direct cause of negative expectancy despite ~80% wins. Model a **3-equal-thirds
 scale-out with a ratcheting stop** (mirrors the 3 simultaneously-posted stops OCI shows):
 - Enter full size; split into thirds.
 - Exit ⅓ at T1 → move remaining stop to breakeven.
 - Exit ⅓ at T2 → move stop to T1.
 - Final ⅓ runs to T3 (or trails).
-- Default sweep levels: T1 0.75 / T2 1.5 / T3 3.0 ATR; confirm exact levels with user at kickoff.
+- Default sweep levels: T1 0.75 / T2 1.5 / T3 3.0 ATR; **confirm exact levels + the ratchet rule
+  with the user at kickoff** before coding the sweep.
 
-Raises average win without necessarily hurting win rate (first tranche still hits ~80%). **Cost:**
-ta4j Positions are all-or-nothing; partial exits aren't native — model via split sub-positions or
-extend `BacktestRunner` for fractional exits + dynamic stop. **Requires item 2 (trusted pnl) first.**
+Raises average win without necessarily hurting the first-tranche hit rate (still ~80%). **Build on
+the item-2 foundation:** `intrabarExit` already walks bars forward checking each bar's high/low
+against fixed levels — the natural extension is to check three target levels in sequence, bank ⅓ at
+each, and lower the stop as each tier fills (instead of returning on the first touch). Keep entries
+identical so the scale-out effect is isolated from entry changes. **Cost:** ta4j Positions are
+all-or-nothing; the fractional exits live entirely in `BacktestRunner` (do not try to model them as
+ta4j sub-positions) — return a per-trade pnl that is the size-weighted sum of the tier fills.
 
 ## Sequencing
 
