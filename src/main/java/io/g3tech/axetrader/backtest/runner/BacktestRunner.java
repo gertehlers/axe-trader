@@ -100,14 +100,27 @@ public class BacktestRunner {
             // the stop but closed back inside, and filled past the level on gap bars). R is measured
             // against the actual stop distance, so a target win is +targetAtr/stopAtr R, not inflated.
             double stopDist = config.getStopAtrMultiple() * atrAtEntry;
-            double targetDist = config.getTargetAtrMultiple() * atrAtEntry;
-            ExitOutcome outcome = intrabarExit(
-                    series, direction, entryIndex, entryPrice, stopDist, targetDist,
-                    config.getMaxHoldingBars());
-            exitIndex = outcome.index();
-            exitPrice = outcome.price();
-            exitReason = outcome.reason();
             riskPerUnit = stopDist == 0.0 ? atrAtEntry : stopDist;
+            if (config.isScaleOutEnabled()) {
+                // 3-tier scale-out: pnl is the size-weighted sum of the tranche fills, so the
+                // reported exitPrice is the synthetic single-fill that reproduces it (entry ± pnl),
+                // keeping the downstream pnl() recompute consistent.
+                ScaleOutOutcome outcome = scaleOutExit(
+                        series, direction, entryIndex, entryPrice, atrAtEntry, config);
+                exitIndex = outcome.index();
+                exitPrice = direction == Direction.LONG
+                        ? entryPrice + outcome.pnlPerUnit()
+                        : entryPrice - outcome.pnlPerUnit();
+                exitReason = outcome.reason();
+            } else {
+                double targetDist = config.getTargetAtrMultiple() * atrAtEntry;
+                ExitOutcome outcome = intrabarExit(
+                        series, direction, entryIndex, entryPrice, stopDist, targetDist,
+                        config.getMaxHoldingBars());
+                exitIndex = outcome.index();
+                exitPrice = outcome.price();
+                exitReason = outcome.reason();
+            }
         }
 
         double pnl = pnl(direction, entryPrice, exitPrice);
@@ -168,6 +181,97 @@ public class BacktestRunner {
 
     /** One resolved exit: the bar it happened on, the fill price, and why. */
     record ExitOutcome(int index, double price, ExitReason reason) {
+    }
+
+    /**
+     * 3-tier scale-out with an aggressive-trail ratchet. Enter full size, split into equal thirds,
+     * and walk bars forward:
+     * <ul>
+     *   <li>Bank ⅓ at T1 (entry ± tier1·ATR) → move the stop to breakeven.
+     *   <li>Bank ⅓ at T2 (entry ± tier2·ATR) → move the stop to T1 and start trailing.
+     *   <li>The final ⅓ trails at {@code peak − trail·ATR}, floored at T1 (so once T2 fills the
+     *       runner can only exit in profit).
+     *   <li>Before T1 the whole position rests on the initial stop (entry ∓ stop·ATR).
+     * </ul>
+     * Intrabar path is unknown from OHLC, so each bar is resolved <b>adverse-first</b> using the
+     * stop level as it stood entering the bar: if the bar's adverse extreme reaches that stop we
+     * exit all remaining size there and never book a same-bar tier fill above it (the same
+     * conservative tie-break as {@link #intrabarExit}, and it avoids double-jeopardy when tiers
+     * ratchet the stop up within one bar). {@code maxHoldingBars}/end-of-data close the remainder at
+     * that bar's close. Returns the size-weighted pnl per unit and the bar/reason of the final
+     * tranche's exit; ta4j Positions are all-or-nothing, so the fractional bookkeeping lives here.
+     */
+    static ScaleOutOutcome scaleOutExit(
+            BarSeries series, Direction direction, int entryIndex, double entryPrice,
+            double atrAtEntry, BacktestProperties.Strategy config) {
+        int dir = direction == Direction.LONG ? 1 : -1;
+        double t1 = config.getTier1AtrMultiple() * atrAtEntry;   // favorable progress levels (>0)
+        double t2 = config.getTier2AtrMultiple() * atrAtEntry;
+        double trail = config.getTrailAtrMultiple() * atrAtEntry;
+        int maxHoldingBars = config.getMaxHoldingBars();
+        int lastIndex = series.getEndIndex();
+
+        // Everything is tracked in signed "progress" space: profit per unit = dir*(price - entry),
+        // so the LONG/SHORT cases share one code path. pnlPerUnit accumulates (⅓ * fillProgress).
+        double pnlPerUnit = 0.0;
+        int thirdsRemaining = 3;
+        boolean t1Filled = false;
+        boolean t2Filled = false;
+        boolean trailing = false;
+        double stopProgress = -config.getStopAtrMultiple() * atrAtEntry;  // initial stop (<0)
+        double peakProgress = 0.0;                                        // best favorable progress so far
+
+        for (int i = entryIndex + 1; i <= lastIndex; i++) {
+            Bar bar = series.getBar(i);
+            double high = bar.getHighPrice().doubleValue();
+            double low = bar.getLowPrice().doubleValue();
+            double favProgress = dir * ((dir == 1 ? high : low) - entryPrice);   // best-case this bar
+            double advProgress = dir * ((dir == 1 ? low : high) - entryPrice);   // worst-case this bar
+
+            // 1. Adverse-first: does the worst-case extreme reach the stop as it stood entering the bar?
+            if (advProgress <= stopProgress) {
+                pnlPerUnit += (thirdsRemaining / 3.0) * stopProgress;
+                return new ScaleOutOutcome(i, pnlPerUnit, trailing ? ExitReason.TRAIL : ExitReason.STOP);
+            }
+
+            // 2. Favorable tier fills (ratchet the stop up as each bank completes).
+            if (!t1Filled && favProgress >= t1) {
+                pnlPerUnit += (1.0 / 3.0) * t1;
+                thirdsRemaining--;
+                t1Filled = true;
+                stopProgress = 0.0; // breakeven
+            }
+            if (!t2Filled && favProgress >= t2) {
+                pnlPerUnit += (1.0 / 3.0) * t2;
+                thirdsRemaining--;
+                t2Filled = true;
+                stopProgress = t1;  // ratchet to T1; final third now trails, floored here
+                trailing = true;
+            }
+
+            // 3. Advance the trail on the surviving third (stop only ever moves up).
+            peakProgress = Math.max(peakProgress, favProgress);
+            if (trailing) {
+                stopProgress = Math.max(stopProgress, peakProgress - trail);
+            }
+
+            // 4. Time stop: close whatever is left at this bar's close.
+            if (maxHoldingBars > 0 && (i - entryIndex) >= maxHoldingBars) {
+                double closeProgress = dir * (bar.getClosePrice().doubleValue() - entryPrice);
+                pnlPerUnit += (thirdsRemaining / 3.0) * closeProgress;
+                return new ScaleOutOutcome(i, pnlPerUnit, ExitReason.TIME);
+            }
+        }
+
+        // End of data: force-close the remainder at the last close.
+        Bar last = series.getBar(lastIndex);
+        double closeProgress = dir * (last.getClosePrice().doubleValue() - entryPrice);
+        pnlPerUnit += (thirdsRemaining / 3.0) * closeProgress;
+        return new ScaleOutOutcome(lastIndex, pnlPerUnit, ExitReason.END);
+    }
+
+    /** Resolved scale-out: the bar the final tranche exited, the size-weighted pnl/unit, and why. */
+    record ScaleOutOutcome(int index, double pnlPerUnit, ExitReason reason) {
     }
 
     /**

@@ -69,6 +69,7 @@ public class BacktestProperties {
     }
 
     public static class Strategy {
+        private StrategyMode mode = StrategyMode.MEAN_REVERSION;  // entry thesis: dip-buying vs momentum/continuation
         private int rsiPeriod;
         private int rsiSmoothPeriod;
         private int bbPeriod;
@@ -82,6 +83,15 @@ public class BacktestProperties {
         private int maxHoldingBars;         // force-exit after N bars if neither stop nor target hit (0 = disabled)
         private int trendEmaPeriod;         // hard directional gate: long only above / short only below this EMA (0 = disabled)
         private double trendEmaMaxAtr;      // proximity ceiling: only enter within this many ATR of the trend EMA (0 = disabled)
+        private int trendEmaSlopeLookback;  // regime gate: longs only when the trend EMA is RISING over the last N bars, shorts only when FALLING (0 = disabled)
+
+        // 3-tier scale-out exit (aggressive-trail ratchet). When enabled, stopAtrMultiple is the
+        // initial stop and targetAtrMultiple is ignored: bank 1/3 at tier1 (stop->breakeven),
+        // 1/3 at tier2 (stop->tier1), final 1/3 trails at peak - trailAtrMultiple*ATR floored at tier1.
+        private boolean scaleOutEnabled;    // false = single stop/target bracket (legacy path)
+        private double tier1AtrMultiple;    // T1 take-1/3 level, in ATR (e.g. 0.75)
+        private double tier2AtrMultiple;    // T2 take-1/3 level, in ATR (e.g. 1.5)
+        private double trailAtrMultiple;    // trailing distance for the final 1/3, in ATR (e.g. 1.5)
 
         // Confluence (5-pillar voting)
         private int confluenceThreshold;     // votes required to enter
@@ -94,6 +104,14 @@ public class BacktestProperties {
         private boolean enableVolumeTrend;
         private boolean enableLong = true;   // take LONG entries
         private boolean enableShort = true;  // take SHORT entries (off for upward-drift instruments where shorts are crash-only)
+
+        public StrategyMode getMode() {
+            return mode;
+        }
+
+        public void setMode(StrategyMode mode) {
+            this.mode = mode;
+        }
 
         public int getRsiPeriod() {
             return rsiPeriod;
@@ -197,6 +215,46 @@ public class BacktestProperties {
 
         public void setTrendEmaMaxAtr(double trendEmaMaxAtr) {
             this.trendEmaMaxAtr = trendEmaMaxAtr;
+        }
+
+        public int getTrendEmaSlopeLookback() {
+            return trendEmaSlopeLookback;
+        }
+
+        public void setTrendEmaSlopeLookback(int trendEmaSlopeLookback) {
+            this.trendEmaSlopeLookback = trendEmaSlopeLookback;
+        }
+
+        public boolean isScaleOutEnabled() {
+            return scaleOutEnabled;
+        }
+
+        public void setScaleOutEnabled(boolean scaleOutEnabled) {
+            this.scaleOutEnabled = scaleOutEnabled;
+        }
+
+        public double getTier1AtrMultiple() {
+            return tier1AtrMultiple;
+        }
+
+        public void setTier1AtrMultiple(double tier1AtrMultiple) {
+            this.tier1AtrMultiple = tier1AtrMultiple;
+        }
+
+        public double getTier2AtrMultiple() {
+            return tier2AtrMultiple;
+        }
+
+        public void setTier2AtrMultiple(double tier2AtrMultiple) {
+            this.tier2AtrMultiple = tier2AtrMultiple;
+        }
+
+        public double getTrailAtrMultiple() {
+            return trailAtrMultiple;
+        }
+
+        public void setTrailAtrMultiple(double trailAtrMultiple) {
+            this.trailAtrMultiple = trailAtrMultiple;
         }
 
         public int getConfluenceThreshold() {

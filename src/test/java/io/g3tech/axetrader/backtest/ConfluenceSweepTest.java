@@ -77,6 +77,9 @@ class ConfluenceSweepTest {
 
         Instant from = Instant.parse(System.getProperty("sweep.from", IN_SAMPLE_FROM.toString()));
         Instant to = Instant.parse(System.getProperty("sweep.to", IN_SAMPLE_TO.toString()));
+        // Timeframe override (iteration 15): aggregate to a different bar size without editing yaml,
+        // e.g. -Dsweep.tf=30. All ATR-relative configs scale automatically. Defaults to yaml (5m).
+        int timeframe = Integer.getInteger("sweep.tf", backtestProperties.getTimeframeMinutes());
 
         long loadStart = System.currentTimeMillis();
         List<HistoricalPrice> prices =
@@ -87,7 +90,7 @@ class ConfluenceSweepTest {
                 .average()
                 .orElse(0.0);
         BarSeries series = barSeriesFactory.fromPrices(
-                backtestProperties.getEpic(), prices, backtestProperties.getTimeframeMinutes());
+                backtestProperties.getEpic(), prices, timeframe);
         prices = null; // 1m entities no longer needed; let ~400k rows go to GC
 
         long tradingDays = series.getBarData().stream()
@@ -96,7 +99,7 @@ class ConfluenceSweepTest {
                 .count();
 
         System.out.printf("%nSweep window %s → %s: %d %dm bars, %d trading days, avg spread %.2f pts (load %.1fs)%n%n",
-                from, to, series.getBarCount(), backtestProperties.getTimeframeMinutes(),
+                from, to, series.getBarCount(), timeframe,
                 tradingDays, avgSpread, (System.currentTimeMillis() - loadStart) / 1000.0);
 
         Map<String, BacktestProperties.Strategy> grid = buildGrid(backtestProperties.getStrategy());
@@ -113,7 +116,7 @@ class ConfluenceSweepTest {
                 results.add(SweepResult.of(entry.getKey(), trades, tradingDays, avgSpread));
                 if (store != null) {
                     long id = store.save(entry.getKey(), config, backtestProperties.getEpic(),
-                            backtestProperties.getTimeframeMinutes(), from, to, trades, avgSpread, tradingDays);
+                            timeframe, from, to, trades, avgSpread, tradingDays);
                     System.out.printf("  persisted experiment #%d%n", id);
                 }
                 System.out.printf("  ran %-34s %5d trades in %.1fs%n",
@@ -158,58 +161,46 @@ class ConfluenceSweepTest {
     private static Map<String, BacktestProperties.Strategy> buildGrid(BacktestProperties.Strategy base) {
         Map<String, BacktestProperties.Strategy> grid = new LinkedHashMap<>();
 
-        // Backfill milestones from the tuning log — winners AND known losers, so the first loser-
-        // clustering has a contrast set. Run with -Dsweep.persist=true to write to experiments.sqlite.
-        // Pre-gate anchor: threshold 3, structure off, long+short, no trend gate (as history ran them).
-        BacktestProperties.Strategy pregate = variant(base, s -> {
-            s.setConfluenceThreshold(3);
-            s.setEnableStructure(false);
-            s.setEnableLong(true);
-            s.setEnableShort(true);
-            s.setTrendEmaPeriod(0);
-        });
+        // Iteration 17 (2026-07-04): map the MOMENTUM @ 15m response surface around the promoted
+        // profile (now the yaml `base`: mode MOMENTUM, thr3, look20, slope50, stop1.5, tiers 1.5/3.0,
+        // trail2.5). The 5m→15m timeframe jump + a handful of exit knobs got us the first net-positive
+        // OOS config; most of the surface is unmapped. Vary one dimension at a time to see which knobs
+        // the +0.10 OOS edge actually depends on. Run this whole grid across timeframes with
+        // -Dsweep.tf ∈ {8,10,12,15,20,25} to also map the duration curve. IN-SAMPLE only — the 2026
+        // window is partially burned for the anchor, so tune here and walk-forward, don't peek at OOS.
+        grid.put("anchor_promoted", variant(base, s -> {}));
 
-        // Old 32% baseline (iteration 1): threshold 2, structure on, original geometry.
-        grid.put("i1_baseline_th2_struct", variant(base, s -> {
-            s.setConfluenceThreshold(2);
-            s.setEnableStructure(true);
-            s.setEnableShort(true);
-            s.setTrendEmaPeriod(0);
-            s.setStopAtrMultiple(1.5);
-            s.setTargetAtrMultiple(3.0);
-        }));
-        // Pre-gate win-rate champion (iteration 3): passed in-sample, FAILED out-of-sample on expectancy.
-        grid.put("i3_pregate_winchamp_stop4.0_tgt0.5", variant(pregate, s -> {
-            s.setProximityAtrMultiple(0.5);
-            s.setSwingLookbackBars(8);
-            s.setStopAtrMultiple(4.0);
-            s.setTargetAtrMultiple(0.5);
-        }));
-        // Pre-gate expectancy champion (iteration 3).
-        grid.put("i3_pregate_expchamp_stop3.0_tgt0.75", variant(pregate, s -> {
-            s.setProximityAtrMultiple(0.5);
-            s.setSwingLookbackBars(10);
-            s.setStopAtrMultiple(3.0);
-            s.setTargetAtrMultiple(0.75);
-        }));
-        // Promoted final candidate (iteration 8): long-only + trend-EMA-200 gate.
-        BacktestProperties.Strategy promoted = variant(pregate, s -> {
-            s.setEnableShort(false);
-            s.setProximityAtrMultiple(0.5);
-            s.setSwingLookbackBars(10);
-            s.setStopAtrMultiple(3.0);
-            s.setTargetAtrMultiple(0.75);
-            s.setTrendEmaPeriod(200);
-        });
-        grid.put("final_longOnly_trend200", promoted);
+        // Entry — confluence threshold (how many of the 4 momentum votes must agree).
+        grid.put("thr2", variant(base, s -> s.setConfluenceThreshold(2)));
+        grid.put("thr4", variant(base, s -> s.setConfluenceThreshold(4)));
 
-        // Iteration 10 experiment: dist-to-trend-EMA proximity ceiling (US500 personality lead —
-        // the edge lives within ~2 ATR of the EMA). Sweep the ceiling on top of the promoted config
-        // to find the level, then validate the winner out-of-sample. maxAtr 0 = the promoted anchor.
-        for (double maxAtr : new double[] {1.0, 1.5, 2.0, 2.5, 3.0}) {
-            grid.put("emaCeil_%.1fatr".formatted(maxAtr),
-                    variant(promoted, s -> s.setTrendEmaMaxAtr(maxAtr)));
-        }
+        // Entry — breakout lookback (bars the close must break above to signal).
+        grid.put("look10", variant(base, s -> s.setSwingLookbackBars(10)));
+        grid.put("look15", variant(base, s -> s.setSwingLookbackBars(15)));
+        grid.put("look30", variant(base, s -> s.setSwingLookbackBars(30)));
+
+        // Entry — regime slope gate (0 = off; higher = stricter up-regime requirement).
+        grid.put("slope0", variant(base, s -> s.setTrendEmaSlopeLookback(0)));
+        grid.put("slope25", variant(base, s -> s.setTrendEmaSlopeLookback(25)));
+        grid.put("slope100", variant(base, s -> s.setTrendEmaSlopeLookback(100)));
+
+        // Exit — initial (pre-T1) stop distance.
+        grid.put("stop1.0", variant(base, s -> s.setStopAtrMultiple(1.0)));
+        grid.put("stop2.0", variant(base, s -> s.setStopAtrMultiple(2.0)));
+
+        // Exit — tier take-profit levels (where the first two thirds bank).
+        grid.put("tiers1.0_2.0", variant(base, s -> {
+            s.setTier1AtrMultiple(1.0);
+            s.setTier2AtrMultiple(2.0);
+        }));
+        grid.put("tiers2.0_4.0", variant(base, s -> {
+            s.setTier1AtrMultiple(2.0);
+            s.setTier2AtrMultiple(4.0);
+        }));
+
+        // Exit — trailing distance for the final third (how much room winners get to run).
+        grid.put("trail1.5", variant(base, s -> s.setTrailAtrMultiple(1.5)));
+        grid.put("trail3.5", variant(base, s -> s.setTrailAtrMultiple(3.5)));
 
         return grid;
     }
@@ -238,6 +229,7 @@ class ConfluenceSweepTest {
 
     private static BacktestProperties.Strategy copy(BacktestProperties.Strategy s) {
         BacktestProperties.Strategy c = new BacktestProperties.Strategy();
+        c.setMode(s.getMode());
         c.setRsiPeriod(s.getRsiPeriod());
         c.setRsiSmoothPeriod(s.getRsiSmoothPeriod());
         c.setBbPeriod(s.getBbPeriod());
@@ -251,6 +243,11 @@ class ConfluenceSweepTest {
         c.setMaxHoldingBars(s.getMaxHoldingBars());
         c.setTrendEmaPeriod(s.getTrendEmaPeriod());
         c.setTrendEmaMaxAtr(s.getTrendEmaMaxAtr());
+        c.setTrendEmaSlopeLookback(s.getTrendEmaSlopeLookback());
+        c.setScaleOutEnabled(s.isScaleOutEnabled());
+        c.setTier1AtrMultiple(s.getTier1AtrMultiple());
+        c.setTier2AtrMultiple(s.getTier2AtrMultiple());
+        c.setTrailAtrMultiple(s.getTrailAtrMultiple());
         c.setConfluenceThreshold(s.getConfluenceThreshold());
         c.setProximityAtrMultiple(s.getProximityAtrMultiple());
         c.setSwingLookbackBars(s.getSwingLookbackBars());

@@ -362,16 +362,274 @@ warns about. **Conclusion: the near-EMA "edge" is not a real edge.** The knob st
 (disabled, `trend-ema-max-atr: 0`) as a documented dead-end; do not retune it against the test set.
 The lesson reinforces the audit: entry filtering isn't the lever — **exit geometry is.**
 
-**Where a fresh session should pick up:**
-1. **3-tier scale-out (design spec §4, exit geometry) — the remaining primary lever.** The entry
-   edge (80% win) is genuine but every entry-side filter tried has failed to add net edge; the
-   0.75:3.0 target:stop geometry is what makes it net-negative. Stop capping winners: bank ⅓ at
-   T1/T2/T3 with a ratcheting stop. **Confirm exact levels + ratchet rule with the user**, then
-   extend `intrabarExit` (it already walks bars checking levels — bank a third at each tier instead
-   of returning on first touch).
-2. Cadence via breadth: second instrument with its own profile (per-instrument config design).
-3. Risk controls before any live use (position sizing, max drawdown, circuit breaker).
-4. MONITOR-mode validation remains open (needs Capital.com network access + credentials).
+### Iteration 11 — 3-tier scale-out (aggressive trail): helps, not enough yet (2026-07-04)
+
+Built the scale-out exit (user picks, this session): **aggressive-trail ratchet** with tiers
+**T1 0.75 / T2 1.5 ATR**. Bank ⅓ at T1 (stop→breakeven), ⅓ at T2 (stop→T1), final ⅓ trails at
+`peak − trail·ATR` floored at T1. Code: `BacktestRunner.scaleOutExit` (money accounting +
+conservative adverse-first intrabar ordering, unit-tested in `BacktestRunnerIntrabarTest`); config
+`backtest.strategy.scale-out-enabled` + `tier1/tier2/trail-atr-multiple` (reuses `stop-atr-multiple`
+as the pre-T1 stop). **Same 309 entries** as the promoted profile — isolates the exit effect.
+
+In-sample (Dec'24→Dec'25), swept trail distance; tighter trail wins:
+
+| Config (on promoted entries) | Trades | Win% | netAvgPnl | worst quarter |
+|---|---|---|---|---|
+| baseline single-target 0.75/3.0 | 309 | 82% | −0.14 | Q1'25 −0.74 |
+| **scaleOut trail 1.0** | 309 | 82% | **−0.06** | Q4'24 −0.70 |
+| scaleOut trail 1.5 | 309 | 82% | −0.11 | — |
+| scaleOut trail 2.0 | 309 | 82% | −0.17 | — |
+
+Per-quarter, trail1.0 vs baseline: Q4'24 −0.06→**−0.70**, Q1'25 −0.74→−0.63, Q2'25 −0.36→**+0.18**,
+Q3'25 −0.05→**+0.04**, Q4'25 +0.59→+0.29.
+
+**Read:** scale-out **flips the choppy/trending quarters positive (Q2, Q3)** by letting winners run
+past the 0.75 cap, but **gives back on quarters where the tight target already worked** (Q4'24,
+Q4'25) — trades that would've banked +0.75 now reverse to breakeven on the held ⅔. Net aggregate
+improves (−0.14 → −0.06, the best honest-fill result so far) but is **still slightly negative and
+still has 2 negative quarters**. Best variant: **trail 1.0** (tightest = bank fast, give back least).
+NOT promoted; NOT taken out-of-sample yet.
+
+**Why it's capped:** scale-out only acts *after* T1. The ~18% of trades that hit the 3.0-ATR stop
+*before* T1 still lose the full position — that tail (~0.5 ATR of drag/trade) is the structural
+anchor, and no post-T1 exit change can touch it. **The untested exit lever is the pre-T1 initial
+stop itself** (3.0 ATR is very wide for a quick mean-reversion bounce).
+
+### Iteration 12 — initial-stop × scale-out: converges to break-even, doesn't cross (2026-07-04)
+
+Swept the **initial (pre-T1) stop** on top of scaleOut trail1.0, in-sample. Tightening the wide
+3.0-ATR stop helps up to a point, then the win-rate loss outweighs the smaller losers:
+
+| Config (scaleOut trail1.0) | Trades | Win% | netAvgPnl |
+|---|---|---|---|
+| stop 3.0 | 309 | 82% | −0.06 |
+| **stop 2.5** | 312 | 78% | **−0.02** (best) |
+| stop 2.0 | 315 | 74% | −0.12 |
+| stop 1.5 | 322 | 68% | −0.14 |
+
+Best config all session: **scaleOut trail1.0 + stop2.5 → net −0.02/trade in-sample** (avgR +0.03).
+Exit-geometry progress across the session: single-target −0.14 → scale-out −0.06 → +stop2.5 −0.02.
+A real ~85% cut in the loss, **asymptotically approaching zero from below — but not crossing it.**
+stop2.5 quarters: Q4'24 −0.89 (16 trades, Dec selloff), Q1'25 −0.40, Q2'25 +0.38, Q3'25 −0.02,
+Q4'25 +0.09 — **still 2 negative quarters**, so it FAILS the every-quarter gate → no OOS shot taken.
+
+**Conclusion — the exit lever is now exhausted around break-even.** Both entry filtering (iters 1–10,
+all failed OOS) and exit geometry (iters 11–12, plateau at −0.02) have been worked hard. The same
+1–2 quarters (Dec'24 selloff, Q1'25) stay negative under every config — they lose on *genuine*
+stop-outs in choppy/down regimes, which only entry avoidance could fix, and entry avoidance doesn't
+generalize. **The honest read: this single long-only mean-reversion entry on US500 5m is a real
+~80%-win but structurally break-even edge.** Micro-tuning US500 exits further has low expected value.
+
+### Iteration 13 — regime-slope entry gate: shuffles the bad quarter, still break-even (2026-07-04)
+
+Entry redesign (user pick): a **regime-slope gate** — longs only when the trend EMA is *rising*
+over the last N bars (shorts only when falling), a coarse higher-timeframe regime proxy on top of
+the same-timeframe price-vs-EMA gate. Rationale: in the Dec'24/Q1'25 chop the 5m EMA whipsaws, so
+"above the EMA" still buys downtrends. Code: `backtest.strategy.trend-ema-slope-lookback` +
+`StrategyFactory` gate. Tested on the best exit (scaleOut trail1.0 + stop2.5), sweeping N in-sample:
+
+| Config | Trades | /day | Win% | netAvgPnl |
+|---|---|---|---|---|
+| scaleOut trail1.0 stop2.5 (no slope gate) | 312 | 0.9 | 78% | −0.02 |
+| i13 regimeSlope20 | 311 | 0.9 | 78% | −0.02 |
+| i13 regimeSlope50 | 287 | 0.9 | 77% | −0.02 |
+| **i13 regimeSlope100** | 258 | 0.8 | 78% | **0.00** |
+
+slope100 quarters: Q4'24 −1.66 (11 trades), Q1'25 **+0.13** (fixed!), Q2'25 +0.47, Q3'25 −0.29,
+Q4'25 +0.00. **The gate fixed the target quarter (Q1'25 −0.40→+0.13) but worsened Q4'24 (−0.89→
+−1.66) and flipped Q3'25 negative** — it moved the bleed, didn't stop it. Aggregate reached exactly
+break-even (0.00) at the cost of ⅙ of the trades. Still fails net > 0 AND every-quarter ≥ 0 → no OOS.
+
+**Session conclusion (iterations 11–13, this session): the edge is structurally ~break-even.** Three
+independent levers — exit geometry (scale-out, −0.14→−0.06), initial-stop tightening (−0.06→−0.02),
+and a regime entry gate (−0.02→0.00) — each moved expectancy asymptotically toward zero *from below*
+and none crossed into consistent profit; trimming trades to fix one bad quarter just surfaces
+another, while cadence thins. Combined with iterations 1–10 (entry filters, all failed OOS), the
+honest finding is that **long-only mean-reversion on US500 5m is a genuine ~80%-win but break-even
+edge. The 80%-win-rate north star and the make-money north star appear to be in direct conflict for
+this instrument+thesis** — the high win rate is *bought* with wins≈losses geometry that can't be
+net-positive after costs. See the fork below; decided with the user before spending more iterations.
+
+### Iteration 14 — MOMENTUM thesis: positive skew confirmed, but US500 5m is mean-reverting (2026-07-04)
+
+Thesis pivot (user pick): built a full **MOMENTUM entry** (`StrategyMode.MOMENTUM`, `strategy.mode`
+config) in the same confluence-voting framework — votes: RSI>50 & rising, break of prior swing high,
+volume thrust, continuation candle; regime-slope gate; **inverted positive-skew exit** (tight stop
+1.0–1.5 ATR, tiers pushed out, wide trail so losers cut small / winners run). Long-only. Swept
+threshold, breakout lookback, slope, and exit geometry in-sample:
+
+| Config | Trades | /day | Win% | avgR | netAvgPnl |
+|---|---|---|---|---|---|
+| mean-reversion scaleOut stop2.5 (ref) | 312 | 0.9 | 78% | 0.03 | −0.02 |
+| i14_momo_wideTiers (T1 1.5/T2 3.0/trail 2.5) | 1912 | 5.7 | 51% | 0.03 | **−0.10** (best momo) |
+| i14_momo_base (thr3, stop1.5, slope50) | 1912 | 5.7 | 59% | 0.01 | −0.26 |
+| i14_momo_stop1.0 | 2066 | 6.1 | 51% | 0.03 | −0.26 |
+| i14_momo_look10 | 2186 | 6.5 | 59% | 0.01 | −0.27 |
+| i14_momo_trail3.0 | 1912 | 5.7 | 59% | 0.01 | −0.28 |
+| i14_momo_noSlope | 2446 | 7.3 | 60% | 0.01 | −0.22 |
+| i14_momo_thr2 | 3985 | 11.9 | 59% | 0.01 | −0.34 |
+
+**Read:** the positive-skew shape is real (win rate 80%→~59%/51%, cadence 0.9→5.7–12/day — finally
+near the ~5/day target), but **every momentum variant is net-negative** (best −0.10). Momentum
+breakouts on US500 5m get chopped by false breakouts — the instrument **mean-reverts at 5m**, which
+is exactly why the dip-buying entry wins 80%. Momentum fights the instrument's nature and loses more.
+Widening targets/trail helped (avgR 0.01→0.03, net −0.26→−0.10) but nowhere near enough.
+
+**Both theses now tested and both net-negative at 5m** (mean-reversion −0.02 break-even, momentum
+−0.10 worse). The best result overall remains the mean-reversion scaleOut at −0.02. Neither makes
+money at the 5-minute timeframe. Code (`StrategyMode`, momentum pillars, positive-skew exit) is kept
+and reusable.
+
+**The untested dimension is TIMEFRAME.** Everything across all 14 iterations ran on 5m bars, where
+moves are small relative to the ~0.5-pt spread and intrabar noise dominates. Higher timeframes
+(15m / 30m / 1h — free to aggregate from the 1m history via `timeframe-minutes`) mean bigger moves
+per trade vs. a fixed spread and cleaner structure, which could make *either* thesis net-positive.
+This is the next cheap, high-value lever (iteration 15).
+
+### Iteration 15 — TIMEFRAME BREAKTHROUGH: momentum at 15m is net-POSITIVE in-sample (2026-07-04)
+
+Added a `-Dsweep.tf=N` timeframe override to the harness and scanned the full grid at 15m and 30m
+(all configs are ATR-relative, so they scale automatically). **This is the first net-positive result
+in the project.** The 5m assumption was the hidden constraint the whole time.
+
+In-sample (Dec'24→Dec'25), best rows per timeframe:
+
+| Config | TF | Trades | /day | Win% | avgR | netAvgPnl |
+|---|---|---|---|---|---|---|
+| mean-reversion final_longOnly | 5m | 309 | 0.9 | 82% | 0.02 | −0.14 |
+| mean-reversion scaleOut stop2.5 | 5m | 312 | 0.9 | 78% | 0.03 | −0.02 |
+| mean-reversion (both) | 15m | ~102 | 0.3 | 78% | −0.01 | **−1.4 to −1.7** (worse!) |
+| i14_momo_noSlope | 15m | 877 | 2.6 | 60% | 0.05 | **+0.41** |
+| **i14_momo_wideTiers** | 15m | 695 | 2.1 | 53% | **0.10** | **+0.31** |
+| i14_momo_stop1.0 | 30m | 437 | 1.3 | 51% | 0.07 | +0.16 |
+| momentum (most) | 30m | — | — | ~56% | — | negative again |
+
+**Coherent story:** mean-reversion *degrades* at 15m while momentum *improves* — bigger moves clear
+the fixed ~0.5-pt spread and 15m breakouts trend where 5m breakouts chop. 15m is a genuine sweet
+spot (30m mostly reverts to negative), not a monotonic effect. Positive skew is now real and paying:
+win 53–60%, avgR +0.05 to +0.10, cadence 2–2.6/day.
+
+Per-quarter (the gate). **noSlope +0.41**: Q4'24 +3.62, Q1'25 −1.10, Q2'25 +1.95, Q3'25 −0.14, Q4'25
++0.06 — top-heavy, 2 negative quarters. **wideTiers +0.31**: Q4'24 +1.89, Q1'25 −0.78, Q2'25 +0.27,
+Q3'25 +0.54, Q4'25 +0.76 — **4 of 5 quarters positive**, only Q1'25 negative, and the positives are
+large-sample (180–200 trades), not one jackpot. wideTiers is the more robust candidate despite the
+lower aggregate.
+
+⚠️ **In-sample, selected from a wide search (~9 configs × 3 timeframes) — multiple-comparison risk is
+high.** Pre-committing **wideTiers @ 15m** (mode MOMENTUM, thr3, look20, slope50, stop1.5, tiers
+1.5/3.0, trail2.5) as the single OOS candidate; the untouched Jan–May'26 window is the referee. See
+the iteration-16 result below for whether it survived.
+
+### Iteration 16 — OOS referee: momentum @ 15m SURVIVES (first positive-OOS result) (2026-07-04)
+
+Pre-committed **wideTiers @ 15m** taken to the untouched Jan–May'26 window (one shot, no retuning):
+
+| Window | Trades | /day | Win% | avgR | netAvgPnl |
+|---|---|---|---|---|---|
+| In-sample (Dec'24→Dec'25) | 695 | 2.1 | 53% | 0.10 | +0.31 |
+| **Out-of-sample (Jan–May'26)** | 216 | 2.1 | 51% | 0.06 | **+0.10** |
+
+**The sign held positive out-of-sample** — the first candidate ever to do so (every mean-reversion
+candidate flipped −0.79 to −2.02 OOS). Cadence and win rate held (2.1/day, 51–53%). This is a real,
+generalizing positive-skew edge, not an in-sample mirage.
+
+**But it's thin and trend-dependent, not yet every-month-positive.** OOS by month: Jan −1.64, Feb
+−2.40, Mar −0.80, **Apr +2.43** — April's trend leg carried the quarter; Q1'26 was −1.73, echoing the
+in-sample Q1'25 −0.78 weakness. Momentum makes money in trending months and bleeds in choppy ones
+(Jan–Mar). So: **positive expectancy that survives OOS ✅, but consistency/every-quarter ❌.**
+
+**This is the project's turning point.** After 15 iterations of break-even/negative mean-reversion,
+momentum @ 15m is the first approach with a genuine, OOS-validated positive edge. It is the thing to
+*develop*, not abandon. Not promoted to `application.yaml` yet (still 5m mean-reversion) — it's a
+validated lead, not a robust every-quarter strategy; promoting the running default is a user call.
+
+### Iteration 17 — momentum surface + duration scan: 10m > 15m, every quarter positive (2026-07-04)
+
+Promoted momentum @ 15m to `application.yaml`, then (user ask) mapped the response surface across
+timeframes 8–25m and around the anchor config. Duration curve (anchor config, in-sample):
+
+| TF | Trades | /day | Win% | avgR | netAvgPnl | $net/day |
+|---|---|---|---|---|---|---|
+| 8m | 1230 | 3.7 | 51% | 0.03 | −0.25 | −0.91 |
+| **10m** | 998 | 3.0 | 53% | 0.09 | **+0.52** | **+1.56** |
+| 12m | 877 | 2.6 | 51% | 0.06 | +0.14 | +0.38 |
+| 15m | 695 | 2.1 | 53% | 0.10 | +0.31 | +0.65 |
+| 20m | 536 | 1.6 | 50% | 0.02 | +0.10 | +0.16 |
+| 25m | 472 | 1.4 | 50% | −0.01 | −0.56 | −0.79 |
+
+**The edge lives in a 10–20m band, peaking at 10m** (8m too noisy, 25m+ too slow). **10m is the new
+best and clears the every-quarter gate**: anchor @10m quarters Q4'24 +2.37, Q1'25 **+0.21**, Q2'25
++0.64, Q3'25 +0.56, Q4'25 +0.32 — all five positive, fixing the Q1'25 −0.78 that 15m had, at higher
+expectancy (+0.52) and cadence (3.0/day, closer to the ~5 target).
+
+Response surface at 10m (which knobs the edge depends on):
+- **Threshold 3 is the sweet spot** — thr2 over-trades to −0.24; thr4 starves to 0.4/day (+0.54 but
+  130 trades). Load-bearing.
+- **Regime-slope gate isn't pulling weight** — slope0 (off) +0.59 / 3.8/day beats the anchor's +0.52;
+  the momentum entry doesn't need it at 10m. Candidate to drop for cadence.
+- **Positive skew confirmed on the tier axis** — tiers 2.0/4.0 (wider) +0.77 net / avgR 0.12 at 47%
+  win; tiers 1.0/2.0 (tighter) +0.26 at 62% win. Wider = bigger winners, the intended shape.
+- stop 1.0 too tight (41% win); breakout lookback 10–30 all similar (~+0.4 to +0.5).
+
+**Next: 15m→10m is a clean single-parameter improvement** (same entry/exit that already passed 15m
+OOS, just a better timeframe, every-quarter-positive in-sample). Pre-committing the anchor @10m for
+ONE OOS shot before re-promoting. Richer surface cells (wider tiers, slope off) are follow-on tuning
+to do IN-SAMPLE with walk-forward — not to stack onto the same OOS peek. See iteration 18.
+
+### Iteration 18 — OOS at 10m: every quarter positive in AND out of sample; re-promoted (2026-07-04)
+
+Pre-committed anchor @10m (same entry/exit that passed 15m OOS, timeframe 15→10) taken to Jan–May'26:
+
+| Window | Trades | /day | Win% | avgR | netAvgPnl | quarters |
+|---|---|---|---|---|---|---|
+| In-sample (Dec'24→Dec'25) | 998 | 3.0 | 53% | 0.09 | **+0.52** | all 5 positive |
+| **Out-of-sample (Jan–May'26)** | 283 | 2.7 | 53% | 0.13 | **+0.45** | Q1'26 +0.09, Q2'26 +0.96 |
+
+**10m holds out-of-sample far better than 15m** (+0.45 vs +0.10; both OOS quarters positive vs 15m's
+Q1'26 −1.73). Only 1 of 5 OOS months negative (Mar −1.34). This is the project's **first profitable,
+every-quarter-positive result in and out of sample.** Re-promoted `application.yaml` to 10m.
+
+**Honest status vs. north star:** makes money ✅ (+0.45 OOS, ~$1.2/day per unit @ $1/pt); every
+quarter positive ✅ (in + out of sample); cadence 2.7–3.0/day (toward the ~5 target) ✅-ish;
+reproducible/explainable ✅ (4 momentum pillar votes + regime gate + scale-out, all in yaml).
+Win-rate 53% ❌ vs the old 80% goal — but that goal was the thing making the strategy *lose*; the
+positive-skew trade (win rate for money) was the whole unlock. The remaining risk is the usual one:
+this is still a backtest on ~17 months of one instrument; live needs risk controls first.
+
+**Where a fresh session should pick up (momentum @ 10m is the live, validated lead — 2026-07-04):**
+1. **Refine the 10m surface with walk-forward** (NOT another single OOS peek — 2026 is now used twice).
+   In-sample leads not yet OOS-validated: wider tiers (2.0/4.0 → +0.77 IS, avgR 0.12), dropping the
+   slope gate (slope0 → +0.59 IS, 3.8/day). Validate via walk-forward splits inside Dec'24–Dec'25.
+2. **Stabilise the one weak month (Mar'26 −1.34)** if a clean, few-parameter filter exists — but do
+   not overfit to a single month.
+3. **Risk controls before any live use** (position sizing, max drawdown, circuit breaker) — now the
+   highest-value non-strategy work, since there's finally a profitable edge to protect.
+4. Cadence toward ~5/day: 10m already gives ~3/day; a 2nd instrument's profile (breadth) is the
+   principled way to more, once data ingestion is unblocked (needs Capital.com creds).
+5. MONITOR-mode validation remains open (needs Capital.com network access + credentials).
+
+--- earlier live-lead notes (15m, superseded by 10m in iteration 18) ---
+1. **Stabilize the choppy-quarter bleed (Q1'25 / Q1'26).** Momentum loses in non-trending months.
+   A trend-quality / chop filter (e.g. ADX or an efficiency-ratio gate, or the regime-slope gate the
+   noSlope variant dropped — revisit it now that the base thesis is proven) could cut the Jan–Mar
+   drawdowns without killing the April-type winners. Tune IN-SAMPLE with walk-forward — the 2026 OOS
+   window is now partially burned for wideTiers, so don't re-tune against it; a fresh honest read
+   needs walk-forward splits inside Dec'24–Dec'25 or new data.
+2. **Refine the momentum entry/exit** (RSI band, breakout lookback, tier/trail geometry) at 15m —
+   only the 5m→15m + a handful of exit knobs were swept; the 15m response surface is barely mapped.
+3. **Scan 10m and 20m** — 15m beat 5m and 30m, but the optimum between them is unmapped.
+4. Consider promoting momentum @ 15m to `application.yaml` as the documented best profile (user call
+   — it changes the running default from 5m mean-reversion; it's the first net-positive config).
+5. Still open: risk controls (position sizing, max drawdown, circuit breaker) before any live use;
+   per-instrument config profiles for breadth; MONITOR-mode validation (needs Capital.com creds).
+
+Reusable plumbing built this session: `BacktestRunner.scaleOutExit` (3-tier aggressive-trail exit),
+`StrategyMode.MOMENTUM` + momentum pillars, `trend-ema-slope-lookback` regime gate, `-Dsweep.tf`
+timeframe override — all config-driven and unit-tested where it matters.
+
+--- superseded fork notes (kept for history) ---
+Near-break-even mean-reversion plateau options (pre-breakthrough): breadth via 2nd instrument;
+rethink entry (→ done, momentum won); document break-even profile. The entry rethink resolved this.
 
 ---
 
