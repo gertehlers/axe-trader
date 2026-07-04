@@ -1,6 +1,7 @@
 package io.g3tech.axetrader.backtest;
 
 import io.g3tech.axetrader.backtest.config.BacktestProperties;
+import io.g3tech.axetrader.backtest.experiment.ExperimentStore;
 import io.g3tech.axetrader.backtest.indicators.IndicatorBundle;
 import io.g3tech.axetrader.backtest.runner.BacktestRunner;
 import io.g3tech.axetrader.backtest.runner.TradeResult;
@@ -96,28 +97,36 @@ class ConfluenceSweepTest {
                 tradingDays, avgSpread, (System.currentTimeMillis() - loadStart) / 1000.0);
 
         Map<String, BacktestProperties.Strategy> grid = buildGrid(backtestProperties.getStrategy());
+        boolean persist = Boolean.getBoolean("sweep.persist");
 
         List<SweepResult> results = new ArrayList<>();
-        for (Map.Entry<String, BacktestProperties.Strategy> entry : grid.entrySet()) {
-            long runStart = System.currentTimeMillis();
-            BacktestProperties.Strategy config = entry.getValue();
-            IndicatorBundle indicators = IndicatorBundle.from(series, config);
-            ConfluenceStrategies strategies = strategyFactory.build(indicators, config);
-            List<TradeResult> trades = backtestRunner.run(series, strategies, indicators, config);
-            results.add(SweepResult.of(entry.getKey(), trades, tradingDays, avgSpread));
-            System.out.printf("  ran %-34s %5d trades in %.1fs%n",
-                    entry.getKey(), trades.size(), (System.currentTimeMillis() - runStart) / 1000.0);
-            printBreakdown("regime", trades, t -> t.regime().name(), avgSpread);
-            printBreakdown("quarter", trades,
-                    t -> t.entryTime().getYear() + "Q" + ((t.entryTime().getMonthValue() - 1) / 3 + 1),
-                    avgSpread);
-            printBreakdown("q+dir", trades,
-                    t -> t.entryTime().getYear() + "Q" + ((t.entryTime().getMonthValue() - 1) / 3 + 1)
-                            + "_" + t.direction().name(),
-                    avgSpread);
-            printBreakdown("month", trades,
-                    t -> "%d-%02d".formatted(t.entryTime().getYear(), t.entryTime().getMonthValue()),
-                    avgSpread);
+        try (ExperimentStore store = persist ? new ExperimentStore(ExperimentStore.DEFAULT_DB) : null) {
+            for (Map.Entry<String, BacktestProperties.Strategy> entry : grid.entrySet()) {
+                long runStart = System.currentTimeMillis();
+                BacktestProperties.Strategy config = entry.getValue();
+                IndicatorBundle indicators = IndicatorBundle.from(series, config);
+                ConfluenceStrategies strategies = strategyFactory.build(indicators, config);
+                List<TradeResult> trades = backtestRunner.run(series, strategies, indicators, config);
+                results.add(SweepResult.of(entry.getKey(), trades, tradingDays, avgSpread));
+                if (store != null) {
+                    long id = store.save(entry.getKey(), config, backtestProperties.getEpic(),
+                            backtestProperties.getTimeframeMinutes(), from, to, trades, avgSpread, tradingDays);
+                    System.out.printf("  persisted experiment #%d%n", id);
+                }
+                System.out.printf("  ran %-34s %5d trades in %.1fs%n",
+                        entry.getKey(), trades.size(), (System.currentTimeMillis() - runStart) / 1000.0);
+                printBreakdown("regime", trades, t -> t.regime().name(), avgSpread);
+                printBreakdown("quarter", trades,
+                        t -> t.entryTime().getYear() + "Q" + ((t.entryTime().getMonthValue() - 1) / 3 + 1),
+                        avgSpread);
+                printBreakdown("q+dir", trades,
+                        t -> t.entryTime().getYear() + "Q" + ((t.entryTime().getMonthValue() - 1) / 3 + 1)
+                                + "_" + t.direction().name(),
+                        avgSpread);
+                printBreakdown("month", trades,
+                        t -> "%d-%02d".formatted(t.entryTime().getYear(), t.entryTime().getMonthValue()),
+                        avgSpread);
+            }
         }
 
         results.sort((a, b) -> Double.compare(b.netWinRate, a.netWinRate));
@@ -141,17 +150,49 @@ class ConfluenceSweepTest {
     private static Map<String, BacktestProperties.Strategy> buildGrid(BacktestProperties.Strategy base) {
         Map<String, BacktestProperties.Strategy> grid = new LinkedHashMap<>();
 
-        grid.put("final_longOnly_th3_prox0.5_look10_stop3.0_tgt0.75_trend200",
-                variant(base, s -> {
-                    s.setConfluenceThreshold(3);
-                    s.setEnableStructure(false);
-                    s.setEnableShort(false);
-                    s.setProximityAtrMultiple(0.5);
-                    s.setSwingLookbackBars(10);
-                    s.setStopAtrMultiple(3.0);
-                    s.setTargetAtrMultiple(0.75);
-                    s.setTrendEmaPeriod(200);
-                }));
+        // Backfill milestones from the tuning log — winners AND known losers, so the first loser-
+        // clustering has a contrast set. Run with -Dsweep.persist=true to write to experiments.sqlite.
+        // Pre-gate anchor: threshold 3, structure off, long+short, no trend gate (as history ran them).
+        BacktestProperties.Strategy pregate = variant(base, s -> {
+            s.setConfluenceThreshold(3);
+            s.setEnableStructure(false);
+            s.setEnableLong(true);
+            s.setEnableShort(true);
+            s.setTrendEmaPeriod(0);
+        });
+
+        // Old 32% baseline (iteration 1): threshold 2, structure on, original geometry.
+        grid.put("i1_baseline_th2_struct", variant(base, s -> {
+            s.setConfluenceThreshold(2);
+            s.setEnableStructure(true);
+            s.setEnableShort(true);
+            s.setTrendEmaPeriod(0);
+            s.setStopAtrMultiple(1.5);
+            s.setTargetAtrMultiple(3.0);
+        }));
+        // Pre-gate win-rate champion (iteration 3): passed in-sample, FAILED out-of-sample on expectancy.
+        grid.put("i3_pregate_winchamp_stop4.0_tgt0.5", variant(pregate, s -> {
+            s.setProximityAtrMultiple(0.5);
+            s.setSwingLookbackBars(8);
+            s.setStopAtrMultiple(4.0);
+            s.setTargetAtrMultiple(0.5);
+        }));
+        // Pre-gate expectancy champion (iteration 3).
+        grid.put("i3_pregate_expchamp_stop3.0_tgt0.75", variant(pregate, s -> {
+            s.setProximityAtrMultiple(0.5);
+            s.setSwingLookbackBars(10);
+            s.setStopAtrMultiple(3.0);
+            s.setTargetAtrMultiple(0.75);
+        }));
+        // Promoted final candidate (iteration 8): long-only + trend-EMA-200 gate.
+        grid.put("final_longOnly_trend200", variant(pregate, s -> {
+            s.setEnableShort(false);
+            s.setProximityAtrMultiple(0.5);
+            s.setSwingLookbackBars(10);
+            s.setStopAtrMultiple(3.0);
+            s.setTargetAtrMultiple(0.75);
+            s.setTrendEmaPeriod(200);
+        }));
 
         return grid;
     }

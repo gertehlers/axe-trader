@@ -13,9 +13,17 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
 
 - [ ] Validate MONITOR mode end-to-end (auth → WebSocket → SQLite writes confirmed)
 - [ ] **Observability + exits round** — see `docs/observability-and-exits-design.md` for the full spec.
-      Order: (1) experiment SQLite DB + per-trade feature capture + `exit_reason`, backfilled;
-      (2) pnl audit + $ translation; (3) phone trade-review dashboard (self-describing SVG cards,
-      50 bars each side); (4) 3-tier scale-out exit experiment.
+      - [x] (1) experiment SQLite DB + per-trade feature capture + `exit_reason`, backfilled.
+        `experiments.sqlite` (gitignored, regenerate with `-Dsweep.persist=true`), queryable via
+        `experiments/query.py`. 4 milestones backfilled (baseline, 2 pre-gate losers, final).
+        **First lead (preliminary — pending pnl audit):** on the final candidate, longs entered
+        *near* the trend EMA (0–1.5 ATR above) win 92% @ net +2.68, while extended entries (>10 ATR
+        above, and the 3–4.7 ATR band) drag — i.e. "buy the dip near the EMA," don't chase extension.
+        A `dist_to_trend_ema_atr` ceiling is a candidate filter once pnl is trusted.
+      - [ ] (2) **pnl audit + $ translation** ← NEXT, needs deep review (money-critical). Verify
+        sign/spread/fill-price and the intrabar-vs-close stop problem before trusting any expectancy.
+      - [ ] (3) phone trade-review dashboard (self-describing SVG cards, 50 bars each side).
+      - [ ] (4) 3-tier scale-out exit experiment.
 - [ ] Execution realism in the backtest: intrabar stop/target triggers + bid/ask fills, then
       re-validate the promoted profile (current numbers use mid-price fills and close-triggered
       stops — optimistic). Folded into the pnl audit (item 2 above).
