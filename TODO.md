@@ -338,9 +338,8 @@ once stops actually fill intrabar at the level. The +0.12/+0.45 was close-fill o
 
 ## Infrastructure
 
-- [ ] Install JDK 26 in the web-session container (setup script / SessionStart hook) — today
-      containers ship JDK 21 only and `./mvnw` fails on `release version 26`. Interim workaround is
-      `-Djava.version=21` (see `docs/dev-environment.md`); the hook is the durable fix.
+- [x] Retargeted the project to JDK 21 (2026-07-04) to match the web-session container runtime, so
+      `./mvnw test` builds with no flag. Was Java 26; no 22–26-only feature was in use.
 - [ ] Implement TRADE mode order execution (blocked until strategy accuracy is proven)
 - [ ] Add risk controls before any live trading (position sizing, max drawdown, circuit breaker)
 - [ ] Design per-instrument config profiles ("personality") — today `backtest.strategy` is one flat

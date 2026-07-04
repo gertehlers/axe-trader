@@ -1,6 +1,6 @@
 # axe-trader
 
-Spring Boot 4 / Java 26 trading bot framework. Capital.com integration for live market data; TA4j-powered backtest engine for strategy development. Target instrument: US500 (S&P 500).
+Spring Boot 4 / Java 21 trading bot framework. Capital.com integration for live market data; TA4j-powered backtest engine for strategy development. Target instrument: US500 (S&P 500).
 
 ## Current Phase
 
@@ -55,9 +55,10 @@ only durable state:
 
 ## Build & Run
 
-> **Ephemeral-session setup** (JDK 26-vs-21, decompressing the history DB before tests, sweep
-> commands): read `docs/dev-environment.md` first on a fresh container — a couple of gotchas will
-> otherwise make `./mvnw test` fail out of the box.
+> **Ephemeral-session setup**: on a fresh container the history DB must be decompressed before any
+> test (`gzip -dc data/axe-trader.sqlite.gz > data/axe-trader.sqlite` — `DatabaseBootstrap` only runs
+> in `main()`, not under `@SpringBootTest`). See `docs/dev-environment.md` for that and the sweep
+> commands.
 
 ```bash
 ./mvnw clean package -DskipTests   # build
