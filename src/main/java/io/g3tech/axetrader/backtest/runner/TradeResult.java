@@ -14,6 +14,7 @@ public record TradeResult(
         VolatilityRegime regime,
         boolean isWin,
         ExitReason exitReason,
+        TradeFeatures features,
         List<String> reasons
 ) {
 }

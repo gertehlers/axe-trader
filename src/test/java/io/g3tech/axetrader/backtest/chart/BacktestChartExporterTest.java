@@ -50,7 +50,7 @@ class BacktestChartExporterTest {
         IndicatorBundle indicators = IndicatorBundle.from(series, backtestProperties.getStrategy());
 
         ConfluenceStrategies strategies = strategyFactory.build(indicators, backtestProperties.getStrategy());
-        List<TradeResult> trades = backtestRunner.run(series, strategies, indicators);
+        List<TradeResult> trades = backtestRunner.run(series, strategies, indicators, backtestProperties.getStrategy());
 
         long longs = trades.stream().filter(t -> t.direction() == Direction.LONG).count();
         long shorts = trades.stream().filter(t -> t.direction() == Direction.SHORT).count();

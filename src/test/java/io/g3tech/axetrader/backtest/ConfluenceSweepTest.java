@@ -103,7 +103,7 @@ class ConfluenceSweepTest {
             BacktestProperties.Strategy config = entry.getValue();
             IndicatorBundle indicators = IndicatorBundle.from(series, config);
             ConfluenceStrategies strategies = strategyFactory.build(indicators, config);
-            List<TradeResult> trades = backtestRunner.run(series, strategies, indicators);
+            List<TradeResult> trades = backtestRunner.run(series, strategies, indicators, config);
             results.add(SweepResult.of(entry.getKey(), trades, tradingDays, avgSpread));
             System.out.printf("  ran %-34s %5d trades in %.1fs%n",
                     entry.getKey(), trades.size(), (System.currentTimeMillis() - runStart) / 1000.0);

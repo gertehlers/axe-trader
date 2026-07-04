@@ -1,5 +1,6 @@
 package io.g3tech.axetrader.backtest.runner;
 
+import io.g3tech.axetrader.backtest.config.BacktestProperties;
 import io.g3tech.axetrader.backtest.indicators.IndicatorBundle;
 import io.g3tech.axetrader.backtest.strategy.ConfluenceStrategies;
 import io.g3tech.axetrader.backtest.strategy.PillarVote;
@@ -23,23 +24,27 @@ public class BacktestRunner {
     private static final int ATR_LOOKBACK = 20;
 
     /**
-     * Runs a single long-only strategy (kept for fixed-rule tests and simple backtests).
+     * Runs a single long-only strategy (kept for fixed-rule tests and simple backtests). No config
+     * is available, so entry features are not captured on the resulting trades.
      */
     public List<TradeResult> run(BarSeries series, Strategy strategy, IndicatorBundle indicators) {
-        return runDirection(series, strategy, indicators, Trade.TradeType.BUY, List.of());
+        return runDirection(series, strategy, indicators, Trade.TradeType.BUY, List.of(), null);
     }
 
     /**
      * Runs the confluence pair: the bullish strategy as LONG and the bearish strategy as
      * SHORT, then merges both into one timeline sorted by entry time. The pillar votes are
-     * re-evaluated at each entry bar to record why the trade was taken.
+     * re-evaluated at each entry bar to record why the trade was taken, and the {@code config}
+     * lets each trade carry its entry {@link TradeFeatures} (swing lookback etc. come from it).
      */
-    public List<TradeResult> run(BarSeries series, ConfluenceStrategies strategies, IndicatorBundle indicators) {
+    public List<TradeResult> run(
+            BarSeries series, ConfluenceStrategies strategies, IndicatorBundle indicators,
+            BacktestProperties.Strategy config) {
         List<TradeResult> results = new ArrayList<>();
         results.addAll(runDirection(
-                series, strategies.longStrategy(), indicators, Trade.TradeType.BUY, strategies.bullishVotes()));
+                series, strategies.longStrategy(), indicators, Trade.TradeType.BUY, strategies.bullishVotes(), config));
         results.addAll(runDirection(
-                series, strategies.shortStrategy(), indicators, Trade.TradeType.SELL, strategies.bearishVotes()));
+                series, strategies.shortStrategy(), indicators, Trade.TradeType.SELL, strategies.bearishVotes(), config));
         results.sort(Comparator.comparing(TradeResult::entryTime));
         return results;
     }
@@ -49,13 +54,14 @@ public class BacktestRunner {
             Strategy strategy,
             IndicatorBundle indicators,
             Trade.TradeType entryType,
-            List<PillarVote> votes) {
+            List<PillarVote> votes,
+            BacktestProperties.Strategy config) {
         TradingRecord record = new BarSeriesManager(series).run(strategy, entryType);
         List<TradeResult> results = new ArrayList<>();
 
         for (Position position : record.getPositions()) {
             if (position.isClosed()) {
-                results.add(toTradeResult(series, indicators, position, votes));
+                results.add(toTradeResult(series, indicators, position, votes, config));
             }
         }
 
@@ -63,7 +69,8 @@ public class BacktestRunner {
     }
 
     private TradeResult toTradeResult(
-            BarSeries series, IndicatorBundle indicators, Position position, List<PillarVote> votes) {
+            BarSeries series, IndicatorBundle indicators, Position position, List<PillarVote> votes,
+            BacktestProperties.Strategy config) {
         Trade entry = position.getEntry();
         Trade exit = position.getExit();
 
@@ -75,6 +82,7 @@ public class BacktestRunner {
         double pnl = pnl(direction, entryPrice, exitPrice);
         double risk = indicators.atr.getValue(entryIndex).doubleValue();
         double rMultiple = risk == 0.0 ? 0.0 : pnl / risk;
+        List<String> reasons = reasonsAt(votes, entryIndex);
 
         return new TradeResult(
                 series.getBar(entryIndex).getEndTime().atZone(ZoneOffset.UTC),
@@ -87,7 +95,74 @@ public class BacktestRunner {
                 classifyVolatility(indicators, entryIndex),
                 pnl > 0.0,
                 classifyExit(series, exitIndex, pnl),
-                reasonsAt(votes, entryIndex));
+                config == null ? null : featuresAt(series, indicators, config, entryIndex, reasons.size()),
+                reasons);
+    }
+
+    /**
+     * Computes the entry feature vector at the signal bar ({@code entryIndex - 1}, the bar the votes
+     * agreed on — ta4j fills on the next bar), using only backward-looking data. Distances are in
+     * ATR units so they compare across volatility regimes.
+     */
+    private static TradeFeatures featuresAt(
+            BarSeries series, IndicatorBundle ind, BacktestProperties.Strategy config,
+            int entryIndex, int confluenceScore) {
+        int i = Math.max(0, entryIndex - 1);
+        double atr = ind.atr.getValue(i).doubleValue();
+        double denom = atr == 0.0 ? Double.NaN : atr;
+        double close = ind.closePrice.getValue(i).doubleValue();
+
+        double distBbLower = (close - ind.bbLower.getValue(i).doubleValue()) / denom;
+        double distBbUpper = (ind.bbUpper.getValue(i).doubleValue() - close) / denom;
+
+        int lookback = Math.max(1, config.getSwingLookbackBars());
+        int start = Math.max(0, i - lookback + 1);
+        double lowest = Double.MAX_VALUE;
+        double highest = -Double.MAX_VALUE;
+        for (int j = start; j <= i; j++) {
+            double c = ind.closePrice.getValue(j).doubleValue();
+            lowest = Math.min(lowest, c);
+            highest = Math.max(highest, c);
+        }
+        double distSupport = (close - lowest) / denom;
+        double distResistance = (highest - close) / denom;
+
+        Double distTrendEma = ind.trendEma == null
+                ? null
+                : (close - ind.trendEma.getValue(i).doubleValue()) / denom;
+
+        var slopeEma = ind.trendEma != null ? ind.trendEma : ind.ema;
+        int k = 10;
+        int back = Math.max(0, i - k);
+        int span = Math.max(1, i - back);
+        double slope = (slopeEma.getValue(i).doubleValue() - slopeEma.getValue(back).doubleValue()) / (span * denom);
+
+        double volSma = ind.volumeSma.getValue(i).doubleValue();
+        double volumeRatio = volSma == 0.0 ? Double.NaN : ind.volume.getValue(i).doubleValue() / volSma;
+
+        var time = series.getBar(entryIndex).getEndTime().atZone(ZoneOffset.UTC);
+        return new TradeFeatures(
+                ind.rsi.getValue(i).doubleValue(),
+                distBbLower, distBbUpper, distSupport, distResistance,
+                distTrendEma, slope, atr,
+                atrPercentile(ind, i, 100),
+                volumeRatio,
+                time.getHour(), time.getDayOfWeek().getValue(), confluenceScore);
+    }
+
+    /** Rank of the ATR at {@code index} within the trailing {@code window} bars, in [0, 1]. */
+    private static double atrPercentile(IndicatorBundle indicators, int index, int window) {
+        int start = Math.max(0, index - window + 1);
+        double current = indicators.atr.getValue(index).doubleValue();
+        int countBelow = 0;
+        int total = 0;
+        for (int j = start; j <= index; j++) {
+            if (indicators.atr.getValue(j).doubleValue() <= current) {
+                countBelow++;
+            }
+            total++;
+        }
+        return total == 0 ? 0.0 : (double) countBelow / total;
     }
 
     /**
