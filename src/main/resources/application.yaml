@@ -63,6 +63,7 @@ backtest:
     max-holding-bars: 0   # force-exit after N bars if neither stop nor target hit (0 = disabled)
     trend-ema-period: 200 # hard directional gate: long only above / short only below this EMA (0 = disabled)
     trend-ema-max-atr: 0  # proximity ceiling: only enter within N ATR of the trend EMA (0 = disabled; ~2 is the US500 lead, pending OOS validation)
+    trend-ema-slope-lookback: 0  # regime gate: longs only when the trend EMA is rising over the last N bars, shorts only when falling (0 = disabled; iteration 13 experiment)
 
     # 3-tier scale-out exit (iteration 11, aggressive-trail ratchet). Disabled by default until it
     # beats the single-target baseline on net expectancy across quarters. When on, stop-atr-multiple

@@ -116,6 +116,18 @@ public class StrategyFactory {
                 longGate = longGate.and(close.isLessThan(trendEma.plus(ceiling)));
                 shortGate = shortGate.and(close.isGreaterThan(trendEma.minus(ceiling)));
             }
+
+            // Regime-slope gate (iteration 13): the price-vs-EMA gate above is same-timeframe and
+            // whipsaws in choppy/down regimes (the Dec'24 / Q1'25 losers), so "above the EMA" still
+            // buys into downtrends. Require the trend EMA itself to be RISING over the last N bars
+            // for longs (FALLING for shorts) — a coarse, few-parameter higher-timeframe regime proxy
+            // that sits out sustained downtrends instead of slicing in-sample loser features.
+            if (config.getTrendEmaSlopeLookback() > 0) {
+                NumericIndicator trendEma = NumericIndicator.of(indicators.trendEma);
+                NumericIndicator prior = trendEma.previous(config.getTrendEmaSlopeLookback());
+                longGate = longGate.and(trendEma.isGreaterThan(prior));
+                shortGate = shortGate.and(trendEma.isLessThan(prior));
+            }
         }
         if (!config.isEnableLong()) {
             longGate = BooleanRule.FALSE;

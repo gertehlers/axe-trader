@@ -82,6 +82,7 @@ public class BacktestProperties {
         private int maxHoldingBars;         // force-exit after N bars if neither stop nor target hit (0 = disabled)
         private int trendEmaPeriod;         // hard directional gate: long only above / short only below this EMA (0 = disabled)
         private double trendEmaMaxAtr;      // proximity ceiling: only enter within this many ATR of the trend EMA (0 = disabled)
+        private int trendEmaSlopeLookback;  // regime gate: longs only when the trend EMA is RISING over the last N bars, shorts only when FALLING (0 = disabled)
 
         // 3-tier scale-out exit (aggressive-trail ratchet). When enabled, stopAtrMultiple is the
         // initial stop and targetAtrMultiple is ignored: bank 1/3 at tier1 (stop->breakeven),
@@ -205,6 +206,14 @@ public class BacktestProperties {
 
         public void setTrendEmaMaxAtr(double trendEmaMaxAtr) {
             this.trendEmaMaxAtr = trendEmaMaxAtr;
+        }
+
+        public int getTrendEmaSlopeLookback() {
+            return trendEmaSlopeLookback;
+        }
+
+        public void setTrendEmaSlopeLookback(int trendEmaSlopeLookback) {
+            this.trendEmaSlopeLookback = trendEmaSlopeLookback;
         }
 
         public boolean isScaleOutEnabled() {

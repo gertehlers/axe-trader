@@ -215,13 +215,22 @@ class ConfluenceSweepTest {
             s.setTrailAtrMultiple(1.0);
         });
 
-        // Iteration 12: tighten the pre-T1 initial stop (the untested exit lever). 3.0 ATR is very
-        // wide for a quick mean-reversion bounce; cutting the loser size should lift expectancy even
-        // at the cost of more, smaller losers (expectancy — not win rate — is the gate). Sweep the
-        // initial stop with scale-out on. Gate on worst-quarter net ≥ ~0 in-sample before any OOS.
-        for (double stopAtr : new double[] {1.5, 2.0, 2.5, 3.0}) {
-            grid.put("scaleOut_trail1.0_stop%.1f".formatted(stopAtr),
-                    variant(scaleOut, s -> s.setStopAtrMultiple(stopAtr)));
+        // Iteration 12 (done): tighten the pre-T1 initial stop. stop 2.5 ATR won (net −0.02 IS, the
+        // best all session) but expectancy converged to break-even from below without crossing, and
+        // Q4'24 + Q1'25 stayed negative. The exit lever is exhausted; the plateau is entry-shaped.
+        BacktestProperties.Strategy bestExit = variant(scaleOut, s -> s.setStopAtrMultiple(2.5));
+        grid.put("scaleOut_trail1.0_stop2.5", bestExit);
+
+        // Iteration 13 (entry redesign — user pick, 2026-07-04): regime-slope gate. The price-vs-EMA
+        // trend gate is same-timeframe and whipsaws in the Dec'24/Q1'25 chop, so "above the EMA"
+        // still buys downtrends. Require the trend EMA to be RISING over the last N bars (a coarse
+        // higher-timeframe regime proxy) on top of the best exit. Sweep N; keep the 80%-win
+        // mean-reversion thesis intact. Gate: net > 0 AND every quarter ≥ ~0 in-sample before the
+        // ONE out-of-sample shot — a regime gate is still an entry filter, so hold the OOS discipline
+        // that iteration 10 taught us.
+        for (int slope : new int[] {20, 50, 100}) {
+            grid.put("i13_regimeSlope%d".formatted(slope),
+                    variant(bestExit, s -> s.setTrendEmaSlopeLookback(slope)));
         }
 
         return grid;
@@ -264,6 +273,7 @@ class ConfluenceSweepTest {
         c.setMaxHoldingBars(s.getMaxHoldingBars());
         c.setTrendEmaPeriod(s.getTrendEmaPeriod());
         c.setTrendEmaMaxAtr(s.getTrendEmaMaxAtr());
+        c.setTrendEmaSlopeLookback(s.getTrendEmaSlopeLookback());
         c.setScaleOutEnabled(s.isScaleOutEnabled());
         c.setTier1AtrMultiple(s.getTier1AtrMultiple());
         c.setTier2AtrMultiple(s.getTier2AtrMultiple());

@@ -420,6 +420,36 @@ stop-outs in choppy/down regimes, which only entry avoidance could fix, and entr
 generalize. **The honest read: this single long-only mean-reversion entry on US500 5m is a real
 ~80%-win but structurally break-even edge.** Micro-tuning US500 exits further has low expected value.
 
+### Iteration 13 — regime-slope entry gate: shuffles the bad quarter, still break-even (2026-07-04)
+
+Entry redesign (user pick): a **regime-slope gate** — longs only when the trend EMA is *rising*
+over the last N bars (shorts only when falling), a coarse higher-timeframe regime proxy on top of
+the same-timeframe price-vs-EMA gate. Rationale: in the Dec'24/Q1'25 chop the 5m EMA whipsaws, so
+"above the EMA" still buys downtrends. Code: `backtest.strategy.trend-ema-slope-lookback` +
+`StrategyFactory` gate. Tested on the best exit (scaleOut trail1.0 + stop2.5), sweeping N in-sample:
+
+| Config | Trades | /day | Win% | netAvgPnl |
+|---|---|---|---|---|
+| scaleOut trail1.0 stop2.5 (no slope gate) | 312 | 0.9 | 78% | −0.02 |
+| i13 regimeSlope20 | 311 | 0.9 | 78% | −0.02 |
+| i13 regimeSlope50 | 287 | 0.9 | 77% | −0.02 |
+| **i13 regimeSlope100** | 258 | 0.8 | 78% | **0.00** |
+
+slope100 quarters: Q4'24 −1.66 (11 trades), Q1'25 **+0.13** (fixed!), Q2'25 +0.47, Q3'25 −0.29,
+Q4'25 +0.00. **The gate fixed the target quarter (Q1'25 −0.40→+0.13) but worsened Q4'24 (−0.89→
+−1.66) and flipped Q3'25 negative** — it moved the bleed, didn't stop it. Aggregate reached exactly
+break-even (0.00) at the cost of ⅙ of the trades. Still fails net > 0 AND every-quarter ≥ 0 → no OOS.
+
+**Session conclusion (iterations 11–13, this session): the edge is structurally ~break-even.** Three
+independent levers — exit geometry (scale-out, −0.14→−0.06), initial-stop tightening (−0.06→−0.02),
+and a regime entry gate (−0.02→0.00) — each moved expectancy asymptotically toward zero *from below*
+and none crossed into consistent profit; trimming trades to fix one bad quarter just surfaces
+another, while cadence thins. Combined with iterations 1–10 (entry filters, all failed OOS), the
+honest finding is that **long-only mean-reversion on US500 5m is a genuine ~80%-win but break-even
+edge. The 80%-win-rate north star and the make-money north star appear to be in direct conflict for
+this instrument+thesis** — the high win rate is *bought* with wins≈losses geometry that can't be
+net-positive after costs. See the fork below; decided with the user before spending more iterations.
+
 **Where a fresh session should pick up (STRATEGIC FORK — surfaced to user 2026-07-04):**
 The near-break-even plateau is a genuine fork, not a bug to grind on. Options, highest-value first:
 1. **Breadth, not more US500 exit tuning.** Add a second instrument with its own tuned "personality"
