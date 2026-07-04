@@ -212,6 +212,30 @@ LONG/SHORT × quarter breakdown to the harness — if bad quarters bleed on one 
 a hard higher-timeframe trend gate (only long when trend up/flat, only short when down/flat),
 which is explainable and pillar-consistent. No strategy code until the data confirms.
 
+### Tuning iteration 6 — directional signature confirmed (2026-07-04)
+
+LONG/SHORT × quarter split on the robust profile (th3/noStruct/prox0.5/look10/stop3.0/tgt0.75):
+
+| Quarter | LONG net | SHORT net |
+|---------|----------|-----------|
+| 2024Q4  | **−2.58** | −0.57    |
+| 2025Q1  | +1.08    | −0.45     |
+| 2025Q2  | +0.94    | **+4.98** |
+| 2025Q3  | +0.49    | −1.26     |
+| 2025Q4  | +1.37    | +1.20     |
+
+1. **Longs are consistently profitable in every 2025 quarter**; the only long disaster is Dec 2024 —
+   a selloff month where mean-reversion longs caught falling knives all the way down.
+2. **Shorts are a lottery ticket**: bleed in 3 of 5 quarters, jackpot (+4.98/trade) in the Q2'25
+   selloff. Classic S&P profile — shorting mean-reversion fights upward drift except in corrections.
+3. Both facts point at one fix: **hard higher-timeframe trend gate per direction** — longs only when
+   price is above a long EMA (kills Dec-24-style knife-catching), shorts only when below it (keeps
+   the crash jackpot, cuts the drift bleed).
+
+**Next (iteration 7):** implement `trend-ema-period` (hard directional gate, 0 = disabled), sweep
+{100, 200, 400} × the two lead profiles. Pass bar unchanged: every quarter net ≥ ~0 in-sample, then
+walk-forward check, and only then the final one-shot on 2026.
+
 ---
 
 ## Infrastructure
