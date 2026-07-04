@@ -86,7 +86,26 @@ public class BacktestRunner {
                 rMultiple,
                 classifyVolatility(indicators, entryIndex),
                 pnl > 0.0,
+                classifyExit(series, exitIndex, pnl),
                 reasonsAt(votes, entryIndex));
+    }
+
+    /**
+     * Classifies why the position closed. The confluence exit rule is
+     * {@code stopLoss OR stopGain OR timeStop}, and stopGain only fires in profit / stopLoss only
+     * in loss — so for a mid-series exit the pnl sign identifies the trigger. A position still open
+     * at the last bar is force-closed ({@link ExitReason#END}).
+     *
+     * <p>TIME exits are not distinguished here (this method has no access to {@code max-holding-bars});
+     * with the time stop disabled — as in the promoted profile and every tuned candidate — no TIME
+     * exits occur, so the classification is exact. When a config enables the time stop, the
+     * experiment-writer (which has the config) will refine this; see the design spec.
+     */
+    private static ExitReason classifyExit(BarSeries series, int exitIndex, double pnl) {
+        if (exitIndex >= series.getEndIndex()) {
+            return ExitReason.END;
+        }
+        return pnl > 0.0 ? ExitReason.TARGET : ExitReason.STOP;
     }
 
     /**

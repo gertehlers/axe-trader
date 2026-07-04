@@ -13,6 +13,7 @@ public record TradeResult(
         double rMultiple,
         VolatilityRegime regime,
         boolean isWin,
+        ExitReason exitReason,
         List<String> reasons
 ) {
 }
