@@ -58,10 +58,22 @@ to the laptop.
 
 Four independent units, each with one responsibility:
 
-### 1. Engine (Java, laptop) — unchanged
-No strategy/backtest code changes. It already writes `experiments.sqlite` with per-trade features
-(regenerate with `-Dsweep.persist=true`). This spec adds *only* out-of-band sync scripts around it,
-not code inside it.
+### 1. Engine (Java, laptop) — no strategy changes, one new exporter
+No strategy/backtest logic changes. It already writes `experiments.sqlite` with per-trade features
+(regenerate with `-Dsweep.persist=true`). **However** `experiments.sqlite` does *not* store the
+per-trade bar window, stop price, or target price — bars only exist as raw 1-minute bid/ask in
+`data/axe-trader.sqlite` and are aggregated to the timeframe in memory by `BarSeriesFactory`. Rather
+than re-implement that aggregation in TypeScript (a subtle correctness risk — candles must line up
+exactly with the stored entry/exit prices), we add **one read-only Java exporter** that reuses the
+existing `BarSeriesFactory` / `BacktestChartExporter` bar-extraction to emit an enriched `run.json`
+(experiment KPIs + trades + derived stop/target + the 50-before/50-after bar window per trade). The
+sync script then does a genuinely dumb upload of that file. No strategy/backtest logic is touched.
+
+Derivations the exporter performs:
+- `stop_price` / `target_price` = `entry_price ± (stop|target)-atr-multiple × atr_value` (multiples
+  from the run config; `atr_value` already per-trade).
+- `signal_key` = `instrument|entry_ts|direction`.
+- `bars_json` = the timeframe-aggregated OHLC window, 50 bars before entry through 50 bars after exit.
 
 ### 2. D1 — single source of truth
 Holds both trades and feedback (chosen over a hybrid static-export split: one source of truth,
@@ -150,13 +162,13 @@ Two deliberate choices:
 - `GET  /api/feedback?signal_key=...` — feedback for an entry (or all).
 - `POST /api/feedback` — create/update a flag+note for a `signal_key`.
 
-## Sync scripts (laptop ↔ D1)
+## Sync (laptop ↔ D1)
 
-Kept entirely outside the Java engine — the engine's only job stays "produce `experiments.sqlite`".
-
-- **Push (laptop → D1):** a script reads the latest run from `experiments.sqlite`, transforms rows
-  (including building `bars_json` from the bar window and `signal_key` from epic+entry+direction),
-  and loads them into D1 via `wrangler d1 execute`. One command after a backtest.
+- **Export (Java):** the new exporter (unit 1) writes an enriched `run.json` — KPIs + trades +
+  derived stop/target + `bars_json` + `signal_key`. All bar/derivation logic lives here, reusing
+  proven aggregation.
+- **Push (laptop → D1):** a thin Node/wrangler script uploads `run.json` into D1 via `wrangler d1
+  execute` (dumb copy — no transformation). One command after a backtest.
 - **Pull (D1 → laptop):** a script pulls the `feedback` table to a local file the hypothesis loop /
   `experiments/query.py` can join against `signal_key`. One command.
 

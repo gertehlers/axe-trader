@@ -29,6 +29,22 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
         the scorecard below): win rate holds ~80% but net is **negative** under honest fills
         (IS −0.14, OOS −0.29 pts/trade). See `docs/observability-and-exits-design.md` §2.
       - [ ] (3) phone trade-review dashboard (self-describing SVG cards, 50 bars each side).
+        **Delivery pivoted 2026-07-19 (artifact → Cloudflare + D1)** so phone *feedback* can sync
+        back to the engine's hypothesis loop — an artifact is read-only and can't. Decisions locked
+        with user: everything in D1 (runs + trades + feedback); feedback keyed on a stable
+        `signal_key` (`instrument|entry_ts|direction`) so flags survive re-runs; Cloudflare Access
+        (email-OTP) gates it; **no Java strategy changes** — one read-only `DashboardExporter` emits
+        `run.json` (bars/stop/target aren't in `experiments.sqlite`), a Node/wrangler script dumb-
+        pushes it to D1. Split into two plans:
+        - **Spec:** `docs/superpowers/specs/2026-07-19-cloudflare-trade-review-dashboard-design.md`
+          (supersedes `observability-and-exits-design.md` §3).
+        - **Plan 1 (data pipeline, NEXT TO BUILD):**
+          `docs/superpowers/plans/2026-07-19-trade-review-data-pipeline.md` — Java exporter, D1
+          schema, Worker `/api/*` (Hono), push/pull scripts, Access. 11 TDD tasks. Not yet started.
+        - **Plan 2 (phone UI):** not written yet — React/SVG frontend consuming Plan 1's API,
+          built via the frontend-design skill. Write it after Plan 1 lands.
+        - Frontend hosting = Cloudflare Worker with static-assets binding (not legacy Pages); all
+          Cloudflare code lives under `dashboard/`.
       - [ ] (4) **3-tier scale-out exit experiment ← NOW THE PRIORITY.** Item 2 proved the tight
         single-target geometry is net-negative, so this is the fix, not a nice-to-have. Extend
         `intrabarExit` to bank ⅓ at each of T1/T2/T3 with a ratcheting stop (defaults T1 0.75 /
