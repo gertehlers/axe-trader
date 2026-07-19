@@ -75,6 +75,12 @@ direct case for item 4 below.
 
 ### 3. Phone-first trade-review dashboard (the visual)
 
+> **Superseded (2026-07-19):** delivery mechanism moved from a Claude Artifact to a Cloudflare
+> Worker + D1 — an artifact is read-only and cannot sync phone feedback back to the engine, which is
+> the point of the human-in-the-loop. See `docs/superpowers/specs/2026-07-19-cloudflare-trade-review-dashboard-design.md`.
+> The dashboard *contents* below (KPI tiles, slices, equity curve, self-describing SVG cards) carry
+> over unchanged; only the hosting + a feedback write-back path are new.
+
 Self-contained HTML delivered as a **Claude Artifact** (URL, phone-viewable, shareable). Strict
 Artifact CSP blocks external CDNs, so **inline everything / hand-roll SVG** — do NOT reuse the
 unpkg lightweight-charts in `BacktestChartExporter`. Contents:
