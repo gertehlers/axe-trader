@@ -8,6 +8,13 @@ Spring Boot 4 / Java 21 trading bot framework. Capital.com integration for live 
 Strategy work follows: build a 5-pillar signal confluence targeting >85% entry/exit accuracy.
 See `TODO.md` for the canonical task tracker.
 
+**How we work now (ground rules — read `docs/instrument-personality-playbook.md`):** spec-first
+(SDD), a disciplined human-in-the-loop where an interactive visual review tool proposes hypotheses
+and the full dataset disposes of them (eyes propose, data disposes; every hint earns its place
+out-of-sample with zero privilege), and a repeatable per-instrument "personality" exercise we lock in
+as a process. Role split: Opus directs/coordinates and thinks until it calls in Fable as the
+specialist for the hardest reasoning; Sonnet codes to spec; Haiku does boilerplate.
+
 ## Trading Goals (North Star)
 
 Read this before touching strategy code — it's the bar every change is judged against.

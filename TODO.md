@@ -362,16 +362,30 @@ warns about. **Conclusion: the near-EMA "edge" is not a real edge.** The knob st
 (disabled, `trend-ema-max-atr: 0`) as a documented dead-end; do not retune it against the test set.
 The lesson reinforces the audit: entry filtering isn't the lever — **exit geometry is.**
 
+**New direction (2026-07-19): interactive visual review + human-in-the-loop.** Ground rules are now
+locked in `docs/instrument-personality-playbook.md` — read it before strategy work. In short: build
+the interactive trade-review tool (design spec §3, now a first-class deliverable) as the
+hypothesis-generation engine; use our eyes to *propose* refinements and the full dataset with OOS
+discipline to *dispose* of them (eyes propose, data disposes; a flagged trade is a hypothesis, not a
+label; every hint earns its place out-of-sample with zero privilege). This is a repeatable
+per-instrument "personality" exercise — lock the process, re-derive each instrument's numbers. Work
+spec-first (SDD). Roles: Opus directs + thinks until it calls in Fable for the hardest reasoning;
+Sonnet codes to spec; Haiku does boilerplate.
+
 **Where a fresh session should pick up:**
-1. **3-tier scale-out (design spec §4, exit geometry) — the remaining primary lever.** The entry
-   edge (80% win) is genuine but every entry-side filter tried has failed to add net edge; the
-   0.75:3.0 target:stop geometry is what makes it net-negative. Stop capping winners: bank ⅓ at
-   T1/T2/T3 with a ratcheting stop. **Confirm exact levels + ratchet rule with the user**, then
-   extend `intrabarExit` (it already walks bars checking levels — bank a third at each tier instead
-   of returning on first touch).
-2. Cadence via breadth: second instrument with its own profile (per-instrument config design).
-3. Risk controls before any live use (position sizing, max drawdown, circuit breaker).
-4. MONITOR-mode validation remains open (needs Capital.com network access + credentials).
+1. **Interactive visual review tool (design spec §3 + playbook) — build it first.** It shows the
+   capped-winner problem with your own eyes and is the engine for the hypothesis loop. KPI tiles,
+   trade gallery (50 bars each side, stop/target lines), conditional slices, "flag as hypothesis"
+   capture. Self-contained Claude Artifact.
+2. **3-tier scale-out (design spec §4, exit geometry) — the primary money lever.** The entry edge
+   (80% win) is genuine but every entry-side filter tried has failed to add net edge; the 0.75:3.0
+   target:stop geometry is what makes it net-negative. Bank ⅓ at T1/T2/T3 with a ratcheting stop.
+   **Confirm exact levels + ratchet rule with the user**, then extend `intrabarExit` (it already
+   walks bars checking levels — bank a third at each tier instead of returning on first touch).
+3. Cadence via breadth: second instrument, run through the same playbook loop, with its own profile
+   (per-instrument config design).
+4. Risk controls before any live use (position sizing, max drawdown, circuit breaker).
+5. MONITOR-mode validation remains open (needs Capital.com network access + credentials).
 
 ---
 
