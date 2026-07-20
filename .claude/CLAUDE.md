@@ -6,6 +6,23 @@ it; keep spec and code in sync in the same change. For strategy work this double
 anti-overfitting guard — the spec states what we're testing *before* we see the number, so the
 goalposts can't move after the fact. See `docs/instrument-personality-playbook.md`.
 
+## SDD execution: per-task review is mandatory
+
+When executing a plan with subagent-driven development, **every task gets its own reviewer before
+the next task is dispatched** — never batch reviews to the end, never skip one because a task
+"looks mechanical." Both verdicts (spec compliance *and* code quality) are required.
+
+Why: implementers are told to follow the plan verbatim, so a defect in the plan gets faithfully
+transcribed into the code. In this repo that has already caught, on tasks that reported clean:
+a URL built from a `signal_key` containing `|` unencoded (would have broken every chart load one
+task later), frontend types claiming non-null for nullable D1 columns, and two npm scripts that
+could not work as written. The per-task reviewer is the only thing between a plan defect and
+several tasks of downstream debugging.
+
+Corollary: when a finding is **plan-mandated**, it is the human's call — present the finding and
+the plan text and ask which governs. Don't let the plan grade its own work, and don't silently
+"fix" the plan either.
+
 ## Model routing
 
 **The team, by role:** Opus is the **director/coordinator** — it runs the work, holds the ground
