@@ -22,7 +22,7 @@ const post = (body: unknown) =>
 describe("feedback api", () => {
   it("upserts by signal_key (second post updates, not duplicates)", async () => {
     const key = "US500|2025-03-04T14:30:00Z|LONG";
-    await post({ signal_key: key, flag: "hypothesis", note: "first" });
+    await post({ signal_key: key, flag: "chop", note: "first" });
     const second = await post({ signal_key: key, flag: "knife-catch", note: "second" });
     expect(second.status).toBe(200);
     const all = (await (await app.request("/api/feedback", {}, env)).json()) as FeedbackRow[];
@@ -33,7 +33,7 @@ describe("feedback api", () => {
 
   it("re-attaches across runs via signal_key", async () => {
     const key = "US500|2025-06-06T14:30:00Z|LONG";
-    await post({ signal_key: key, flag: "hypothesis", note: "flagged in run A" });
+    await post({ signal_key: key, flag: "chop", note: "flagged in run A" });
     // simulate a later backtest: a NEW run + NEW trade id, SAME signal_key
     const runB = await seedRun(env.DB, { id: "run-B" });
     await seedTrade(env.DB, runB, { id: "trade-B", signal_key: key });
@@ -44,6 +44,12 @@ describe("feedback api", () => {
   });
 
   it("400 on missing signal_key", async () => {
-    expect((await post({ flag: "x" })).status).toBe(400);
+    expect((await post({ flag: "chop" })).status).toBe(400);
+  });
+
+  it("400 on a flag outside the taxonomy", async () => {
+    const res = await post({ signal_key: "US500|2025-09-09T14:30:00Z|LONG", flag: "banana" });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "unknown flag" });
   });
 });

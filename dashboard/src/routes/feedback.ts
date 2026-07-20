@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../index";
 import type { FeedbackRow } from "../schema";
+import { isFlag } from "../../shared/vocab";
 
 export const feedbackRoutes = new Hono<{ Bindings: Env }>();
 
@@ -22,6 +23,9 @@ feedbackRoutes.get("/feedback", async (c) => {
 feedbackRoutes.post("/feedback", async (c) => {
   const body = await c.req.json<{ signal_key?: string; flag?: string; note?: string }>();
   if (!body.signal_key) return c.json({ error: "signal_key required" }, 400);
+  if (body.flag !== undefined && body.flag !== null && !isFlag(body.flag)) {
+    return c.json({ error: "unknown flag" }, 400);
+  }
   const now = new Date().toISOString();
   // Keyed on signal_key, not trade id — a verdict must survive re-running the backtest.
   await c.env.DB.prepare(
