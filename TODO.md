@@ -38,9 +38,15 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
         pushes it to D1. Split into two plans:
         - **Spec:** `docs/superpowers/specs/2026-07-19-cloudflare-trade-review-dashboard-design.md`
           (supersedes `observability-and-exits-design.md` §3).
-        - **Plan 1 (data pipeline, NEXT TO BUILD):**
-          `docs/superpowers/plans/2026-07-19-trade-review-data-pipeline.md` — Java exporter, D1
-          schema, Worker `/api/*` (Hono), push/pull scripts, Access. 11 TDD tasks. Not yet started.
+        - **Plan 1 (data pipeline): BUILT 2026-07-20, local half done.**
+          `docs/superpowers/plans/2026-07-19-trade-review-data-pipeline.md` — Tasks 1–10 complete
+          and verified (15 vitest tests green, `./mvnw test` 18 green, a real 102-trade export
+          pushed into local D1 and feedback pulled back). **Task 11 (create remote D1, deploy,
+          Cloudflare Access) deliberately NOT run — user is doing the Cloudflare hookup themselves;
+          the runbook is `dashboard/DEPLOY.md`.** `wrangler.jsonc` still carries
+          `database_id: PLACEHOLDER_SET_AT_PROVISION_TIME`.
+          Export a run with `./mvnw test -Dtest=ConfluenceSweepTest -Dsweep=true
+          -Dsweep.exportDashboard=true` (last grid config wins the single `dashboard/run.json`).
         - **Plan 2 (phone UI):** not written yet — React/SVG frontend consuming Plan 1's API,
           built via the frontend-design skill. Write it after Plan 1 lands.
         - Frontend hosting = Cloudflare Worker with static-assets binding (not legacy Pages); all
