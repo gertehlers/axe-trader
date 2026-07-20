@@ -643,15 +643,21 @@ createRoot(document.getElementById("root")!).render(
 
 - [ ] **Step 11: Wire the npm scripts**
 
+Two of these differ from a naive reading, for reasons found during implementation:
+`dashboard/vitest.config.ts` sets no `include`, so without `--exclude` the Workers pool sweeps up
+the jsdom frontend tests and crashes on jsdom-only deps; and Vite resolves `root` from the working
+directory, not from `--config`'s location, so `vite build --config frontend/vite.config.ts` cannot
+find `index.html`.
+
 In `dashboard/package.json`, replace the `test` script and add the new ones:
 
 ```json
     "test": "npm run test:api && npm run test:ui",
-    "test:api": "vitest run",
+    "test:api": "vitest run --exclude '**/frontend/**'",
     "test:ui": "vitest run --root frontend",
     "typecheck": "tsc --noEmit && tsc --noEmit -p frontend",
-    "build": "vite build --config frontend/vite.config.ts",
-    "dev:ui": "vite --config frontend/vite.config.ts",
+    "build": "cd frontend && vite build",
+    "dev:ui": "cd frontend && vite",
     "deploy": "npm run build && wrangler deploy",
 ```
 
