@@ -189,6 +189,152 @@ describe("useAnnotations", () => {
     expect(result.current.error).toBeNull();
   });
 
+  it("does not let an ABA flag revert (chop -> good-signal -> chop) erase the current value", async () => {
+    // chop (fails) -> good-signal (succeeds) -> chop (succeeds). A value-equality check on
+    // revert can't tell the failed first write's "chop" apart from the third write's "chop";
+    // only a sequence number can.
+    let rejectFirst!: (e: unknown) => void;
+    const firstPromise = new Promise((_resolve, reject) => {
+      rejectFirst = reject;
+    });
+    // First call uses the deferred promise; subsequent calls (including the later "chop")
+    // resolve immediately. Track call count explicitly rather than relying on flag identity,
+    // since the first and third calls both write "chop".
+    let callCount = 0;
+    vi.spyOn(api, "postFeedback").mockImplementation(async (signal_key, flag) => {
+      callCount += 1;
+      if (callCount === 1) return firstPromise as never;
+      return { id: `f-${callCount}`, signal_key, flag, note: null, created_at: "" };
+    });
+
+    const { result } = renderHook(() => useAnnotations());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      result.current.setFlag(KEY, "chop"); // #1, left in flight, will fail
+    });
+    await act(async () => {
+      result.current.setFlag(KEY, "good-signal"); // #2, succeeds
+    });
+    await act(async () => {
+      result.current.setFlag(KEY, "chop"); // #3, succeeds — same value as #1, different write
+    });
+    expect(result.current.flags.get(KEY)).toBe("chop");
+
+    await act(async () => {
+      rejectFirst(new api.ApiError(500, "boom"));
+      await firstPromise.catch(() => {});
+    });
+
+    expect(result.current.flags.get(KEY)).toBe("chop");
+  });
+
+  it("does not let an ABA mark revert (T1@bar1 -> T1@bar2 -> T1@bar1) erase the current entry", async () => {
+    let rejectFirst!: (e: unknown) => void;
+    const firstPromise = new Promise((_resolve, reject) => {
+      rejectFirst = reject;
+    });
+    let callCount = 0;
+    vi.spyOn(api, "postMark").mockImplementation(async (signal_key, kind, bar_ts) => {
+      callCount += 1;
+      if (callCount === 1) return firstPromise as never;
+      return { id: `m-${callCount}`, signal_key, kind, bar_ts, created_at: "" };
+    });
+
+    const { result } = renderHook(() => useAnnotations());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      result.current.toggleMark(KEY, "T1", "2025-03-04T16:10:00Z"); // #1, in flight, will fail
+    });
+    await act(async () => {
+      result.current.toggleMark(KEY, "T1", "2025-03-04T16:20:00Z"); // #2, moves, succeeds
+    });
+    await act(async () => {
+      result.current.toggleMark(KEY, "T1", "2025-03-04T16:10:00Z"); // #3, moves back, succeeds
+    });
+    expect(result.current.marks.get(KEY)).toEqual([
+      expect.objectContaining({ kind: "T1", bar_ts: "2025-03-04T16:10:00Z" }),
+    ]);
+
+    await act(async () => {
+      rejectFirst(new api.ApiError(500, "boom"));
+      await firstPromise.catch(() => {});
+    });
+
+    expect(result.current.marks.get(KEY)).toEqual([
+      expect.objectContaining({ kind: "T1", bar_ts: "2025-03-04T16:10:00Z" }),
+    ]);
+  });
+
+  it("keeps a flag written before the initial load resolves, even when the loaded rows omit it", async () => {
+    let resolveFeedback!: (rows: Awaited<ReturnType<typeof api.getFeedback>>) => void;
+    const feedbackPromise = new Promise<Awaited<ReturnType<typeof api.getFeedback>>>((resolve) => {
+      resolveFeedback = resolve;
+    });
+    vi.spyOn(api, "getFeedback").mockReturnValue(feedbackPromise);
+    vi.spyOn(api, "getMarks").mockResolvedValue([]);
+    vi.spyOn(api, "postFeedback").mockResolvedValue({
+      id: "f1",
+      signal_key: KEY,
+      flag: "chop",
+      note: null,
+      created_at: "",
+    });
+
+    const { result } = renderHook(() => useAnnotations());
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      result.current.setFlag(KEY, "chop"); // issued while the load is still pending
+    });
+    expect(result.current.flags.get(KEY)).toBe("chop");
+
+    await act(async () => {
+      resolveFeedback([]); // the GET was issued before the POST landed, so it doesn't know about it
+      await feedbackPromise;
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.flags.get(KEY)).toBe("chop");
+  });
+
+  it("keeps a mark written before the initial load resolves, even when the loaded rows omit it", async () => {
+    let resolveMarks!: (rows: Awaited<ReturnType<typeof api.getMarks>>) => void;
+    const marksPromise = new Promise<Awaited<ReturnType<typeof api.getMarks>>>((resolve) => {
+      resolveMarks = resolve;
+    });
+    vi.spyOn(api, "getFeedback").mockResolvedValue([]);
+    vi.spyOn(api, "getMarks").mockReturnValue(marksPromise);
+    vi.spyOn(api, "postMark").mockImplementation(async (signal_key, kind, bar_ts) => ({
+      id: "m1",
+      signal_key,
+      kind,
+      bar_ts,
+      created_at: "",
+    }));
+
+    const { result } = renderHook(() => useAnnotations());
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      result.current.toggleMark(KEY, "T1", "2025-03-04T16:10:00Z");
+    });
+    expect(result.current.marks.get(KEY)).toEqual([
+      expect.objectContaining({ kind: "T1", bar_ts: "2025-03-04T16:10:00Z" }),
+    ]);
+
+    await act(async () => {
+      resolveMarks([]);
+      await marksPromise;
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.marks.get(KEY)).toEqual([
+      expect.objectContaining({ kind: "T1", bar_ts: "2025-03-04T16:10:00Z" }),
+    ]);
+  });
+
   it("loads existing feedback and marks on mount, grouped by signal_key", async () => {
     vi.spyOn(api, "getFeedback").mockResolvedValue([
       { id: "f1", signal_key: KEY, flag: "chop", note: null, created_at: "" },
