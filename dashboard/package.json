@@ -1,0 +1,26 @@
+{
+  "name": "axe-trader-dashboard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "migrate:local": "wrangler d1 migrations apply axe-trader-dashboard --local",
+    "migrate:remote": "wrangler d1 migrations apply axe-trader-dashboard --remote",
+    "push": "tsx scripts/push-run.ts run.json",
+    "pull": "tsx scripts/pull-feedback.ts"
+  },
+  "dependencies": {
+    "hono": "^4"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.18.4",
+    "@cloudflare/workers-types": "^5",
+    "tsx": "^4",
+    "typescript": "^5",
+    "vitest": "^4.1",
+    "wrangler": "^4"
+  }
+}

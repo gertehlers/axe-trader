@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "axe-trader-dashboard",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "axe-trader-dashboard",
+      // Replace with the real id from `wrangler d1 create axe-trader-dashboard`.
+      "database_id": "PLACEHOLDER_SET_AT_PROVISION_TIME",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Populated by the frontend build (Plan 2); .gitkeep keeps the dir present.
+  "assets": { "directory": "./public", "binding": "ASSETS" }
+}

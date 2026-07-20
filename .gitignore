@@ -51,4 +51,7 @@ build/
 !.claude/plugins/
 !.claude/skills/
 !.claude/CLAUDE.md
-.claude
+.claudedashboard/node_modules/
+dashboard/.wrangler/
+dashboard/run.json
+dashboard/.push.generated.sql
