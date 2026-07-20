@@ -1,7 +1,13 @@
 # Trade-review dashboard — local usage & Cloudflare hookup
 
-Plan 1 (data pipeline) is built and verified **locally**. The Cloudflare provisioning steps at the
-bottom are deliberately **not run** — do them when you're ready to put it online.
+Deployed 2026-07-20 (free tier):
+
+- Worker: <https://axe-trader-dashboard.g3tech.workers.dev>
+- D1: `axe-trader-dashboard`, id `fd847584-8fd9-427e-b869-9423a6c5b419`, region WEUR
+- Account: gert.ehlers@gmail.com (`d0ff79cadf8d88376b187161b8385648`)
+
+Free-tier headroom: D1 allows 10 databases / 5 GB and 100k row writes/day (one push is ~103 rows);
+Workers free is 100k requests/day; Zero Trust free covers 50 users. Nothing here approaches those.
 
 ## What's here
 
@@ -53,18 +59,27 @@ Note: with a multi-config sweep grid, `-Dsweep.exportDashboard=true` writes one
 `dashboard/run.json` per config to the same path — **the last config in the grid wins**. Narrow the
 grid (or export one config at a time) when you care which run lands.
 
-## Cloudflare hookup (not done — your call when to run it)
+## Cloudflare status
 
-1. `npx wrangler d1 create axe-trader-dashboard` → copy the printed `database_id` into
-   `wrangler.jsonc`, replacing `PLACEHOLDER_SET_AT_PROVISION_TIME`.
-2. `npm run migrate:remote` — applies `0001_init.sql` to remote D1.
-3. `npm run deploy` — prints the `*.workers.dev` URL. Sanity: `curl <url>/api/health` → `{"ok":true}`.
-4. `npm run push -- --remote`, then `curl <url>/api/runs` to confirm the run landed.
-5. **Gate it with Cloudflare Access** before anything real is on it: add a self-hosted Access
-   application covering the Worker hostname, policy = allow only your email (one-time PIN).
-   Verify: `curl -sS -o /dev/null -w "%{http_code}" <url>/api/runs` returns 302/403 rather than 200.
-6. Day-to-day after that: sweep with `-Dsweep.exportDashboard=true` → `npm run push -- --remote` →
-   review on the phone → `npm run pull -- --remote`.
+Done: D1 created, `0001_init.sql` applied remotely, Worker deployed, `/api/*` verified live.
+
+**Outstanding — Cloudflare Access (do this before pushing real runs).** The workers.dev URL is
+public until it's gated. It's a dashboard click, not a CLI step:
+
+1. Cloudflare dashboard → **Workers & Pages** → `axe-trader-dashboard` → **Settings** →
+   **Domains & Routes**.
+2. On the `workers.dev` row, click **Enable Cloudflare Access**, then **Manage Cloudflare Access**
+   to restrict the policy to your email (one-time PIN).
+3. Verify: `curl -sS -o /dev/null -w "%{http_code}" https://axe-trader-dashboard.g3tech.workers.dev/api/runs`
+   returns 302/403 instead of 200.
+
+Access gates the request at the edge. If you later want defence in depth, the Worker can also
+validate the `Cf-Access-Jwt-Assertion` JWT — not done, and not required while the policy is on.
+
+## Day-to-day loop (once Access is on)
+
+Sweep with `-Dsweep.exportDashboard=true` → `npm run push -- --remote` → review on the phone →
+`npm run pull -- --remote`.
 
 `public/` holds only a `.gitkeep`; Plan 2 (the phone UI) fills it and it is served via the `ASSETS`
 binding already declared in `wrangler.jsonc`.
