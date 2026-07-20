@@ -1186,6 +1186,7 @@ Expected: FAIL — cannot resolve `./TradeCard`.
 - [ ] **Step 3: Create `dashboard/frontend/src/components/TradeCard.tsx`**
 
 ```tsx
+import type { MouseEvent } from "react";
 import type { Bar, Mark, Trade } from "../types";
 import { barIndexAtOrAfter, barIndexAtX, focusWindow, makeScales, priceRange } from "../chart";
 
@@ -1219,7 +1220,7 @@ export default function TradeCard({ trade, bars, marks, zoom, onZoomChange, onBa
   const exitIdx = localIndex(barIndexAtOrAfter(bars, trade.exit_time));
   const inView = (i: number) => i >= 0 && i < visible.length;
 
-  function handleClick(e: React.MouseEvent<SVGSVGElement>) {
+  function handleClick(e: MouseEvent<SVGSVGElement>) {
     const box = e.currentTarget.getBoundingClientRect();
     const x = ((e.clientX - box.left) / box.width) * VIEW_W;
     const idx = barIndexAtX(x, visible.length, VIEW_W);
@@ -1576,6 +1577,7 @@ git commit -m "feat(ui): optimistic flag + mark state with revert on failure"
 Create `dashboard/frontend/src/components/TradeDeck.test.tsx`:
 
 ```tsx
+import type { ComponentProps } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -1626,7 +1628,7 @@ afterEach(() => vi.restoreAllMocks());
 
 const noop = () => {};
 
-function renderDeck(overrides: Partial<React.ComponentProps<typeof TradeDeck>> = {}) {
+function renderDeck(overrides: Partial<ComponentProps<typeof TradeDeck>> = {}) {
   return render(
     <TradeDeck
       runId="run-1"
@@ -1880,7 +1882,7 @@ const run = {
   label: "emaCeil_3,0atr",
   win_rate: 0.882,
   net_avg_pnl: 0.85,
-  net_avg_pnl_usd: 0.85,
+  net_avg_pnl_usd: 4.25,
   trades_per_day: 0.3,
   avg_r: 0.1,
 } as unknown as Run;
@@ -1908,7 +1910,8 @@ describe("Overview", () => {
   it("shows the headline KPIs", async () => {
     render(<Overview run={run} />);
     expect(screen.getByText("88%")).toBeInTheDocument();
-    expect(screen.getByText("+0.85")).toBeInTheDocument();
+    expect(screen.getByText("+0.85")).toBeInTheDocument(); // net pts/trade
+    expect(screen.getByText("+4.25")).toBeInTheDocument(); // net $/trade
     expect(screen.getByText("0.3")).toBeInTheDocument();
   });
 
