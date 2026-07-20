@@ -6,8 +6,11 @@ export interface Run {
   id: string;
   created_at: string;
   label: string | null;
+  config_json: string | null;
   instrument: string | null;
   timeframe_min: number | null;
+  window_start: string | null;
+  window_end: string | null;
   trades_count: number | null;
   trades_per_day: number | null;
   win_rate: number | null;
@@ -37,7 +40,10 @@ export interface TradeSummary {
   rsi_value: number | null;
   dist_to_trend_ema_atr: number | null;
   atr_value: number | null;
+  atr_percentile: number | null;
   volume_ratio: number | null;
+  hour_utc: number | null;
+  day_of_week: number | null;
   volatility_regime: string | null;
   confluence_score: number | null;
   pillars_fired: string | null;
@@ -48,6 +54,7 @@ export interface Trade extends TradeSummary {
 }
 
 export interface Feedback {
+  id: string;
   signal_key: string;
   flag: Flag | null;
   note: string | null;
@@ -55,6 +62,7 @@ export interface Feedback {
 }
 
 export interface Mark {
+  id: string;
   signal_key: string;
   kind: MarkKind;
   bar_ts: string;

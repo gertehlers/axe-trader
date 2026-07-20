@@ -23,15 +23,57 @@ const json = (method: string, body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
+/**
+ * Fields the D1 schema allows to be NULL but which mean "this exported run is broken" when
+ * missing — an export with a null entry price, direction, etc. should fail loudly rather than
+ * render as a silent dash in the UI. `bars_json` is checked separately by `getTrade` since it
+ * lives on `Trade`, not `TradeSummary`.
+ */
+const REQUIRED_TRADE_FIELDS: readonly (keyof TradeSummary)[] = [
+  "entry_time",
+  "exit_time",
+  "direction",
+  "entry_price",
+  "exit_price",
+  "stop_price",
+  "target_price",
+  "pnl",
+  "net_pnl",
+  "r_multiple",
+  "is_win",
+];
+
+/** 502: the row came back as a successful (2xx) response, but its data is invalid/incomplete. */
+const CORRUPT_ROW_STATUS = 502;
+
+function assertTradeFields<T extends { id: string }>(trade: T, fields: readonly (keyof T)[]): T {
+  for (const field of fields) {
+    if (trade[field] === null || trade[field] === undefined) {
+      throw new ApiError(
+        CORRUPT_ROW_STATUS,
+        `trade ${trade.id}: missing required field "${String(field)}"`
+      );
+    }
+  }
+  return trade;
+}
+
 export const getRuns = () => request<Run[]>("/api/runs");
 
-export const getTrades = (runId: string, filter: TradeFilter) =>
-  request<TradeSummary[]>(`/api/runs/${runId}/trades?filter=${filter}`);
+export const getTrades = async (runId: string, filter: TradeFilter) => {
+  const rows = await request<TradeSummary[]>(
+    `/api/runs/${encodeURIComponent(runId)}/trades?filter=${filter}`
+  );
+  return rows.map((row) => assertTradeFields(row, REQUIRED_TRADE_FIELDS));
+};
 
-export const getTrade = (id: string) => request<Trade>(`/api/trades/${id}`);
+export const getTrade = async (id: string) => {
+  const trade = await request<Trade>(`/api/trades/${encodeURIComponent(id)}`);
+  return assertTradeFields(trade, [...REQUIRED_TRADE_FIELDS, "bars_json"]);
+};
 
 export const getSlices = (runId: string, feature: string, buckets = 4) =>
-  request<Slices>(`/api/runs/${runId}/slices?feature=${feature}&buckets=${buckets}`);
+  request<Slices>(`/api/runs/${encodeURIComponent(runId)}/slices?feature=${feature}&buckets=${buckets}`);
 
 export const getFeedback = () => request<Feedback[]>("/api/feedback");
 
