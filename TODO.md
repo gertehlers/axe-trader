@@ -47,7 +47,8 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
           Export a run with `./mvnw test -Dtest=ConfluenceSweepTest -Dsweep=true
           -Dsweep.exportDashboard=true` (last grid config wins the single `dashboard/run.json`),
           then `npm run push -- --remote`.
-        - **Plan 2 (phone UI): spec written 2026-07-20**, plan not yet.
+        - **Plan 2 (phone UI): spec + plan written 2026-07-20, not yet built.**
+          Plan: `docs/superpowers/plans/2026-07-20-trade-review-phone-ui.md` (12 TDD tasks).
           `docs/superpowers/specs/2026-07-20-trade-review-phone-ui-design.md` — swipe deck (one
           trade per screen) + Overview tab; Focus/Full zoom toggle instead of pinch; fixed 6-flag
           taxonomy, one flag per trade; **new `marks` table** (`better-entry`/`T1`/`T2`/`T3`/
