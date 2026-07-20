@@ -4,10 +4,12 @@
     "module": "es2022",
     "moduleResolution": "bundler",
     "lib": ["es2022"],
-    "types": ["@cloudflare/workers-types", "@cloudflare/vitest-pool-workers/types"],
+    // Runtime types come from the generated worker-configuration.d.ts
+    // (`npx wrangler types`), which supersedes @cloudflare/workers-types.
+    "types": ["@cloudflare/vitest-pool-workers/types", "node"],
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src", "test", "scripts", "vitest.config.ts"]
+  "include": ["src", "test", "scripts", "vitest.config.ts", "worker-configuration.d.ts"]
 }
