@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { getTrades, getTrade, postMark, deleteMark, ApiError, getBars } from "./api";
+import { getTrades, getTrade, getSlices, postMark, deleteMark, ApiError, getBars } from "./api";
 import type { Trade, TradeSummary } from "./types";
 
 function mockFetch(body: unknown, status = 200) {
@@ -63,11 +63,19 @@ describe("api client", () => {
     expect(url).not.toContain("|");
   });
 
-  it("encodes the run id in getTrades and getSlices", async () => {
+  it("encodes the run id in getTrades", async () => {
     const fetchMock = mockFetch([]);
     await getTrades("US500-1784554730790:with|pipe", "all");
     expect(fetchMock.mock.calls[0][0]).toBe(
       "/api/runs/US500-1784554730790%3Awith%7Cpipe/trades?filter=all"
+    );
+  });
+
+  it("encodes the run id in getSlices", async () => {
+    const fetchMock = mockFetch({ baseline_win: 0, trades: 0, buckets: [] });
+    await getSlices("US500-1784554730790:with|pipe", "rsi_value", 4);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/runs/US500-1784554730790%3Awith%7Cpipe/slices?feature=rsi_value&buckets=4"
     );
   });
 
