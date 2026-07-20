@@ -1,6 +1,8 @@
 package io.g3tech.axetrader.backtest;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.g3tech.axetrader.backtest.config.BacktestProperties;
+import io.g3tech.axetrader.backtest.experiment.DashboardExporter;
 import io.g3tech.axetrader.backtest.experiment.ExperimentStore;
 import io.g3tech.axetrader.backtest.indicators.IndicatorBundle;
 import io.g3tech.axetrader.backtest.runner.BacktestRunner;
@@ -16,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.ta4j.core.BarSeries;
 
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -71,7 +74,7 @@ class ConfluenceSweepTest {
     private BacktestProperties backtestProperties;
 
     @Test
-    void sweep() {
+    void sweep() throws Exception {
         Assumptions.assumeTrue(Boolean.getBoolean("sweep"),
                 "sweep disabled — run with -Dsweep=true -Dtest=ConfluenceSweepTest");
 
@@ -115,6 +118,16 @@ class ConfluenceSweepTest {
                     long id = store.save(entry.getKey(), config, backtestProperties.getEpic(),
                             backtestProperties.getTimeframeMinutes(), from, to, trades, avgSpread, tradingDays);
                     System.out.printf("  persisted experiment #%d%n", id);
+                }
+                if (Boolean.getBoolean("sweep.exportDashboard")) {
+                    String configJson = new ObjectMapper().writeValueAsString(config);
+                    String runId = backtestProperties.getEpic() + "-" + System.currentTimeMillis();
+                    Path out = Path.of("dashboard/run.json");
+                    DashboardExporter.export(out, entry.getKey(), runId, config, configJson,
+                            backtestProperties.getEpic(), backtestProperties.getTimeframeMinutes(),
+                            from, to, backtestProperties.getContract().getValuePerPoint(),
+                            avgSpread, tradingDays, series, trades);
+                    System.out.println("  wrote dashboard export -> " + out);
                 }
                 System.out.printf("  ran %-34s %5d trades in %.1fs%n",
                         entry.getKey(), trades.size(), (System.currentTimeMillis() - runStart) / 1000.0);
