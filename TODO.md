@@ -47,7 +47,8 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
           Export a run with `./mvnw test -Dtest=ConfluenceSweepTest -Dsweep=true
           -Dsweep.exportDashboard=true` (last grid config wins the single `dashboard/run.json`),
           then `npm run push -- --remote`.
-        - **Plan 2 (phone UI): spec + plan written 2026-07-20, not yet built.**
+        - **Plan 2 (phone UI): IN PROGRESS 2026-07-20 — 8.5 of 12 tasks done.** See the
+          "Plan 2 execution checkpoint" section below before touching anything.
           Plan: `docs/superpowers/plans/2026-07-20-trade-review-phone-ui.md` (12 TDD tasks).
           `docs/superpowers/specs/2026-07-20-trade-review-phone-ui-design.md` — swipe deck (one
           trade per screen) + Overview tab; Focus/Full zoom toggle instead of pinch; fixed 6-flag
@@ -434,3 +435,80 @@ Sonnet codes to spec; Haiku does boilerplate.
 - [x] TA4j strategy pipeline (BarSeriesFactory → IndicatorBundle → StrategyFactory → BacktestRunner)
 - [x] JFreeChart visualisation of backtest results
 - [x] SQLite persistence with Flyway migrations
+
+---
+
+## Plan 2 execution checkpoint (2026-07-20)
+
+Read this first if you are resuming Plan 2 (the phone UI) in a fresh session.
+
+**Branch:** `claude/cloudflare-dashboard-plan` (all work pushed).
+**Plan:** `docs/superpowers/plans/2026-07-20-trade-review-phone-ui.md`
+**Spec:** `docs/superpowers/specs/2026-07-20-trade-review-phone-ui-design.md`
+**Method:** superpowers subagent-driven-development. Per-task review is mandatory — see
+`.claude/CLAUDE.md`. Local ledger at `.superpowers/sdd/progress.md` (gitignored; git log is the
+authority if it is missing).
+
+### Done and reviewed clean
+
+| # | Task | Commit |
+|---|------|--------|
+| 1 | shared flag/mark vocabulary + server-side flag validation | `44357ac` |
+| 2 | `marks` table migration (applied local **and** remote D1) | `abb2206` |
+| 3 | `/api/marks` place / move / delete | `3266a13` |
+| 4 | pull marks alongside feedback to `experiments/marks.json` | `4082c5d` |
+| 5 | Vite/React scaffold + jsdom vitest project, builds into `dashboard/public/` | `7d23ac9` |
+| 6 | typed API client (+ fixes: URL encoding, missing columns, boundary validation) | `89f2a12`, `d7ca433`, `6f99583` |
+| 7 | chart geometry (pure functions) | `df8f164` |
+| 8 | TradeCard — SVG candles, stop/target, markers, Focus/Full | `49d6df3` |
+
+### Task 9 (`useAnnotations`) — IN FLIGHT, not yet approved
+
+Commits so far: `90630af` (initial), `f2a7c51` (fix round 1), `c05ae39` (fix round 2).
+This is the optimistic flag/mark state hook — every write in the app flows through it, which is why
+it has taken three rounds. Two review rounds found bugs no passing test could catch:
+
+1. The plan's own reference code decided POST-vs-DELETE by reading a variable assigned inside a
+   `setState` updater on the very next line — so `deleteMark` was never called. Removing a mark
+   would have vanished from the UI and silently persisted in D1.
+2. The first fix read `marks` from the callback closure and wrote a precomputed array over `prev`,
+   so two taps in one tick dropped one mark locally though the server took both.
+3. The revert restored a captured snapshot unconditionally, so a failed older write could wipe a
+   newer successful one.
+4. Round 2 found the value-equality "is this still mine" check cannot handle ABA (A → B → A), and
+   that the initial load still did the wholesale non-functional overwrite finding 2 was about.
+
+**NEXT ACTION: re-review `c05ae39` (base `49d6df3`) before starting Task 10.** Use an Opus-tier
+reviewer — the sonnet-tier reviews passed this task twice while these bugs were live. Do not mark
+Task 9 complete until that review is clean.
+
+### Remaining
+
+- Task 10 — TradeDeck (swipe/prev/next, filter, flag + mark chips, neighbour prefetch)
+- Task 11 — Overview (KPI tiles, equity curve, EMA-distance slices)
+- Task 12 — wire run picker + tabs, styling via the frontend-design skill, build, deploy
+
+Then: final whole-branch review (most capable model), then finishing-a-development-branch.
+
+### Deferred Minor findings
+
+Held for the final whole-branch review to triage, not lost:
+- `marks.ts` POST accepts any non-empty `bar_ts` — no ISO-8601 shape check.
+- `0002_marks.sql` `idx_marks_signal` is redundant with the `UNIQUE(signal_key, kind)` index.
+- Frontend tabs lack `aria-controls`/`tabpanel` wiring and roving tabindex.
+- `dashboard/tsconfig.json` and `frontend/tsconfig.json` duplicate six compiler options.
+- No test covers a scaled viewport (`rect.width !== 320`) for candle tap hit-testing.
+- `priceRange` extras omit `exit_price` (a gap-through exit could render off-canvas).
+- `barIndexAtOrAfter` on an empty bars array returns 0, which would make `focusWindow` invert.
+- `pull-feedback.ts` `--remote` path and a non-empty feedback table are untested.
+
+### Environment facts that survive the session
+
+- Worker: <https://axe-trader-dashboard.g3tech.workers.dev> — Cloudflare Access gates every route
+  (unauthenticated requests get a 302, including `/api/health`).
+- D1: `axe-trader-dashboard`, id `fd847584-8fd9-427e-b869-9423a6c5b419`, region WEUR, free tier.
+  Holds the `emaCeil_3,0atr` run: 102 trades, 88% win rate.
+- Commands run from `dashboard/`: `npm test` (api + ui), `npm run test:ui`, `npm run typecheck`,
+  `npm run build`, `npm run dev:ui`, `npm run deploy` (builds first).
+- `@cloudflare/vitest-pool-workers` is pinned to `0.18.4` — newer patches depend on miniflare
+  builds that are not published. vitest is v4; the config API is the `cloudflareTest()` plugin.
