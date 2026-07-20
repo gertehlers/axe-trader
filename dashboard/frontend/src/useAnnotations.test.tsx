@@ -76,4 +76,142 @@ describe("useAnnotations", () => {
     expect(result.current.marks.get(KEY) ?? []).toEqual([]);
     expect(api.deleteMark).toHaveBeenCalledWith(KEY, "T1");
   });
+
+  it("keeps both marks when two different kinds are toggled within the same tick", async () => {
+    vi.spyOn(api, "postMark").mockImplementation(async (signal_key, kind, bar_ts) => ({
+      id: `m-${kind}`,
+      signal_key,
+      kind,
+      bar_ts,
+      created_at: "",
+    }));
+
+    const { result } = renderHook(() => useAnnotations());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Both calls fire from the same closure, in the same tick — a double tap, or
+    // two memoized children each holding their own toggleMark reference.
+    await act(async () => {
+      result.current.toggleMark(KEY, "T1", "2025-03-04T16:10:00Z");
+      result.current.toggleMark(KEY, "T2", "2025-03-04T16:15:00Z");
+    });
+
+    expect(result.current.marks.get(KEY)).toHaveLength(2);
+    expect(result.current.marks.get(KEY)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "T1", bar_ts: "2025-03-04T16:10:00Z" }),
+        expect.objectContaining({ kind: "T2", bar_ts: "2025-03-04T16:15:00Z" }),
+      ])
+    );
+    expect(api.postMark).toHaveBeenCalledWith(KEY, "T1", "2025-03-04T16:10:00Z");
+    expect(api.postMark).toHaveBeenCalledWith(KEY, "T2", "2025-03-04T16:15:00Z");
+  });
+
+  it("does not let a stale flag revert clobber a newer write for the same key", async () => {
+    let rejectChop!: (e: unknown) => void;
+    const chopPromise = new Promise((_resolve, reject) => {
+      rejectChop = reject;
+    });
+    vi.spyOn(api, "postFeedback").mockImplementation(async (signal_key, flag) => {
+      if (flag === "chop") return chopPromise as never;
+      return { id: "f2", signal_key, flag, note: null, created_at: "" };
+    });
+
+    const { result } = renderHook(() => useAnnotations());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      result.current.setFlag(KEY, "chop"); // left in flight
+    });
+    await act(async () => {
+      result.current.setFlag(KEY, "good-signal"); // succeeds, becomes authoritative
+    });
+    expect(result.current.flags.get(KEY)).toBe("good-signal");
+
+    await act(async () => {
+      rejectChop(new api.ApiError(500, "boom"));
+      await chopPromise.catch(() => {});
+    });
+
+    expect(result.current.flags.get(KEY)).toBe("good-signal");
+  });
+
+  it("does not let a stale mark revert clobber a newer write for the same kind", async () => {
+    let rejectFirst!: (e: unknown) => void;
+    const firstPromise = new Promise((_resolve, reject) => {
+      rejectFirst = reject;
+    });
+    vi.spyOn(api, "postMark").mockImplementation(async (signal_key, kind, bar_ts) => {
+      if (bar_ts === "2025-03-04T16:10:00Z") return firstPromise as never;
+      return { id: "m2", signal_key, kind, bar_ts, created_at: "" };
+    });
+    vi.spyOn(api, "deleteMark").mockResolvedValue({ deleted: 1 });
+
+    const { result } = renderHook(() => useAnnotations());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => {
+      result.current.toggleMark(KEY, "T1", "2025-03-04T16:10:00Z"); // left in flight
+    });
+    await act(async () => {
+      result.current.toggleMark(KEY, "T1", "2025-03-04T16:20:00Z"); // moves, succeeds
+    });
+    expect(result.current.marks.get(KEY)).toEqual([
+      expect.objectContaining({ kind: "T1", bar_ts: "2025-03-04T16:20:00Z" }),
+    ]);
+
+    await act(async () => {
+      rejectFirst(new api.ApiError(500, "boom"));
+      await firstPromise.catch(() => {});
+    });
+
+    expect(result.current.marks.get(KEY)).toEqual([
+      expect.objectContaining({ kind: "T1", bar_ts: "2025-03-04T16:20:00Z" }),
+    ]);
+  });
+
+  it("clears a stale error once a subsequent write succeeds", async () => {
+    vi.spyOn(api, "postFeedback")
+      .mockRejectedValueOnce(new api.ApiError(500, "boom"))
+      .mockResolvedValueOnce({ id: "f1", signal_key: KEY, flag: "chop", note: null, created_at: "" });
+
+    const { result } = renderHook(() => useAnnotations());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      result.current.setFlag(KEY, "chop");
+    });
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+
+    await act(async () => {
+      result.current.setFlag(KEY, "good-signal");
+    });
+    expect(result.current.error).toBeNull();
+  });
+
+  it("loads existing feedback and marks on mount, grouped by signal_key", async () => {
+    vi.spyOn(api, "getFeedback").mockResolvedValue([
+      { id: "f1", signal_key: KEY, flag: "chop", note: null, created_at: "" },
+      { id: "f2", signal_key: "OTHER", flag: null, note: "no flag set yet", created_at: "" },
+    ]);
+    vi.spyOn(api, "getMarks").mockResolvedValue([
+      { id: "m1", signal_key: KEY, kind: "T1", bar_ts: "2025-03-04T16:10:00Z", created_at: "" },
+      { id: "m2", signal_key: KEY, kind: "T2", bar_ts: "2025-03-04T16:20:00Z", created_at: "" },
+      { id: "m3", signal_key: "OTHER", kind: "T1", bar_ts: "2025-03-04T17:00:00Z", created_at: "" },
+    ]);
+
+    const { result } = renderHook(() => useAnnotations());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.flags.get(KEY)).toBe("chop");
+    expect(result.current.flags.has("OTHER")).toBe(false); // null flag excluded
+
+    expect(result.current.marks.get(KEY)).toEqual([
+      expect.objectContaining({ id: "m1", kind: "T1", bar_ts: "2025-03-04T16:10:00Z" }),
+      expect.objectContaining({ id: "m2", kind: "T2", bar_ts: "2025-03-04T16:20:00Z" }),
+    ]);
+    expect(result.current.marks.get("OTHER")).toEqual([
+      expect.objectContaining({ id: "m3", kind: "T1", bar_ts: "2025-03-04T17:00:00Z" }),
+    ]);
+  });
 });
