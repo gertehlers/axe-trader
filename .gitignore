@@ -55,3 +55,4 @@ build/
 dashboard/.wrangler/
 dashboard/run.json
 dashboard/.push.generated.sql
+experiments/feedback.json
