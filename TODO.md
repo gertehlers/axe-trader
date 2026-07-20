@@ -38,15 +38,15 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
         pushes it to D1. Split into two plans:
         - **Spec:** `docs/superpowers/specs/2026-07-19-cloudflare-trade-review-dashboard-design.md`
           (supersedes `observability-and-exits-design.md` §3).
-        - **Plan 1 (data pipeline): BUILT 2026-07-20, local half done.**
-          `docs/superpowers/plans/2026-07-19-trade-review-data-pipeline.md` — Tasks 1–10 complete
-          and verified (15 vitest tests green, `./mvnw test` 18 green, a real 102-trade export
-          pushed into local D1 and feedback pulled back). **Task 11 (create remote D1, deploy,
-          Cloudflare Access) deliberately NOT run — user is doing the Cloudflare hookup themselves;
-          the runbook is `dashboard/DEPLOY.md`.** `wrangler.jsonc` still carries
-          `database_id: PLACEHOLDER_SET_AT_PROVISION_TIME`.
+        - **Plan 1 (data pipeline): DONE 2026-07-20, deployed and live.**
+          `docs/superpowers/plans/2026-07-19-trade-review-data-pipeline.md` — all 11 tasks.
+          Worker <https://axe-trader-dashboard.g3tech.workers.dev> (free tier), D1
+          `axe-trader-dashboard` (`fd847584-8fd9-427e-b869-9423a6c5b419`, WEUR), Cloudflare Access
+          gating every route (unauthenticated → 302). The `emaCeil_3,0atr` run (102 trades, 88% win)
+          is pushed to remote D1. Runbook + toolchain notes: `dashboard/DEPLOY.md`.
           Export a run with `./mvnw test -Dtest=ConfluenceSweepTest -Dsweep=true
-          -Dsweep.exportDashboard=true` (last grid config wins the single `dashboard/run.json`).
+          -Dsweep.exportDashboard=true` (last grid config wins the single `dashboard/run.json`),
+          then `npm run push -- --remote`.
         - **Plan 2 (phone UI): spec written 2026-07-20**, plan not yet.
           `docs/superpowers/specs/2026-07-20-trade-review-phone-ui-design.md` — swipe deck (one
           trade per screen) + Overview tab; Focus/Full zoom toggle instead of pinch; fixed 6-flag
