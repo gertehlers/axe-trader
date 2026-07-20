@@ -53,3 +53,11 @@ export interface FeedbackRow {
   note: string | null;
   created_at: string;
 }
+
+export interface MarkRow {
+  id: string;
+  signal_key: string;
+  kind: string;
+  bar_ts: string;
+  created_at: string;
+}
