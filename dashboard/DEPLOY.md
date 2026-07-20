@@ -48,7 +48,7 @@ npm run push            # add -- --remote once Cloudflare is wired up
 npm run dev             # http://localhost:8787/api/runs
 
 # 4. Bring feedback back to the laptop
-npm run pull            # writes ../experiments/feedback.json (gitignored)
+npm run pull            # writes ../experiments/feedback.json AND ../experiments/marks.json (both gitignored)
 
 # tests / typecheck
 npm test

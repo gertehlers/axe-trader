@@ -57,3 +57,4 @@ dashboard/run.json
 dashboard/.push.generated.sql
 experiments/feedback.json
 .superpowers/
+experiments/marks.json
