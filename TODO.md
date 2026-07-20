@@ -464,7 +464,7 @@ authority if it is missing).
 
 ### Task 9 (`useAnnotations`) — IN FLIGHT, not yet approved
 
-Commits so far: `90630af` (initial), `f2a7c51` (fix round 1), `c05ae39` (fix round 2).
+Commits: `90630af` (initial), `f2a7c51` (fix round 1), `c05ae39` (fix round 2 — latest).
 This is the optimistic flag/mark state hook — every write in the app flows through it, which is why
 it has taken three rounds. Two review rounds found bugs no passing test could catch:
 
@@ -478,9 +478,23 @@ it has taken three rounds. Two review rounds found bugs no passing test could ca
 4. Round 2 found the value-equality "is this still mine" check cannot handle ABA (A → B → A), and
    that the initial load still did the wholesale non-functional overwrite finding 2 was about.
 
+Round-2 fixes (`c05ae39`) replaced the value-equality ownership test with a per-key monotonic
+sequence gate and made the initial load merge functionally from `prev`. Suite at this commit:
+**api 21/21, ui 47/47, typecheck clean** (verified by the controller, not just claimed).
+
+Two residual edge cases were left deliberately unfixed and are documented in the fix report:
+1. Two concurrent writes to the same slot that BOTH fail with out-of-order settlement can still
+   leave state holding a value the server has neither of. A real fix needs a
+   "last-confirmed-by-server" baseline, not just a sequence gate.
+2. A mark removed locally while a load is in flight can resurface if that load's GT-stale GET still
+   carried the pre-removal row. Needs a "locally touched" concept beyond "re-apply what is in prev".
+Both are narrower than what was fixed, and both diverge local state only — nothing wrong is
+persisted, and a reload reconciles.
+
 **NEXT ACTION: re-review `c05ae39` (base `49d6df3`) before starting Task 10.** Use an Opus-tier
-reviewer — the sonnet-tier reviews passed this task twice while these bugs were live. Do not mark
-Task 9 complete until that review is clean.
+reviewer — the sonnet-tier reviews passed this task twice while real bugs were live. Judge the two
+residual edge cases explicitly: accept as documented limitations, or fix. Do not mark Task 9
+complete until that review is clean.
 
 ### Remaining
 
