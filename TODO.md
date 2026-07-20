@@ -47,8 +47,12 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
           `database_id: PLACEHOLDER_SET_AT_PROVISION_TIME`.
           Export a run with `./mvnw test -Dtest=ConfluenceSweepTest -Dsweep=true
           -Dsweep.exportDashboard=true` (last grid config wins the single `dashboard/run.json`).
-        - **Plan 2 (phone UI):** not written yet — React/SVG frontend consuming Plan 1's API,
-          built via the frontend-design skill. Write it after Plan 1 lands.
+        - **Plan 2 (phone UI): spec written 2026-07-20**, plan not yet.
+          `docs/superpowers/specs/2026-07-20-trade-review-phone-ui-design.md` — swipe deck (one
+          trade per screen) + Overview tab; Focus/Full zoom toggle instead of pinch; fixed 6-flag
+          taxonomy, one flag per trade; **new `marks` table** (`better-entry`/`T1`/`T2`/`T3`/
+          `exit-here` pinned to a bar timestamp) giving iteration 9's scale-out work the human
+          ground truth it lacks. Supersedes the single-scrolling-page UI sketch in the 07-19 spec.
         - Frontend hosting = Cloudflare Worker with static-assets binding (not legacy Pages); all
           Cloudflare code lives under `dashboard/`.
       - [ ] (4) **3-tier scale-out exit experiment ← NOW THE PRIORITY.** Item 2 proved the tight
