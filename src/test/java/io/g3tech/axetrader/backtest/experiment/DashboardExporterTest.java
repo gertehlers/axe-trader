@@ -71,5 +71,17 @@ class DashboardExporterTest {
         assertThat(t.get("bars").size()).isGreaterThan(50);
         assertThat(root.get("run").get("net_avg_pnl_usd").asDouble())
                 .isEqualTo(root.get("run").get("net_avg_pnl").asDouble()); // valuePerPoint=1.0
+
+        // net_pnl must be genuinely net: raw pnl (3.0) less avgSpread (0.5). This column shipped
+        // holding raw pnl for a while -- nothing asserted on it -- and the dashboard's equity curve
+        // cumulates it under a "net" heading, so the chart sloped upward while the net-expectancy
+        // KPI beside it read negative. Keep pnl and net_pnl asserted as DIFFERENT values so the
+        // two can never silently collapse back together.
+        assertThat(t.get("pnl").asDouble()).isEqualTo(3.0);
+        assertThat(t.get("net_pnl").asDouble()).isEqualTo(2.5);
+        assertThat(root.get("run").get("net_avg_pnl").asDouble()).isEqualTo(2.5);
+        // is_win stays GROSS by design (it matches ConfluenceSweepTest's win rate), so a trade can
+        // be a win with a smaller net figure -- that gap is the spread.
+        assertThat(t.get("is_win").asInt()).isEqualTo(1);
     }
 }
