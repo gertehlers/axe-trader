@@ -845,6 +845,25 @@ second-most-important number on the page.
 - Low: `=== null` guards should be `== null` (fixtures build partial `Run`s `as unknown as Run`;
   adding a `signed(run.max_drawdown)` tile against the current fixture would throw).
 
+### Human rulings on the Task 11 follow-ups (2026-07-21)
+
+- **Gross-vs-net → FIX THE EXPORTER** (option c). Done in `2cd6944`: `net_pnl` is now
+  `t.pnl() - avgSpread`, consistent with the run-level `net_avg_pnl`. `is_win` stays deliberately
+  gross, so a trade can be `is_win=1` with `net_pnl<0` — that gap *is* the spread. Compiles clean.
+  Consumers that silently improve: the equity curve, TradeCard's per-trade figure, and `slices.ts`
+  per-bucket `net_avg_pnl`.
+- **max DD + worst quarter → ADD NOW** (spec beats the plan's omission), together with the
+  `=== null` → `== null` guard fix that must land first or the partial-`Run` fixtures throw.
+- Also in the same round: distinct empty/failed/one-trade states for the equity curve, an exact
+  `points` assertion, an ordering test, and a per-bucket-count fixture fix.
+
+> ### ⚠️ OUTSTANDING: the D1 run still holds GROSS `net_pnl`
+> The `emaCeil_3,0atr` run (102 trades) in D1 was exported **before** `2cd6944`, so its `net_pnl`
+> column still contains raw pnl. **The dashboard will keep showing the wrong equity curve until that
+> run is re-exported and re-pushed.** This is not optional cleanup — it is the difference between
+> the chart agreeing and disagreeing with the KPI tile beside it. Do this before the screenshot and
+> before any judgement is made from the Overview tab.
+
 **Reviewer checked and cleared:** entry-order cumulation is fine (ta4j holds one position at a time,
 `enable-short: false` means no overlaps, and the x-axis is trade index not time); `localeCompare` is
 safe (`Instant.toString()`, always `Z`, minute-aligned → fixed width); `Math.min(0, ...cumulative)`
