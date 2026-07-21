@@ -667,9 +667,14 @@ against that stable interface.
 Working tree clean apart from `output/charts/runner-results.html`, a test-regenerated build artifact.
 
 **Suite state, verified by the controller (not claimed by a worker):**
-api 21/21 · ui 79/79 · Java 34 tests / 0 failures (1 pre-existing skip in `ConfluenceSweepTest`) ·
-typecheck clean · `npm run build` succeeds.
-(The earlier "Java 20/20" undercounted — the surefire aggregate is 34.)
+api 21/21 · ui 79/79 · Java 20 tests / 0 failures · typecheck clean · `npm run build` succeeds.
+
+> **Correction (2026-07-21, later):** an earlier edit here claimed the Java suite was "34 tests" and
+> that "Java 20/20" had undercounted. **That was wrong — 20 is correct.** The 34 came from reading
+> `target/surefire-reports/` after a series of targeted `-Dtest=…` runs: that directory accumulates
+> stale reports, including reports for seven `*Tests` classes that no longer exist in the repo at
+> all. Verified by running a clean suite in a fresh worktree at the same commit: 20 tests, 11 test
+> classes. **When counting tests, `rm -rf target/surefire-reports` first, or you will count ghosts.**
 
 ### Tasks 9, 10, 11 COMPLETE and reviewed. Task 12 is PARTLY done.
 
