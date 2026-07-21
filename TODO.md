@@ -684,6 +684,60 @@ chart rendered in the same tick as the list) → `findByTestId`. Deviation 2's f
 caught by the implementer's own new test. The per-task review is not the only guard — the
 controller reading the actual diff is load-bearing too.
 
+### Task 10 review verdict: **APPROVE WITH FOLLOW-UPS** (opus tier, 2026-07-21)
+
+Spec compliance PASS (interface is byte-identical to Task 12's call site, plan 2194-2200 — Task 12
+will wire cleanly). Code quality PASS with follow-ups. Reviewer verified empirically in a detached
+worktree, and **corrected three controller claims** — recorded here because the corrections matter
+more than the praise:
+- The "fetch exactly once" test (`TradeDeck.test.tsx:118-131`) **does NOT fail against the plan's
+  buggy code** — 8/8 pass. Both mocks settle in one microtask drain so React 19 batches the
+  `setDetail` calls, the effect re-runs once, and both ids are already cached. The bug is real
+  (reproduced with a 3-trade list and staggered 5ms/60ms mocks → `["t-a","t-b","t-b"]`), but this
+  test does not guard it and its name overclaims. **Fix: make the mock gate-controlled.**
+- "Quadratic refetch burst" overstated — with a 3-element prefetch window it is a bounded handful.
+- The two `getByTestId` → `findByTestId` changes were **not** fixing a live race; both still pass
+  when reverted. `findBy` hardens (fails loudly if the chart never renders) but masked nothing.
+
+Confirmed clean by the reviewer: dropping the prefetch cleanup **is** safe (react 19.2.7, so
+setState-after-unmount is a no-op; and `trades.id` is a global `TEXT PRIMARY KEY` per
+`migrations/0001_init.sql:26`, not per-run, so an id-keyed cache cannot misattribute across runId or
+filter changes); the `requested` ref can never strand a trade; `detail` growth is a non-issue
+(~660 KB per 102-trade run); `list[index]` cannot go out of bounds (batched `setList`/`setIndex`).
+The "advance before resolve" test is the strongest in the file — reviewer re-introduced the `live`
+guard and confirmed it fails.
+
+**Open follow-ups — F1/F2/F4/F5 are PLAN-MANDATED and need a human ruling:**
+- **F1 swipe fires on vertical scroll** (`TradeDeck.tsx:98-104`). No dx-vs-dy comparison. Scrolling
+  down to reach the flag chips with a thumb arc advances the deck — losing your place with an armed
+  mark kind now pointing at a *different* trade. Swipe is the design spec's primary navigation.
+  Fix: track `touchStartY`, require `Math.abs(dx) > Math.abs(dy)`.
+- **F2 two-finger gesture phantom-swipes** (`TradeDeck.tsx:97`). `e.touches[0]` is the *first* finger
+  on the surface, not the new one, so a pinch yields `dx = x₂ − x₁` → unintended advance. Sharpened
+  by the spec explicitly rejecting pinch-zoom: users *will* try to pinch and instead change trade.
+  Fix: `if (e.touches.length !== 1) return;`. (Reviewer confirmed no throw risk, and `touchcancel`
+  leaves no phantom.)
+- **F4 read failures are silent** (`TradeDeck.tsx:79-83`). A failed detail fetch sits on
+  "Loading chart…" indefinitely. It *does* self-heal on the next swipe (the `[i, i+1, i-1]` window
+  refetches it at `i-1`), but the user gets no signal that anything failed or that swiping helps.
+  No error surface exists anywhere for deck *reads* — the plan's App only surfaces `useAnnotations`
+  write errors. Plan-level omission.
+- **F5 `getTrades` failure is indistinguishable from an empty result** (`TradeDeck.tsx:42-45`, `:88`).
+  Access session expires → "No trades for this filter." → you conclude the losers filter is empty
+  and stop reviewing a run with 40 losers in it. Deviation 3 was still an improvement (the plan had
+  no `.catch` at all → unhandled rejection *and* the same stuck state).
+- **F6 no test exercises the swipe path at all** — 8 tests, zero touch events, and F1/F2 both live
+  there. Inherited gap (the plan's test list omitted it too).
+- **F7 a11y:** `{index + 1} of {list.length}` is a plain `<span>` with no `aria-live`, so after a
+  swipe (no focus change) a screen-reader user is never told which trade they are on; the
+  loading↔chart swap has no `aria-busy`. → deferred-Minor list, same bucket as the tabs finding.
+- **F3 (not plan-mandated):** fix the overclaiming test — gate-control the mock so it genuinely
+  fails against the plan's code.
+
+**Also noted:** an armed mark `kind` persists across trades (as does `zoom`). Defensible and matches
+the spec's "three taps, no menus" rhythm — but combined with F1 it is exactly how a stray mark lands
+on the wrong trade.
+
 - Task 10 — TradeDeck (swipe/prev/next, filter, flag + mark chips, neighbour prefetch)
 - Task 11 — Overview (KPI tiles, equity curve, EMA-distance slices)
 - Task 12 — wire run picker + tabs, styling via the frontend-design skill, build, deploy
@@ -703,6 +757,8 @@ Held for the final whole-branch review to triage, not lost:
 - `pull-feedback.ts` `--remote` path and a non-empty feedback table are untested.
 - `mergeMarksKeepingOverrides` (`useAnnotations.ts:47-50`) has an undocumented dependency on the DB's
   `UNIQUE(signal_key, kind)` constraint — one-line comment, pre-existing, not widened by `9957345`.
+- TradeDeck's `{index + 1} of {list.length}` has no `aria-live`, so a swipe (no focus change) is
+  never announced; the loading↔chart swap has no `aria-busy` (Task 10 review, F7).
 
 ### Environment facts that survive the session
 
