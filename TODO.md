@@ -503,11 +503,58 @@ complete until that review is clean.
   ref-vs-committed-state race logic, and the sonnet tier has already passed this file twice with
   live bugs in it). Asked for an explicit ruling on both residual edge cases and for the
   "diverges local state only, nothing wrong is persisted" claim to be *verified*, not assumed.
-- If that review is still unrecorded below, it did not finish — **re-dispatch it**; do not start
-  Task 10 on the assumption it passed.
-- Open decision for the human once the review lands: if the verdict is "accept the two residual
-  edge cases as documented limitations", that is a deliberate correctness tradeoff in the write
-  path of every annotation in the app — surface it, don't decide it silently.
+### Fable re-review of `c05ae39` — verdict **REQUEST CHANGES** (2026-07-21)
+
+The escalation was justified: the fable reviewer found **two bugs that both sonnet reviews and the
+controller's own read missed**. The core per-slot sequence gate itself was traced and found *sound*
+under every interleaving (two taps/tick, ABA, remove-then-place, StrictMode double-invoke, and the
+ref-vs-committed-state ordering) — the defects are around it, not in it. Both findings independently
+re-confirmed against the source by the controller before acting.
+
+**Finding 1 (new, most likely to bite in real use) — the initial-load merge drops server-confirmed
+marks of an unrelated kind.** `mergeKeepingOverrides` (`useAnnotations.ts:29-33`) resolves
+loaded-vs-local at `signal_key` granularity, so a local write replaces the whole `Mark[]` wholesale
+— even though every *other* path in the file scopes strictly to one `kind` (that is the entire point
+of `slot: signalKey::kind`, line 216-218). Failure needs no concurrency and no error: trade already
+has `[T1@bar1, T2@bar5]` server-side; trader taps a new `T1` before the initial `getMarks()`
+resolves; the merge takes the local array wholesale and **`T2` vanishes from the UI** though it was
+never touched and still exists in D1. This is the same root cause as disclosed edge case (b) but
+strictly wider than (b)'s "a removal resurfaces" framing — it *drops* good data on an ordinary add.
+Untested: the two "written before initial load resolves" tests (`useAnnotations.test.tsx:270-336`)
+both resolve the load with `[]`, so they cannot reach it.
+
+**Finding 2 (new) — `setError`/`clearError` are not gated by the ownership check that protects the
+revert** (`useAnnotations.ts:98-105`). (2a) A superseded write's late failure calls `setError`
+unconditionally, so an error banner appears though the current value is correct and nothing is
+wrong — the existing test at line 110-137 drives exactly this and would fail today if it asserted
+on `error`. (2b) `clearError` is a global toggle with no slot affinity: any unrelated success
+anywhere erases a genuine unresolved error for a different trade, so a trader never learns their tap
+didn't stick. **2b is plan-shape** (`error: string | null` singular, plan line 1372) → human call.
+
+**Rulings on the two previously-disclosed residual edge cases** (both traced, and the
+"local-state-only, nothing wrong persisted, reload reconciles" claim **verified, not assumed**):
+- **(a) two concurrent same-slot failures settling out of order → accept as documented limitation.**
+  Real (`restore` returns an issue-time capture, not a server-confirmed baseline), but neither POST
+  ever reached D1 and a fresh mount reconciles. A proper fix needs a last-confirmed-by-server
+  baseline — disproportionate for a double-failure-on-one-slot case.
+- **(b) removal resurfacing from a stale in-flight load → accept, but RE-SCOPE.** The honest
+  statement of the defect is Finding 1's ("the load merge treats a signal_key's mark array as atomic
+  instead of reconciling per `(signal_key, kind)`"), which is wider than what this bullet claimed.
+  Do not let the narrow framing above stand as the accepted disclosure.
+
+**Plan-mandated finding (flagged, NOT silently fixed, per `.claude/CLAUDE.md`):** the plan's own Step
+3 reference code (plan lines 1518-1525) still contains verbatim the original bug #1 — `removing`/
+`previous` assigned inside a `setMarks` updater and read on the next line, so `deleteMark` never
+fires. The shipped code correctly deviates. **The plan doc itself needs annotating** so a cold
+re-read doesn't reintroduce it. Documentation follow-up, not a blocker on this commit.
+
+**Test gaps to close:** (i) assert `error` after a superseded write's late failure; (ii) initial-load
+merge where the load returns *other kinds* for a key with a concurrent local write; (iii) no test
+renders under `<StrictMode>` despite the code's comments (lines 69-72, 132-133) leaning hard on
+double-invoke safety; (iv) no regression test pins the *accepted* behaviour of (a)/(b).
+
+**NEXT ACTION: fixes for Findings 1 and 2a + the test gaps, then re-review. Task 9 is still NOT
+complete.** Awaiting human ruling on 2b (plan-shape) before implementing that part.
 
 ### Remaining
 
