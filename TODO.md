@@ -29,6 +29,34 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
         the scorecard below): win rate holds ~80% but net is **negative** under honest fills
         (IS −0.14, OOS −0.29 pts/trade). See `docs/observability-and-exits-design.md` §2.
       - [ ] (3) phone trade-review dashboard (self-describing SVG cards, 50 bars each side).
+        **Delivery pivoted 2026-07-19 (artifact → Cloudflare + D1)** so phone *feedback* can sync
+        back to the engine's hypothesis loop — an artifact is read-only and can't. Decisions locked
+        with user: everything in D1 (runs + trades + feedback); feedback keyed on a stable
+        `signal_key` (`instrument|entry_ts|direction`) so flags survive re-runs; Cloudflare Access
+        (email-OTP) gates it; **no Java strategy changes** — one read-only `DashboardExporter` emits
+        `run.json` (bars/stop/target aren't in `experiments.sqlite`), a Node/wrangler script dumb-
+        pushes it to D1. Split into two plans:
+        - **Spec:** `docs/superpowers/specs/2026-07-19-cloudflare-trade-review-dashboard-design.md`
+          (supersedes `observability-and-exits-design.md` §3).
+        - **Plan 1 (data pipeline): DONE 2026-07-20, deployed and live.**
+          `docs/superpowers/plans/2026-07-19-trade-review-data-pipeline.md` — all 11 tasks.
+          Worker <https://axe-trader-dashboard.g3tech.workers.dev> (free tier), D1
+          `axe-trader-dashboard` (`fd847584-8fd9-427e-b869-9423a6c5b419`, WEUR), Cloudflare Access
+          gating every route (unauthenticated → 302). The `emaCeil_3,0atr` run (102 trades, 88% win)
+          is pushed to remote D1. Runbook + toolchain notes: `dashboard/DEPLOY.md`.
+          Export a run with `./mvnw test -Dtest=ConfluenceSweepTest -Dsweep=true
+          -Dsweep.exportDashboard=true` (last grid config wins the single `dashboard/run.json`),
+          then `npm run push -- --remote`.
+        - **Plan 2 (phone UI): IN PROGRESS 2026-07-20 — 8.5 of 12 tasks done.** See the
+          "Plan 2 execution checkpoint" section below before touching anything.
+          Plan: `docs/superpowers/plans/2026-07-20-trade-review-phone-ui.md` (12 TDD tasks).
+          `docs/superpowers/specs/2026-07-20-trade-review-phone-ui-design.md` — swipe deck (one
+          trade per screen) + Overview tab; Focus/Full zoom toggle instead of pinch; fixed 6-flag
+          taxonomy, one flag per trade; **new `marks` table** (`better-entry`/`T1`/`T2`/`T3`/
+          `exit-here` pinned to a bar timestamp) giving iteration 9's scale-out work the human
+          ground truth it lacks. Supersedes the single-scrolling-page UI sketch in the 07-19 spec.
+        - Frontend hosting = Cloudflare Worker with static-assets binding (not legacy Pages); all
+          Cloudflare code lives under `dashboard/`.
       - [ ] (4) **3-tier scale-out exit experiment ← NOW THE PRIORITY.** Item 2 proved the tight
         single-target geometry is net-negative, so this is the fix, not a nice-to-have. Extend
         `intrabarExit` to bank ⅓ at each of T1/T2/T3 with a ratcheting stop (defaults T1 0.75 /
@@ -407,3 +435,667 @@ Sonnet codes to spec; Haiku does boilerplate.
 - [x] TA4j strategy pipeline (BarSeriesFactory → IndicatorBundle → StrategyFactory → BacktestRunner)
 - [x] JFreeChart visualisation of backtest results
 - [x] SQLite persistence with Flyway migrations
+
+---
+
+## Plan 2 execution checkpoint (2026-07-20)
+
+Read this first if you are resuming Plan 2 (the phone UI) in a fresh session.
+
+**Branch:** `claude/cloudflare-dashboard-plan` (all work pushed).
+**Plan:** `docs/superpowers/plans/2026-07-20-trade-review-phone-ui.md`
+**Spec:** `docs/superpowers/specs/2026-07-20-trade-review-phone-ui-design.md`
+**Method:** superpowers subagent-driven-development. Per-task review is mandatory — see
+`.claude/CLAUDE.md`. Local ledger at `.superpowers/sdd/progress.md` (gitignored; git log is the
+authority if it is missing).
+
+### Done and reviewed clean
+
+| # | Task | Commit |
+|---|------|--------|
+| 1 | shared flag/mark vocabulary + server-side flag validation | `44357ac` |
+| 2 | `marks` table migration (applied local **and** remote D1) | `abb2206` |
+| 3 | `/api/marks` place / move / delete | `3266a13` |
+| 4 | pull marks alongside feedback to `experiments/marks.json` | `4082c5d` |
+| 5 | Vite/React scaffold + jsdom vitest project, builds into `dashboard/public/` | `7d23ac9` |
+| 6 | typed API client (+ fixes: URL encoding, missing columns, boundary validation) | `89f2a12`, `d7ca433`, `6f99583` |
+| 7 | chart geometry (pure functions) | `df8f164` |
+| 8 | TradeCard — SVG candles, stop/target, markers, Focus/Full | `49d6df3` |
+
+### Task 9 (`useAnnotations`) — ✅ COMPLETE, approved at `9957345` (fable review, 2026-07-21)
+
+Approved after 4 implementation rounds and 4 reviews. Final state: **api 21/21, ui 51/51, typecheck
+clean**, verified by the controller independently at each step. Three accepted limitations are
+documented below — they are deliberate, ruled on by the human, and pinned by regression tests.
+
+> **⚠️ THIS FILE IS CLOSED FOR FURTHER EXTENSION ON ITS CURRENT ARCHITECTURE.**
+> The approving fable reviewer's explicit recommendation, and the single most important thing to
+> carry forward from this task. The hook is *correct* as specced (flags + marks), but its
+> correctness rests on several global, comment-only invariants the type system does not enforce —
+> ref mirrors state synchronously; empty-array-means-absent-key; `apply`/`restore` must stay pure;
+> ownership is decided by an issue-time sequence number, not by value; array-valued slots must be
+> merged per sub-key, never wholesale. Evidence it has crossed from "reviewable" to "needs
+> fable-tier verification every time": two sonnet-tier reviews returned clean while real bugs were
+> live, and the final review needed the merge logic extracted into a standalone script and six
+> interleavings hand-simulated before it could be trusted.
+>
+> **If a third optimistic write type, bulk operations, or any change to `Mark`'s shape comes up,
+> do NOT patch this machine again.** Redesign onto a server-confirmed baseline (TanStack Query's
+> optimistic-mutation model, per-slot write serialisation, or confirm-on-response). Each of the last
+> two fixes required inventing new machinery — sequence numbers for ABA, then a parallel merge
+> function for per-kind reconciliation — rather than a local change. That is a design accumulating
+> moving parts under stress, not converging.
+
+Non-blocking follow-up noted by the reviewer: `mergeMarksKeepingOverrides` (`useAnnotations.ts:47-50`)
+silently depends on the DB's `UNIQUE(signal_key, kind)` constraint; two same-kind loaded rows would
+both pass through, worst case a duplicate React key warning. The dependency pre-dates this diff and
+is not widened by it. Worth a one-line comment; added to the deferred-Minor list.
+
+### Historical record of the Task 9 rounds (kept for the branch review)
+
+Commits: `90630af` (initial), `f2a7c51` (fix round 1), `c05ae39` (fix round 2 — latest).
+This is the optimistic flag/mark state hook — every write in the app flows through it, which is why
+it has taken three rounds. Two review rounds found bugs no passing test could catch:
+
+1. The plan's own reference code decided POST-vs-DELETE by reading a variable assigned inside a
+   `setState` updater on the very next line — so `deleteMark` was never called. Removing a mark
+   would have vanished from the UI and silently persisted in D1.
+2. The first fix read `marks` from the callback closure and wrote a precomputed array over `prev`,
+   so two taps in one tick dropped one mark locally though the server took both.
+3. The revert restored a captured snapshot unconditionally, so a failed older write could wipe a
+   newer successful one.
+4. Round 2 found the value-equality "is this still mine" check cannot handle ABA (A → B → A), and
+   that the initial load still did the wholesale non-functional overwrite finding 2 was about.
+
+Round-2 fixes (`c05ae39`) replaced the value-equality ownership test with a per-key monotonic
+sequence gate and made the initial load merge functionally from `prev`. Suite at this commit:
+**api 21/21, ui 47/47, typecheck clean** (verified by the controller, not just claimed).
+
+Two residual edge cases were left deliberately unfixed and are documented in the fix report:
+1. Two concurrent writes to the same slot that BOTH fail with out-of-order settlement can still
+   leave state holding a value the server has neither of. A real fix needs a
+   "last-confirmed-by-server" baseline, not just a sequence gate.
+2. A mark removed locally while a load is in flight can resurface if that load's GT-stale GET still
+   carried the pre-removal row. Needs a "locally touched" concept beyond "re-apply what is in prev".
+Both are narrower than what was fixed, and both diverge local state only — nothing wrong is
+persisted, and a reload reconciles.
+
+**NEXT ACTION: re-review `c05ae39` (base `49d6df3`) before starting Task 10.** Use an Opus-tier
+reviewer — the sonnet-tier reviews passed this task twice while real bugs were live. Judge the two
+residual edge cases explicitly: accept as documented limitations, or fix. Do not mark Task 9
+complete until that review is clean.
+
+**Session 2026-07-21 progress:**
+- Re-verified `c05ae39` independently (not just trusting the prior checkpoint): `npm test` →
+  **api 21/21, ui 47/47**; `npm run typecheck` → **clean** on both projects. Claims hold.
+- Re-review dispatched to a **fable-worker** (not sonnet — this is ABA / out-of-order-settlement /
+  ref-vs-committed-state race logic, and the sonnet tier has already passed this file twice with
+  live bugs in it). Asked for an explicit ruling on both residual edge cases and for the
+  "diverges local state only, nothing wrong is persisted" claim to be *verified*, not assumed.
+### Fable re-review of `c05ae39` — verdict **REQUEST CHANGES** (2026-07-21)
+
+The escalation was justified: the fable reviewer found **two bugs that both sonnet reviews and the
+controller's own read missed**. The core per-slot sequence gate itself was traced and found *sound*
+under every interleaving (two taps/tick, ABA, remove-then-place, StrictMode double-invoke, and the
+ref-vs-committed-state ordering) — the defects are around it, not in it. Both findings independently
+re-confirmed against the source by the controller before acting.
+
+**Finding 1 (new, most likely to bite in real use) — the initial-load merge drops server-confirmed
+marks of an unrelated kind.** `mergeKeepingOverrides` (`useAnnotations.ts:29-33`) resolves
+loaded-vs-local at `signal_key` granularity, so a local write replaces the whole `Mark[]` wholesale
+— even though every *other* path in the file scopes strictly to one `kind` (that is the entire point
+of `slot: signalKey::kind`, line 216-218). Failure needs no concurrency and no error: trade already
+has `[T1@bar1, T2@bar5]` server-side; trader taps a new `T1` before the initial `getMarks()`
+resolves; the merge takes the local array wholesale and **`T2` vanishes from the UI** though it was
+never touched and still exists in D1. This is the same root cause as disclosed edge case (b) but
+strictly wider than (b)'s "a removal resurfaces" framing — it *drops* good data on an ordinary add.
+Untested: the two "written before initial load resolves" tests (`useAnnotations.test.tsx:270-336`)
+both resolve the load with `[]`, so they cannot reach it.
+
+**Finding 2 (new) — `setError`/`clearError` are not gated by the ownership check that protects the
+revert** (`useAnnotations.ts:98-105`). (2a) A superseded write's late failure calls `setError`
+unconditionally, so an error banner appears though the current value is correct and nothing is
+wrong — the existing test at line 110-137 drives exactly this and would fail today if it asserted
+on `error`. (2b) `clearError` is a global toggle with no slot affinity: any unrelated success
+anywhere erases a genuine unresolved error for a different trade, so a trader never learns their tap
+didn't stick. **2b is plan-shape** (`error: string | null` singular, plan line 1372) → human call.
+
+**Rulings on the two previously-disclosed residual edge cases** (both traced, and the
+"local-state-only, nothing wrong persisted, reload reconciles" claim **verified, not assumed**):
+- **(a) two concurrent same-slot failures settling out of order → accept as documented limitation.**
+  Real (`restore` returns an issue-time capture, not a server-confirmed baseline), but neither POST
+  ever reached D1 and a fresh mount reconciles. A proper fix needs a last-confirmed-by-server
+  baseline — disproportionate for a double-failure-on-one-slot case.
+- **(b) removal resurfacing from a stale in-flight load → accept, but RE-SCOPE.** The honest
+  statement of the defect is Finding 1's ("the load merge treats a signal_key's mark array as atomic
+  instead of reconciling per `(signal_key, kind)`"), which is wider than what this bullet claimed.
+  Do not let the narrow framing above stand as the accepted disclosure.
+
+**Plan-mandated finding (flagged, NOT silently fixed, per `.claude/CLAUDE.md`):** the plan's own Step
+3 reference code (plan lines 1518-1525) still contains verbatim the original bug #1 — `removing`/
+`previous` assigned inside a `setMarks` updater and read on the next line, so `deleteMark` never
+fires. The shipped code correctly deviates. **The plan doc itself needs annotating** so a cold
+re-read doesn't reintroduce it. Documentation follow-up, not a blocker on this commit.
+
+**Test gaps to close:** (i) assert `error` after a superseded write's late failure; (ii) initial-load
+merge where the load returns *other kinds* for a key with a concurrent local write; (iii) no test
+renders under `<StrictMode>` despite the code's comments (lines 69-72, 132-133) leaning hard on
+double-invoke safety; (iv) no regression test pins the *accepted* behaviour of (a)/(b).
+
+### Human rulings taken 2026-07-21
+
+- **Finding 1 → FIXED in `9957345`.** Reconcile the initial-load marks merge per
+  `(signal_key, kind)` instead of per `signal_key`, via a new `mergeMarksKeepingOverrides`; flags
+  keep the original helper. Regression test confirmed failing first. Diff read and suite re-run by
+  the controller, not just taken from the worker's report: **api 21/21, ui 51/51, typecheck clean.**
+  Four tests added (regression, StrictMode, and pins for limitations (a) and (b)).
+  **It does not narrow limitation (b) — see (b) below.**
+- **Finding 2b → ACCEPT as a documented limitation.** The plan's singular `error: string | null`
+  stays; Task 10's interface is unaffected. Recorded as limitation **(c)** below.
+- Plan doc annotated (this session) with a ⚠️ block above the buggy `toggleMark` reference code so a
+  cold re-read cannot reintroduce the never-calls-`deleteMark` bug. Plan-mandated finding closed.
+
+### Accepted limitations of `useAnnotations` (deliberate, not oversights)
+
+- **(a)** Two concurrent writes to the same slot that BOTH fail with out-of-order settlement can
+  leave state holding a value the server has neither of. `restore` returns an issue-time capture,
+  not a server-confirmed baseline. Local-state-only; nothing wrong is persisted; reload reconciles.
+- **(b)** A mark removed locally while a load is in flight can resurface if that load's stale GET
+  still carried the pre-removal row. **The Finding 1 fix (`9957345`) does NOT narrow this — it makes
+  it manifest more consistently.** Before the fix, a mixed-kind case (one kind removed, another still
+  present locally) *accidentally masked* the resurfacing, because the wholesale key overwrite threw
+  the entire loaded row set away. Per-kind merging cannot distinguish "this kind was never touched
+  locally" from "this kind was touched and then removed to nothing" — both read as *absent from the
+  local array* — so a stale loaded row for a removed kind now wins consistently. Pinned by test.
+  A real fix needs an explicit "locally touched" / tombstone concept, which is exactly the kind of
+  extra machinery the stopping rule below says not to bolt on in another patch round.
+- **(c)** `error` is a single global string with no slot affinity: a success on ANY slot clears the
+  banner belonging to a different, still-failed write, and a superseded write's late failure can
+  raise a banner although the current value is correct. A trader can therefore miss that one tap
+  didn't stick. Accepted 2026-07-21 as an acceptable tradeoff for a single-toast phone tool.
+
+**NEXT ACTION: Finding 1 fix + tests land → re-review (fable tier again — the sonnet tier has now
+been wrong on this file three times) → only then Task 9 complete and Task 10 starts.** Task 9 is
+still NOT complete.
+
+### STOPPING RULE for Task 9 — RESOLVED, not triggered
+
+The next review came back **APPROVE**, so the stopping rule's "clean → proceed" branch applied and
+Task 9 shipped. The rule is retained below because its *redesign* branch is still the standing
+policy for any future change to this file (see the closed-for-extension note above).
+
+Original text:
+
+### STOPPING RULE for Task 9 (set by the human 2026-07-21)
+
+Task 9 has now consumed **four implementation rounds and three reviews**, and each review round has
+found real bugs that the previous round's tests passed straight through. That is the signature of a
+design that is too hard to get right by patching, not of unlucky implementations. Do not keep
+grinding it round after round.
+
+**The next fable re-review is the decision point:**
+
+- **Clean →** mark Task 9 complete, proceed to Task 10. Done.
+- **More substantive findings →** STOP patching. Do not dispatch a fifth fix round. Escalate to
+  **fable to redesign the approach**, not to fix another symptom. If that does not produce a design
+  fable is confident in, **park Task 9 and brainstorm it as its own exercise**
+  (`superpowers:brainstorming`) rather than blocking the rest of Plan 2 on it.
+
+**Redesign directions worth putting in front of fable when that happens** (the recurring root cause
+is a hand-rolled per-slot optimistic state machine — refs mirroring state, sequence gates, issue-time
+restore captures — which is genuinely hard concurrent code we keep re-deriving by hand):
+1. **Adopt a library that already solves this** — TanStack Query's mutation + optimistic-update model
+   (`onMutate`/`onError` rollback with a server-confirmed cache as the baseline) directly addresses
+   accepted limitation (a), which is precisely the "no last-confirmed-by-server baseline" gap.
+2. **Serialise writes per slot** — a small per-slot promise queue removes every out-of-order
+   settlement case by construction, at the cost of a little latency no phone user would notice.
+3. **Reduce the optimism** — confirm-on-response with a pending indicator. Loses some instant-tap
+   feel; deletes the entire class of divergence bugs.
+
+Note Task 10 consumes this hook only as props (`flags`, `marks`, `onFlag`, `onToggleMark`), so
+**Task 10 is not truly blocked by Task 9's internals** — if Task 9 gets parked, Task 10 can proceed
+against that stable interface.
+
+## ⭐ SESSION HANDOVER — read this first (2026-07-21, late session)
+
+> **SUPERSEDED IN PART, 2026-07-21 later session — see "FINAL REVIEW DONE" immediately below.**
+> The final whole-branch review has now run and its fixes landed at `0732a8a`. Two claims in the
+> original handover were **wrong** and are corrected there: the repair script IS idempotent, and
+> "deploy has NOT been run" is true only of the phone UI.
+
+**Everything is committed and pushed.** Branch `claude/cloudflare-dashboard-plan`, HEAD `0732a8a`.
+Working tree clean apart from `output/charts/runner-results.html`, a test-regenerated build artifact.
+
+**Suite state, verified by the controller (not claimed by a worker):**
+api 21/21 · ui 79/79 · Java 34 tests / 0 failures (1 pre-existing skip in `ConfluenceSweepTest`) ·
+typecheck clean · `npm run build` succeeds.
+(The earlier "Java 20/20" undercounted — the surefire aggregate is 34.)
+
+### Tasks 9, 10, 11 COMPLETE and reviewed. Task 12 is PARTLY done.
+
+Task 12 was deliberately split. **Part A (shell wiring) and Part B (styling) are both DONE**
+(`App.tsx` run picker + ARIA tabs, `styles.css`, `main.tsx` imports it). **NOT done: deploying the
+phone UI.**
+
+### FINAL REVIEW DONE (2026-07-21) — fixes at `0732a8a`
+
+Two reviewers: one on whole-branch integration seams, one (fable tier) on the exporter arithmetic
+and the production repair script. **The money arithmetic came back correct** — `max_drawdown` is a
+true peak-to-trough on the cumulative *net* curve anchored at 0, `worst_quarter_net` sums by real
+UTC calendar quarter, and the tests genuinely pin them (they were checked against three plausible
+wrong implementations). Seven defects were fixed; all fixes are pinned by tests proven RED first.
+
+**Two corrections to what this handover previously claimed:**
+
+- **`fix-net-pnl.sql` IS idempotent.** The old warning was wrong. It assigns
+  `net_pnl = pnl - (AVG(pnl) - net_avg_pnl)` and never writes either input, so it re-derives from
+  immutable data. Verified empirically: three consecutive runs, byte-identical state. It also now
+  has an `EXISTS` guard — without it, a missing/renamed run row made the subquery NULL and
+  `pnl - NULL` silently NULLed `net_pnl` for **every** trade in scope (verified it really did).
+- **Production IS deployed** — the Plan-1 API, live behind Cloudflare Access since 2026-07-20
+  (verified 2026-07-21: `/`, `/api/health`, `/api/runs`, `/api/marks` all 302). What has *never*
+  been deployed is the phone UI. `DEPLOY.md` said Access was "outstanding"; that was stale and is
+  now corrected.
+
+### ✅ ALL PRODUCTION ACTIONS ARE DONE (2026-07-21, authorised by the human)
+
+Nothing is outstanding against production. What was run, in order, each verified after the fact:
+
+1. **Migration `0002_marks.sql` — NO ACTION NEEDED; the review's finding was wrong.**
+   The integration reviewer raised as **Critical** that only `0001_init.sql` had been applied
+   remotely, inferring it from `DEPLOY.md`'s stale status section. Checked directly instead of
+   acted on: `wrangler d1 migrations list --remote` → *"No migrations to apply"*, and
+   `sqlite_master` lists `marks`. **The table has existed in production all along.** The
+   `Promise.all` split at `0732a8a` is still worthwhile hardening, and its test stands, but the
+   production emergency it described did not exist.
+   *Lesson: a Critical finding derived from a document rather than from the system is a hypothesis.*
+
+2. **`net_pnl` repair — APPLIED.** Pre-state confirmed the diagnosis exactly: `AVG(pnl)` and
+   `AVG(net_pnl)` were byte-identical at `1.334296674469148`. Applied, 102 rows written; after,
+   `AVG(net_pnl) = 0.8548731320570223`, equal to `net_avg_pnl` to the last digit, spread
+   `0.4794235424121257` as predicted.
+
+3. **Re-export — DONE.** New run **`US500-1784664611692`**, label `emaCeil_3,0atr`, 102 trades,
+   `win_rate 0.8824`, `net_avg_pnl 0.854873` — identical to the old row — plus the previously
+   missing **`max_drawdown 83.54`** and **`worst_quarter_net −46.27`**. Independently confirmed in
+   the export that `net_pnl` is genuinely net (`AVG(pnl) 1.334297` vs `AVG(net_pnl) 0.854873`), so
+   the `2cd6944` exporter fix holds end-to-end.
+
+4. **Old run `US500-1784554730790` — DELETED** (authorised). It was strictly dominated by the new
+   row and the picker shows only the label, so two entries were indistinguishable. Verified safe
+   first: `feedback` and `marks` have **no `run_id` column** — they key on `signal_key` alone — and
+   both tables were empty regardless. Post-state: one run, 0 orphaned trades.
+
+5. **Phone UI — DEPLOYED.** `npm run deploy`, version `640a185f-9b98-4ba9-9b6c-30bd2dab9773`.
+   Access still gates everything afterwards: `/`, `/api/runs` and the hashed static assets all 302.
+
+**Production now holds exactly one run, complete and net-correct.** Remaining: triage the deferred
+Minors below, then `superpowers:finishing-a-development-branch` to merge.
+
+### Deferred Minors from the final review (none blocking, all verified as real)
+
+- **The win-rate tile is gross, and unlabelled as such** (`Overview.tsx:73`). `is_win` stays gross
+  by deliberate design (`DashboardExporter.java:49-51`), so a trade can read `is_win=1` with
+  `net_pnl < 0` — while every neighbouring pnl figure on the same screen is net. Given this
+  branch's headline finding is *precisely* that the tooling was flattering the strategy, this tile
+  should read "win rate (gross)". **Strongest candidate to fix next.**
+- **No in-Worker auth on the write surface** (`src/index.ts:10-19`). Access gates per-hostname at
+  the edge; adding a custom domain later silently un-gates `POST /api/feedback`, `POST /api/marks`,
+  `DELETE /api/marks`. Now documented in `DEPLOY.md`; revisit before a second hostname exists.
+- **`slices.ts:43-44` sums `is_win`/`net_pnl` without null handling** — nullable columns coerce to
+  0, so a partially-populated run yields a quietly wrong `win_pct` rather than an error.
+- **`slices.ts:21` `buckets` param degrades to empty on garbage input** — `Number("abc")` → NaN
+  propagates through `Math.max/min`, `slice(0, NaN)` is empty, returns HTTP 200 with no data.
+  Only reachable by hand-crafted URL. Wants a `Number.isFinite` guard → 400.
+- **`scripts/sql.ts:5-9` emits `NaN`/`Infinity` as bare SQL tokens** — a non-finite value from the
+  exporter yields `INSERT ... VALUES (NaN)`, a syntax error *after* the DELETEs have run.
+- **The push is not transactional** (`sql.ts:20-21`) — DELETE-then-INSERT with no `BEGIN`/`COMMIT`,
+  so a mid-file failure leaves the run deleted and partially re-inserted.
+- **Marks and feedback are not scoped by timeframe.** `signal_key` is `instrument|entryTs|direction`
+  (`DashboardExporter.java:38-40`). Two runs of the same instrument at 5m and 15m entering on the
+  same timestamp would share flags and marks. Harmless today (one hardcoded timeframe); a real
+  collision the moment per-instrument profiles land.
+- **`worst_quarter_net` means two different things in two stores.** `DashboardExporter` sums per
+  calendar quarter; the untouched `ExperimentStore.java:248-259` computes the *mean* per quarter
+  under the identical column name. Both self-consistent, but cross-checking one against the other
+  will look like a bug. Rename one.
+- **`getFeedback()`/`getMarks()` fetch entire tables on app start** (`api.ts:78, 83`), unscoped by
+  run. Fine at 102 trades; grows with every reviewed run.
+- **`useAnnotations` returns `loading` that `App.tsx` never consumes** — only tests read it.
+
+### 🔴 THE HEADLINE FINDING — the tooling was flattering the strategy, twice
+
+The dashboard now renders, against the real 102-trade `emaCeil_3,0atr` run:
+**win rate 88% · net +0.85 pts/trade · max DD −83.54 · worst quarter −46.27.**
+
+Total net over the run is ~87.2 pts (0.85 × 102). **The deepest peak-to-trough drawdown is 96% of
+everything the strategy made.** Worst quarter alone is over half of it. That is a risk profile the
+north star (expectancy + risk-of-ruin) should care about a great deal, and it was invisible until
+this session because:
+- `trades.net_pnl` held **gross** pnl under a column named net (fixed `2cd6944`, pinned `30a182c`),
+  and nothing asserted on it — which is exactly why it survived; and
+- `max_drawdown` / `worst_quarter_net` were **never written at all** (fixed `8c7f4be`), though the
+  columns existed in the schema, the `Run` type and `sql.ts`, so the tiles sat blank.
+
+Both were caught only by looking at real output, not by tests. **Treat the +0.85 expectancy with
+suspicion until the drawdown geometry is addressed** — this corroborates the 2026-07-04 audit's
+conclusion that the entry edge is real but the exit geometry throws it away.
+
+### What landed this session, in order
+
+| Commit | What |
+|---|---|
+| `9957345` | Task 9 fix — marks load-merge reconciles per `(signal_key, kind)` |
+| `cc4167d` | Task 9 COMPLETE (fable APPROVE) + file closed-for-extension policy |
+| `5d82139` | Task 10 TradeDeck |
+| `5c1fc39` | Task 10 review fixes — swipe direction + single-touch guards, read-failure states |
+| `49be39f` | Task 11 Overview |
+| `2cd6944` | **exporter: `net_pnl` was gross, not net** |
+| `30a182c` | test pinning `net_pnl` (proven RED against the old code) |
+| `2c66c51` | Task 11 review fixes — max DD/worst qtr tiles, real chart tests, empty states |
+| `3e32373` | `scripts/fix-net-pnl.sql` repair for already-exported runs |
+| `8c7f4be` | **Task 12B styling + exporter max drawdown / worst quarter** |
+
+### Design direction (so a future session doesn't redesign it by accident)
+
+`styles.css` is **"calibrated instrument"**: every figure in tabular monospace so columns compare;
+**amber reserved exclusively for reference marks** (baseline win rate, zero axis) and never
+decorative; phone-first, holding a 480px column on desktop so a 320-unit chart viewBox is not
+stretched across 1400px. **Signature: slice-bar opacity encodes sample size** (relative to the
+largest bucket, floored at 0.3), so the routine runt bucket — 102 trades / 4 buckets gives
+25,25,25,25,**2** — visibly reads as weaker instead of as authoritative as a 25-trade bucket.
+
+Two bugs only the running app revealed: the equity polyline had `fill:none` and **no stroke**, so it
+drew nothing at all; and the SVGs had no height cap, growing to absurd heights.
+
+### Local dev environment (reproducible)
+
+Local D1 was seeded from `dashboard/run.json` (`npx tsx scripts/push-run.ts run.json`, local by
+default), the `net_pnl` repair applied locally, and `max_drawdown`/`worst_quarter_net` written in by
+hand via SQL so the tiles could be screenshotted. `npx wrangler dev --port 8788` then serves the
+whole app. **Local D1 therefore has correct data; production does not** — see items 1 and 2 above.
+
+### Remaining
+
+**Task 10 (TradeDeck) implemented at `5d82139` — per-task review IN FLIGHT (opus tier).**
+Suite at that commit: **api 21/21, ui 59/59 (51 baseline + 8), typecheck clean**, verified by the
+controller. If no review verdict is recorded below, it did not finish — **re-dispatch it**; do not
+start Task 11 assuming it passed.
+
+Three deviations from the plan's reference code, all bugs rather than design changes:
+1. The plan's prefetch effect had `detail` as a dependency AND wrote to it — every arrival re-ran
+   the effect, and its cleanup discarded the other in-flight responses. Quadratic refetch burst
+   that threw away good responses. Replaced with a request-once ref, deps `[list, index]`.
+2. **Caught by the controller, not the implementer:** the request-once ref and a `live` cleanup
+   guard are *mutually destructive*. Advancing the index before a fetch resolved ran the cleanup,
+   discarding the responses while the ref suppressed any refetch — stranding the deck on
+   "Loading chart…" **permanently**, in the ordinary case of swiping on before the chart loads.
+   Proved with a failing test first, then fixed by dropping the guard (`detail` is an id-keyed
+   cache, so a late response files under its own id and cannot be misattributed). Failed fetches
+   now release the id so a retry is possible. Pinned by a regression test.
+3. The plan rendered "No trades for this filter." during the *initial* load. Added a loading state;
+   a failed `getTrades` now falls through to empty rather than spinning forever.
+
+Also: two plan-provided tests were racy (`getByTestId` immediately after `waitFor`, assuming the
+chart rendered in the same tick as the list) → `findByTestId`. Deviation 2's fix exposed them.
+
+**Lesson worth carrying:** deviation 2 was introduced *by the fix for* deviation 1 and was not
+caught by the implementer's own new test. The per-task review is not the only guard — the
+controller reading the actual diff is load-bearing too.
+
+### Task 10 review verdict: **APPROVE WITH FOLLOW-UPS** (opus tier, 2026-07-21)
+
+Spec compliance PASS (interface is byte-identical to Task 12's call site, plan 2194-2200 — Task 12
+will wire cleanly). Code quality PASS with follow-ups. Reviewer verified empirically in a detached
+worktree, and **corrected three controller claims** — recorded here because the corrections matter
+more than the praise:
+- The "fetch exactly once" test (`TradeDeck.test.tsx:118-131`) **does NOT fail against the plan's
+  buggy code** — 8/8 pass. Both mocks settle in one microtask drain so React 19 batches the
+  `setDetail` calls, the effect re-runs once, and both ids are already cached. The bug is real
+  (reproduced with a 3-trade list and staggered 5ms/60ms mocks → `["t-a","t-b","t-b"]`), but this
+  test does not guard it and its name overclaims. **Fix: make the mock gate-controlled.**
+- "Quadratic refetch burst" overstated — with a 3-element prefetch window it is a bounded handful.
+- The two `getByTestId` → `findByTestId` changes were **not** fixing a live race; both still pass
+  when reverted. `findBy` hardens (fails loudly if the chart never renders) but masked nothing.
+
+Confirmed clean by the reviewer: dropping the prefetch cleanup **is** safe (react 19.2.7, so
+setState-after-unmount is a no-op; and `trades.id` is a global `TEXT PRIMARY KEY` per
+`migrations/0001_init.sql:26`, not per-run, so an id-keyed cache cannot misattribute across runId or
+filter changes); the `requested` ref can never strand a trade; `detail` growth is a non-issue
+(~660 KB per 102-trade run); `list[index]` cannot go out of bounds (batched `setList`/`setIndex`).
+The "advance before resolve" test is the strongest in the file — reviewer re-introduced the `live`
+guard and confirmed it fails.
+
+**Open follow-ups — F1/F2/F4/F5 are PLAN-MANDATED and need a human ruling:**
+- **F1 swipe fires on vertical scroll** (`TradeDeck.tsx:98-104`). No dx-vs-dy comparison. Scrolling
+  down to reach the flag chips with a thumb arc advances the deck — losing your place with an armed
+  mark kind now pointing at a *different* trade. Swipe is the design spec's primary navigation.
+  Fix: track `touchStartY`, require `Math.abs(dx) > Math.abs(dy)`.
+- **F2 two-finger gesture phantom-swipes** (`TradeDeck.tsx:97`). `e.touches[0]` is the *first* finger
+  on the surface, not the new one, so a pinch yields `dx = x₂ − x₁` → unintended advance. Sharpened
+  by the spec explicitly rejecting pinch-zoom: users *will* try to pinch and instead change trade.
+  Fix: `if (e.touches.length !== 1) return;`. (Reviewer confirmed no throw risk, and `touchcancel`
+  leaves no phantom.)
+- **F4 read failures are silent** (`TradeDeck.tsx:79-83`). A failed detail fetch sits on
+  "Loading chart…" indefinitely. It *does* self-heal on the next swipe (the `[i, i+1, i-1]` window
+  refetches it at `i-1`), but the user gets no signal that anything failed or that swiping helps.
+  No error surface exists anywhere for deck *reads* — the plan's App only surfaces `useAnnotations`
+  write errors. Plan-level omission.
+- **F5 `getTrades` failure is indistinguishable from an empty result** (`TradeDeck.tsx:42-45`, `:88`).
+  Access session expires → "No trades for this filter." → you conclude the losers filter is empty
+  and stop reviewing a run with 40 losers in it. Deviation 3 was still an improvement (the plan had
+  no `.catch` at all → unhandled rejection *and* the same stuck state).
+- **F6 no test exercises the swipe path at all** — 8 tests, zero touch events, and F1/F2 both live
+  there. Inherited gap (the plan's test list omitted it too).
+- **F7 a11y:** `{index + 1} of {list.length}` is a plain `<span>` with no `aria-live`, so after a
+  swipe (no focus change) a screen-reader user is never told which trade they are on; the
+  loading↔chart swap has no `aria-busy`. → deferred-Minor list, same bucket as the tabs finding.
+- **F3 (not plan-mandated):** fix the overclaiming test — gate-control the mock so it genuinely
+  fails against the plan's code.
+
+**Also noted:** an armed mark `kind` persists across trades (as does `zoom`). Defensible and matches
+the spec's "three taps, no menus" rhythm — but combined with F1 it is exactly how a stray mark lands
+on the wrong trade.
+
+### Human rulings on the Task 10 follow-ups (2026-07-21) — fixes IN FLIGHT
+
+- **F1 + F2 → FIX BOTH, plus the missing swipe tests (F6).** Direction check
+  (`|dx| > |dy|`) and a single-touch guard on `touchstart`. Swipe is the tool's primary navigation
+  and had zero test coverage; adding horizontal-advances / vertical-does-not / two-finger-does-not /
+  below-threshold-does-not.
+- **F4 + F5 → distinct failed states, local state only.** Failed list read renders
+  `Couldn't load trades.` + Retry; a genuinely empty result keeps the exact existing text
+  `No trades for this filter.`; a failed chart read renders `Couldn't load chart.` + Retry instead
+  of an indefinite `Loading chart…`. **No new props** — `TradeDeck`'s interface is unchanged, so
+  Task 12's call site is unaffected.
+- **F3 → fix the overclaiming test.** Rewrite with staggered/gate-controlled mocks and *prove* it
+  goes RED against the plan's buggy deps before trusting it.
+- **F7 → deferred** to the Minor list for the final whole-branch review.
+
+**All landed in `5c1fc39`.** Suite: **api 21/21, ui 65/65** (59 + 6 net new), typecheck clean —
+verified by the controller. F3's rewritten test was proven RED against the plan's buggy deps
+(2 calls for `t-b`) before being accepted, independently matching the reviewer's reproduction.
+Swipe tests confirmed to be genuine guards, not decoration: the F1 case uses `dx=50, dy=200`, which
+sits exactly at the old `SWIPE_PX` threshold and *would* advance without the direction check; the F2
+case lifts a second finger 300px from finger 1's origin.
+
+**Task 10 is COMPLETE.** ✅
+
+- [x] Task 10 — TradeDeck ✅ complete (`5d82139` + `5c1fc39`, reviewed)
+- **Task 11 — Overview: IN FLIGHT (sonnet-worker).** Human ruling: build to the plan's spec now,
+  review for correctness, then show a screenshot before Task 12 styling — do NOT pull Task 12's
+  visual design forward (avoids doing it twice). Mandatory per-task review still applies.
+  If no result is recorded here, it did not finish — **re-dispatch it.**
+
+  Plan checked before dispatch; two deviations instructed:
+  1. The plan's effect `.catch`es `getSlices` but NOT `getTrades` → unhandled rejection, and a
+     silently blank equity curve in the app. Handled (no retry affordance — not in the spec).
+  2. **The slice chart hid sample size.** The Worker's slices route chunks by
+     `per = Math.max(1, Math.floor(n / buckets))`, so the last bucket is a short remainder —
+     n=102, buckets=4 → 25,25,25,25,**2**. The plan rendered `win_pct` only, so a 2-trade bucket at
+     100% looks exactly as authoritative as a 25-trade bucket at 60%. That invites precisely the
+     false hypothesis `docs/instrument-personality-playbook.md` exists to prevent ("eyes propose,
+     data disposes"). Now renders the per-bucket count plus an accessible `<title>`.
+     **Worth raising at the branch review: should the route itself distribute the remainder rather
+     than emit a runt bucket?** The fix here makes the runt visible; it does not remove it.
+
+  **Implemented at `49be39f`. Suite: api 21/21, ui 70/70 (65 + 5), typecheck clean** — verified by
+  the controller. Per-task review IN FLIGHT (opus tier); if no verdict is recorded below it did not
+  finish — **re-dispatch it** before starting Task 12.
+
+  Still owed to the human once the review is clean: **run the app and send a screenshot of the
+  Overview against the real 102-trade run**, before Task 12 does any styling. That was the explicit
+  condition attached to the build-to-spec ruling.
+
+### Task 11 review verdict: **APPROVE WITH FOLLOW-UPS** (opus tier, 2026-07-21)
+
+Spec compliance PASS against the plan (interface matches Task 12's call site, plan line 2202).
+Suite re-verified by the reviewer: api 21/21, ui 70/70, typecheck clean.
+
+> ## 🔴 THE EQUITY CURVE PLOTS GROSS PNL UNDER A "NET" HEADING — data-integrity, needs a human call
+>
+> `Overview.tsx:39,66` cumulates `t.net_pnl` and titles it "Equity (cumulative net pts)". But
+> `DashboardExporter.java:99-100` writes:
+> ```java
+> // net = pnl - spread is applied at run level; per-trade keeps raw pnl (no double-subtract).
+> n.put("net_pnl", t.pnl());
+> ```
+> **`trades.net_pnl` is GROSS.** Only the run-level `net_avg_pnl` is genuinely net
+> (`DashboardExporter.java:48`: `mean(t.pnl() - avgSpread)`). Verified by the controller directly,
+> not taken from the review.
+>
+> **Concrete consequence on the real 102-trade run:** the KPI tile reads **−0.14 net pts/trade**
+> while the curve *directly beneath it* slopes **upward** by ~`102 × avgSpread`. That is exactly the
+> "close-based model looks profitable, honest fills say otherwise" trap that `CLAUDE.md` records the
+> 2026-07-04 audit already falling into once — and this chart re-creates it visually, right next to
+> the number that contradicts it. The frontend **cannot** fix this: `avgSpread` is not in the `runs`
+> table, so the client has no way to derive true net.
+>
+> Options: **(a)** relabel the heading "cumulative gross pts" — one line, honest, no pipeline
+> change, but the headline chart then answers a question nobody asked; **(b)** add an `avg_spread`
+> column to `runs` and subtract `i × avg_spread` in the curve; **(c)** make `trades.net_pnl`
+> genuinely net in the exporter. Reviewer preferred (b) or (c).
+
+**Design-spec gap — PLAN-MANDATED, needs a human call.** The design spec
+(`specs/2026-07-20-trade-review-phone-ui-design.md:25-26`) lists KPI tiles including **max DD** and
+**worst quarter**. The plan's Task 11 interface (line 1886) silently drops both; the implementation
+faithfully followed the plan. `max_drawdown` and `worst_quarter_net` already exist on the `Run`
+type, in `RunRow`, and in `migrations/0001_init.sql:21-22` — so this is two more `<Kpi>` lines, not
+a pipeline change. Given the north star is expectancy and risk-of-ruin, max DD is arguably the
+second-most-important number on the page.
+
+**Other follow-ups:**
+- **Every degenerate case renders as an identical blank chart.** `.catch` on `getTrades` converts
+  `api.ts`'s deliberate loud `ApiError` ("should fail loudly rather than render as a silent dash")
+  into `points=""` — pixel-identical to "loading" and to "no trades". A one-trade run is also
+  invisible (`Overview.tsx:44` → `points="0.0,0.0"`, a zero-length polyline renders nothing under
+  `stroke-linecap: butt`) — realistic at ~1 trade/day. The slice chart has an empty state; the
+  equity curve has none.
+- **The `<title>` added for the sample-size fix is dead code on both its paths.** The parent `<svg>`
+  has `role="img"`, which makes it a leaf in the a11y tree and prunes descendants, so no screen
+  reader will announce it; and there is no hover on a phone, so no tooltip either. The *visible*
+  `n=` label is the real fix and does work. Expose counts via the svg's `aria-label` in Task 12.
+- **Test quality — the two most important assertions are the two weakest.** The equity-curve test
+  asserts only that there are 3 points; replacing `cum += t.net_pnl` with `t.net_pnl`, inverting the
+  y-axis, or dropping the sort all still pass. Exact fix for this fixture:
+  `expect(points).toBe("0.0,30.0 160.0,90.0 320.0,0.0")` — pins cumulation, ordering, range and
+  y-flip at once. And the `n=4` test can't distinguish per-bucket counts because the plan's fixture
+  gives *both* buckets `count: 4` — **the test for the deviation does not test the deviation.**
+- Low: `=== null` guards should be `== null` (fixtures build partial `Run`s `as unknown as Run`;
+  adding a `signed(run.max_drawdown)` tile against the current fixture would throw).
+
+### Human rulings on the Task 11 follow-ups (2026-07-21)
+
+- **Gross-vs-net → FIX THE EXPORTER** (option c). Done in `2cd6944`: `net_pnl` is now
+  `t.pnl() - avgSpread`, consistent with the run-level `net_avg_pnl`. `is_win` stays deliberately
+  gross, so a trade can be `is_win=1` with `net_pnl<0` — that gap *is* the spread. Compiles clean.
+  Consumers that silently improve: the equity curve, TradeCard's per-trade figure, and `slices.ts`
+  per-bucket `net_avg_pnl`.
+- **max DD + worst quarter → ADD NOW** (spec beats the plan's omission), together with the
+  `=== null` → `== null` guard fix that must land first or the partial-`Run` fixtures throw.
+- Also in the same round: distinct empty/failed/one-trade states for the equity curve, an exact
+  `points` assertion, an ordering test, and a per-bucket-count fixture fix.
+
+**All landed. `2c66c51` (frontend) + `2cd6944` (exporter) + `30a182c` (exporter test).**
+Suite: **api 21/21, ui 74/74 (70 + 4), typecheck clean**; Java `DashboardExporterTest` green.
+
+**`net_pnl` had NO test at all** — that is how a gross-for-net bug survived in money-handling code.
+Now pinned: `pnl=3.0` and `net_pnl=2.5` (avgSpread 0.5) asserted as deliberately *different* values
+so they can never silently collapse together, plus `is_win` pinned gross. **Verified RED against the
+pre-fix exporter** (`expected: 2.5 but was: 3.0`), not merely asserted to pass.
+
+⚠️ *Gotcha for future sessions:* restoring a Java file via `mv file.bak file` gives it an older
+mtime than the compiled class, so Maven skips recompilation and silently re-runs stale bytecode —
+it will report a pass (or a failure) that has nothing to do with the source on disk. `touch` the
+file after any such restore. This produced one spurious red here.
+
+**Task 11 is COMPLETE.** ✅
+
+> ### ⚠️ BLOCKED — NEEDS THE HUMAN TO RUN ONE COMMAND: D1 still holds GROSS `net_pnl`
+>
+> **Confirmed in production data (2026-07-21):** for run `US500-1784554730790` (`emaCeil_3,0atr`,
+> 102 trades), `AVG(pnl)` and `AVG(net_pnl)` are **byte-identical** — both `1.334296674469148` —
+> proving the column holds gross. Run-level `net_avg_pnl` is `0.8548731320570223`.
+>
+> **No sweep or re-export is needed.** `avgSpread` is exactly recoverable from data already stored,
+> because `net_avg_pnl = mean(pnl) - avgSpread`, giving **`avgSpread = 0.4794235424121257`** for
+> this run. A repair statement deriving it inline is committed at
+> **`dashboard/scripts/fix-net-pnl.sql`** (reversible via `UPDATE trades SET net_pnl = pnl`).
+>
+> **Correction (final review, 2026-07-21): this script IS idempotent** — an earlier note here
+> claiming otherwise was wrong. It assigns `net_pnl = pnl - (AVG(pnl) - net_avg_pnl)` and writes
+> neither input, so re-running re-derives the same answer. Verified: three consecutive runs,
+> byte-identical. It now also carries an `EXISTS` guard against a missing run row.
+>
+> ```
+> cd dashboard
+> npx wrangler d1 execute axe-trader-dashboard --remote --file scripts/fix-net-pnl.sql
+> ```
+>
+> The controller attempted this via both the Cloudflare MCP tool and `wrangler` and was **blocked by
+> the permission classifier both times** (write to production data). It did not attempt to work
+> around the block. Until this is run, the Overview's equity curve is drawn from gross figures and
+> will disagree with the net KPI tile beside it — do not judge the strategy from that chart.
+
+> ### Original note: the D1 run still holds GROSS `net_pnl`
+> The `emaCeil_3,0atr` run (102 trades) in D1 was exported **before** `2cd6944`, so its `net_pnl`
+> column still contains raw pnl. **The dashboard will keep showing the wrong equity curve until that
+> run is re-exported and re-pushed.** This is not optional cleanup — it is the difference between
+> the chart agreeing and disagreeing with the KPI tile beside it. Do this before the screenshot and
+> before any judgement is made from the Overview tab.
+
+**Reviewer checked and cleared:** entry-order cumulation is fine (ta4j holds one position at a time,
+`enable-short: false` means no overlaps, and the x-axis is trade index not time); `localeCompare` is
+safe (`Instant.toString()`, always `Z`, minute-aligned → fixed width); `Math.min(0, ...cumulative)`
+is not a stack risk (measured: OK at 100k args, `RangeError` at 125k); forcing 0 into the range does
+not flatten the curve.
+- Task 12 — wire run picker + tabs, styling via the frontend-design skill, build, deploy
+
+Then: final whole-branch review (most capable model), then finishing-a-development-branch.
+
+### Deferred Minor findings
+
+Held for the final whole-branch review to triage, not lost:
+- `marks.ts` POST accepts any non-empty `bar_ts` — no ISO-8601 shape check.
+- `0002_marks.sql` `idx_marks_signal` is redundant with the `UNIQUE(signal_key, kind)` index.
+- Frontend tabs lack `aria-controls`/`tabpanel` wiring and roving tabindex.
+- `dashboard/tsconfig.json` and `frontend/tsconfig.json` duplicate six compiler options.
+- No test covers a scaled viewport (`rect.width !== 320`) for candle tap hit-testing.
+- `priceRange` extras omit `exit_price` (a gap-through exit could render off-canvas).
+- `barIndexAtOrAfter` on an empty bars array returns 0, which would make `focusWindow` invert.
+- `pull-feedback.ts` `--remote` path and a non-empty feedback table are untested.
+- `mergeMarksKeepingOverrides` (`useAnnotations.ts:47-50`) has an undocumented dependency on the DB's
+  `UNIQUE(signal_key, kind)` constraint — one-line comment, pre-existing, not widened by `9957345`.
+- TradeDeck's `{index + 1} of {list.length}` has no `aria-live`, so a swipe (no focus change) is
+  never announced; the loading↔chart swap has no `aria-busy` (Task 10 review, F7).
+
+### Environment facts that survive the session
+
+- Worker: <https://axe-trader-dashboard.g3tech.workers.dev> — Cloudflare Access gates every route
+  (unauthenticated requests get a 302, including `/api/health`).
+- D1: `axe-trader-dashboard`, id `fd847584-8fd9-427e-b869-9423a6c5b419`, region WEUR, free tier.
+  Holds the `emaCeil_3,0atr` run: 102 trades, 88% win rate.
+- Commands run from `dashboard/`: `npm test` (api + ui), `npm run test:ui`, `npm run typecheck`,
+  `npm run build`, `npm run dev:ui`, `npm run deploy` (builds first).
+- `@cloudflare/vitest-pool-workers` is pinned to `0.18.4` — newer patches depend on miniflare
+  builds that are not published. vitest is v4; the config API is the `cloudflareTest()` plugin.

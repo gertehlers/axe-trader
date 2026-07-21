@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "axe-trader-dashboard",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "axe-trader-dashboard",
+      "database_id": "fd847584-8fd9-427e-b869-9423a6c5b419",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Populated by the frontend build; its output is gitignored, so only the tracked .gitkeep
+  // keeps the dir present on a fresh clone. `npm run dev` and `npm run deploy` both build first.
+  "assets": { "directory": "./public", "binding": "ASSETS" }
+}
