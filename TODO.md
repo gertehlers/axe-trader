@@ -697,36 +697,40 @@ wrong implementations). Seven defects were fixed; all fixes are pinned by tests 
   been deployed is the phone UI. `DEPLOY.md` said Access was "outstanding"; that was stale and is
   now corrected.
 
-### THE THINGS THAT STILL NEED DOING
+### ✅ ALL PRODUCTION ACTIONS ARE DONE (2026-07-21, authorised by the human)
 
-1. **🔴 Apply migration `0002_marks.sql` to remote D1 — do this BEFORE anything else.**
-   ```
-   cd dashboard && npm run migrate:remote
-   ```
-   Only `0001_init.sql` was ever applied remotely, so `/api/marks` 500s in production against a
-   missing table. Safe to re-run (D1 tracks applied migrations). Until it runs, the annotation
-   layer is dead in production — and before `0732a8a` that failure also blanked *flags*, because
-   both loaded through one `Promise.all`.
+Nothing is outstanding against production. What was run, in order, each verified after the fact:
 
-2. **🔴 Run the production `net_pnl` repair.**
-   ```
-   cd dashboard
-   npx wrangler d1 execute axe-trader-dashboard --remote --file scripts/fix-net-pnl.sql
-   ```
-   Verified against local D1: afterwards `AVG(net_pnl)` equals the run's `net_avg_pnl` to the last
-   digit. Until this runs, production's equity curve is drawn from GROSS figures. Idempotent and
-   guarded — see above.
+1. **Migration `0002_marks.sql` — NO ACTION NEEDED; the review's finding was wrong.**
+   The integration reviewer raised as **Critical** that only `0001_init.sql` had been applied
+   remotely, inferring it from `DEPLOY.md`'s stale status section. Checked directly instead of
+   acted on: `wrangler d1 migrations list --remote` → *"No migrations to apply"*, and
+   `sqlite_master` lists `marks`. **The table has existed in production all along.** The
+   `Promise.all` split at `0732a8a` is still worthwhile hardening, and its test stands, but the
+   production emergency it described did not exist.
+   *Lesson: a Critical finding derived from a document rather than from the system is a hypothesis.*
 
-3. **🔴 Re-export the run to populate `max_drawdown` / `worst_quarter_net` in production.**
-   The exporter now computes both (`8c7f4be`), but the run already in D1 predates it, so production
-   still has NULLs and the two tiles render as em-dashes there. The controller computed them via SQL
-   into **local D1 only** for the screenshot. Re-export via
-   `-Dsweep.exportDashboard=true` on `ConfluenceSweepTest`, then `npm run push -- --remote`.
-   (Note: a fresh export mints a NEW run id — `epic + timestamp` — so it lands as a second row.)
-   Doing this makes item 2 moot for the *new* row, but the old row keeps its gross figures.
+2. **`net_pnl` repair — APPLIED.** Pre-state confirmed the diagnosis exactly: `AVG(pnl)` and
+   `AVG(net_pnl)` were byte-identical at `1.334296674469148`. Applied, 102 rows written; after,
+   `AVG(net_pnl) = 0.8548731320570223`, equal to `net_avg_pnl` to the last digit, spread
+   `0.4794235424121257` as predicted.
 
-4. **Deploy the phone UI** (`npm run deploy`, which builds first) — **not yet authorised**, and
-   then `superpowers:finishing-a-development-branch`.
+3. **Re-export — DONE.** New run **`US500-1784664611692`**, label `emaCeil_3,0atr`, 102 trades,
+   `win_rate 0.8824`, `net_avg_pnl 0.854873` — identical to the old row — plus the previously
+   missing **`max_drawdown 83.54`** and **`worst_quarter_net −46.27`**. Independently confirmed in
+   the export that `net_pnl` is genuinely net (`AVG(pnl) 1.334297` vs `AVG(net_pnl) 0.854873`), so
+   the `2cd6944` exporter fix holds end-to-end.
+
+4. **Old run `US500-1784554730790` — DELETED** (authorised). It was strictly dominated by the new
+   row and the picker shows only the label, so two entries were indistinguishable. Verified safe
+   first: `feedback` and `marks` have **no `run_id` column** — they key on `signal_key` alone — and
+   both tables were empty regardless. Post-state: one run, 0 orphaned trades.
+
+5. **Phone UI — DEPLOYED.** `npm run deploy`, version `640a185f-9b98-4ba9-9b6c-30bd2dab9773`.
+   Access still gates everything afterwards: `/`, `/api/runs` and the hashed static assets all 302.
+
+**Production now holds exactly one run, complete and net-correct.** Remaining: triage the deferred
+Minors below, then `superpowers:finishing-a-development-branch` to merge.
 
 ### Deferred Minors from the final review (none blocking, all verified as real)
 

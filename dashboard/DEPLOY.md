@@ -72,13 +72,13 @@ grid (or export one config at a time) when you care which run lands.
 all return `302` to the Access login. (Enable/manage it under Cloudflare dashboard → **Workers &
 Pages** → `axe-trader-dashboard` → **Settings** → **Domains & Routes**, on the `workers.dev` row.)
 
-**NOT yet deployed:**
+**Phone UI deployed 2026-07-21**, version `640a185f-9b98-4ba9-9b6c-30bd2dab9773`. All migrations
+are applied remotely (`wrangler d1 migrations list --remote` → "No migrations to apply").
 
-- `0002_marks.sql` has never been applied to remote D1 — only `0001_init.sql` was. Until
-  `npm run migrate:remote` runs, `/api/marks` 500s against a missing table in production.
-- The phone UI (`frontend/`) has never been deployed; production serves the Plan-1 API only.
-- The one run in production D1 still holds **gross** figures in `trades.net_pnl` and NULL
-  `max_drawdown` / `worst_quarter_net`. See `scripts/fix-net-pnl.sql` and re-export.
+Production data as of 2026-07-21: **one run, `US500-1784664611692`** (`emaCeil_3,0atr`, 102 trades,
+win rate 88%, net +0.85/trade, max drawdown 83.54, worst quarter −46.27). `trades.net_pnl` is
+genuinely net and reconciles with `runs.net_avg_pnl` exactly. The earlier run
+`US500-1784554730790` was repaired, superseded by the re-export, and deleted.
 
 ⚠️ **Access is the only thing gating writes.** `POST /api/feedback`, `POST /api/marks` and
 `DELETE /api/marks` have no in-Worker authentication — `src/index.ts` mounts every route with no
