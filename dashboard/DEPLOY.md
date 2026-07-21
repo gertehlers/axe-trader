@@ -14,18 +14,22 @@ Workers free is 100k requests/day; Zero Trust free covers 50 users. Nothing here
 ```
 dashboard/
 ├── migrations/0001_init.sql   # runs, trades, feedback (feedback.signal_key UNIQUE)
+├── migrations/0002_marks.sql  # marks (per-bar T1/T2/... annotations)
 ├── src/index.ts               # Hono app, mounts everything under /api
-├── src/routes/                # runs, trades, slices, feedback
+├── src/routes/                # runs, trades, slices, feedback, marks
 ├── src/schema.ts              # D1 row types
+├── shared/vocab.ts            # flag/mark vocabularies — imported by BOTH worker and UI
+├── frontend/                  # the phone UI (React + Vite); builds into public/
 ├── scripts/sql.ts             # buildPushSql(run.json) -> SQL text (pure, unit-tested)
 ├── scripts/push-run.ts        # run.json -> D1     (`npm run push`)
+├── scripts/fix-net-pnl.sql    # one-off repair for runs exported before 2cd6944
 ├── scripts/pull-feedback.ts   # D1 -> experiments/feedback.json (`npm run pull`)
-└── test/                      # vitest + @cloudflare/vitest-pool-workers (15 tests)
+└── test/                      # vitest + @cloudflare/vitest-pool-workers
 ```
 
 API: `GET /api/health`, `/api/runs`, `/api/runs/:id`, `/api/runs/:id/trades?filter=all|losers|winners`,
 `/api/trades/:id` (includes `bars_json`), `/api/runs/:id/slices?feature=<col>&buckets=N`,
-`GET|POST /api/feedback`.
+`GET|POST /api/feedback`, `GET|POST|DELETE /api/marks`.
 
 `signal_key` is exactly `instrument|entryTsIso|direction` (e.g. `US500|2025-03-04T14:30:00Z|LONG`).
 Feedback is keyed on it, so a verdict entered on the phone re-attaches to the same signal after the
@@ -41,11 +45,11 @@ gzip -dc data/axe-trader.sqlite.gz > data/axe-trader.sqlite   # fresh container 
 # 2. Load it into local D1 (miniflare state under dashboard/.wrangler/)
 cd dashboard
 npm install
-npm run migrate:local
-npm run push            # add -- --remote once Cloudflare is wired up
+npm run migrate:local   # applies EVERY pending migration, incl. 0002_marks.sql
+npm run push            # add -- --remote to target production
 
-# 3. Serve the API locally
-npm run dev             # http://localhost:8787/api/runs
+# 3. Serve the whole app locally (builds the frontend first, then serves API + UI)
+npm run dev             # http://localhost:8787  — UI; /api/runs for the API
 
 # 4. Bring feedback back to the laptop
 npm run pull            # writes ../experiments/feedback.json AND ../experiments/marks.json (both gitignored)
@@ -61,28 +65,39 @@ grid (or export one config at a time) when you care which run lands.
 
 ## Cloudflare status
 
-Done: D1 created, `0001_init.sql` applied remotely, Worker deployed, `/api/*` verified live.
+**Deployed (Plan 1 API only):** D1 created, `0001_init.sql` applied remotely, Worker deployed,
+`/api/*` verified live.
 
-**Outstanding — Cloudflare Access (do this before pushing real runs).** The workers.dev URL is
-public until it's gated. It's a dashboard click, not a CLI step:
+**Cloudflare Access: ON.** Verified 2026-07-21 — `/`, `/api/health`, `/api/runs` and `/api/marks`
+all return `302` to the Access login. (Enable/manage it under Cloudflare dashboard → **Workers &
+Pages** → `axe-trader-dashboard` → **Settings** → **Domains & Routes**, on the `workers.dev` row.)
 
-1. Cloudflare dashboard → **Workers & Pages** → `axe-trader-dashboard` → **Settings** →
-   **Domains & Routes**.
-2. On the `workers.dev` row, click **Enable Cloudflare Access**, then **Manage Cloudflare Access**
-   to restrict the policy to your email (one-time PIN).
-3. Verify: `curl -sS -o /dev/null -w "%{http_code}" https://axe-trader-dashboard.g3tech.workers.dev/api/runs`
-   returns 302/403 instead of 200.
+**NOT yet deployed:**
 
-Access gates the request at the edge. If you later want defence in depth, the Worker can also
-validate the `Cf-Access-Jwt-Assertion` JWT — not done, and not required while the policy is on.
+- `0002_marks.sql` has never been applied to remote D1 — only `0001_init.sql` was. Until
+  `npm run migrate:remote` runs, `/api/marks` 500s against a missing table in production.
+- The phone UI (`frontend/`) has never been deployed; production serves the Plan-1 API only.
+- The one run in production D1 still holds **gross** figures in `trades.net_pnl` and NULL
+  `max_drawdown` / `worst_quarter_net`. See `scripts/fix-net-pnl.sql` and re-export.
 
-## Day-to-day loop (once Access is on)
+⚠️ **Access is the only thing gating writes.** `POST /api/feedback`, `POST /api/marks` and
+`DELETE /api/marks` have no in-Worker authentication — `src/index.ts` mounts every route with no
+middleware. Access gates per-hostname at the edge, so **adding a custom domain or route later
+silently un-gates the entire write surface**. Defence in depth (validating the
+`Cf-Access-Jwt-Assertion` JWT in the Worker) is deliberately not done; revisit it before any
+second hostname is added.
+
+## Day-to-day loop
 
 Sweep with `-Dsweep.exportDashboard=true` → `npm run push -- --remote` → review on the phone →
 `npm run pull -- --remote`.
 
-`public/` holds only a `.gitkeep`; Plan 2 (the phone UI) fills it and it is served via the `ASSETS`
-binding already declared in `wrangler.jsonc`.
+Run `npm run migrate:remote` after any new migration lands, before the next push. It is safe to
+re-run — D1 tracks which migrations have been applied and skips them.
+
+`public/` holds only a tracked `.gitkeep`; everything else in it is gitignored build output. The
+frontend build fills it and it is served via the `ASSETS` binding declared in `wrangler.jsonc`.
+Both `npm run dev` and `npm run deploy` build first, so the directory is never served empty.
 
 ## Toolchain notes
 

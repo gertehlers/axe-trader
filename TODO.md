@@ -658,40 +658,106 @@ against that stable interface.
 
 ## ⭐ SESSION HANDOVER — read this first (2026-07-21, late session)
 
-**Everything is committed and pushed.** Branch `claude/cloudflare-dashboard-plan`, HEAD `8c7f4be`.
+> **SUPERSEDED IN PART, 2026-07-21 later session — see "FINAL REVIEW DONE" immediately below.**
+> The final whole-branch review has now run and its fixes landed at `0732a8a`. Two claims in the
+> original handover were **wrong** and are corrected there: the repair script IS idempotent, and
+> "deploy has NOT been run" is true only of the phone UI.
+
+**Everything is committed and pushed.** Branch `claude/cloudflare-dashboard-plan`, HEAD `0732a8a`.
 Working tree clean apart from `output/charts/runner-results.html`, a test-regenerated build artifact.
 
 **Suite state, verified by the controller (not claimed by a worker):**
-api 21/21 · ui 75/75 · Java 20/20 (1 pre-existing skip in `ConfluenceSweepTest`) · typecheck clean ·
-`npm run build` succeeds.
+api 21/21 · ui 79/79 · Java 34 tests / 0 failures (1 pre-existing skip in `ConfluenceSweepTest`) ·
+typecheck clean · `npm run build` succeeds.
+(The earlier "Java 20/20" undercounted — the surefire aggregate is 34.)
 
 ### Tasks 9, 10, 11 COMPLETE and reviewed. Task 12 is PARTLY done.
 
 Task 12 was deliberately split. **Part A (shell wiring) and Part B (styling) are both DONE**
-(`App.tsx` run picker + ARIA tabs, `styles.css`, `main.tsx` imports it). **NOT done: deploy, and the
-final whole-branch review.**
+(`App.tsx` run picker + ARIA tabs, `styles.css`, `main.tsx` imports it). **NOT done: deploying the
+phone UI.**
 
-### THE THREE THINGS THAT STILL NEED DOING
+### FINAL REVIEW DONE (2026-07-21) — fixes at `0732a8a`
 
-1. **🔴 Run the production `net_pnl` repair — needs the human, one command.**
+Two reviewers: one on whole-branch integration seams, one (fable tier) on the exporter arithmetic
+and the production repair script. **The money arithmetic came back correct** — `max_drawdown` is a
+true peak-to-trough on the cumulative *net* curve anchored at 0, `worst_quarter_net` sums by real
+UTC calendar quarter, and the tests genuinely pin them (they were checked against three plausible
+wrong implementations). Seven defects were fixed; all fixes are pinned by tests proven RED first.
+
+**Two corrections to what this handover previously claimed:**
+
+- **`fix-net-pnl.sql` IS idempotent.** The old warning was wrong. It assigns
+  `net_pnl = pnl - (AVG(pnl) - net_avg_pnl)` and never writes either input, so it re-derives from
+  immutable data. Verified empirically: three consecutive runs, byte-identical state. It also now
+  has an `EXISTS` guard — without it, a missing/renamed run row made the subquery NULL and
+  `pnl - NULL` silently NULLed `net_pnl` for **every** trade in scope (verified it really did).
+- **Production IS deployed** — the Plan-1 API, live behind Cloudflare Access since 2026-07-20
+  (verified 2026-07-21: `/`, `/api/health`, `/api/runs`, `/api/marks` all 302). What has *never*
+  been deployed is the phone UI. `DEPLOY.md` said Access was "outstanding"; that was stale and is
+  now corrected.
+
+### THE THINGS THAT STILL NEED DOING
+
+1. **🔴 Apply migration `0002_marks.sql` to remote D1 — do this BEFORE anything else.**
+   ```
+   cd dashboard && npm run migrate:remote
+   ```
+   Only `0001_init.sql` was ever applied remotely, so `/api/marks` 500s in production against a
+   missing table. Safe to re-run (D1 tracks applied migrations). Until it runs, the annotation
+   layer is dead in production — and before `0732a8a` that failure also blanked *flags*, because
+   both loaded through one `Promise.all`.
+
+2. **🔴 Run the production `net_pnl` repair.**
    ```
    cd dashboard
    npx wrangler d1 execute axe-trader-dashboard --remote --file scripts/fix-net-pnl.sql
    ```
-   The controller was blocked by the permission classifier on both the Cloudflare MCP tool and
-   `wrangler`, and did not work around it. **Verified against local D1: after applying,
-   `AVG(net_pnl)` equals the run's `net_avg_pnl` to the last digit** — the script is correct.
-   Until this runs, production's equity curve is drawn from GROSS figures. NOT idempotent.
+   Verified against local D1: afterwards `AVG(net_pnl)` equals the run's `net_avg_pnl` to the last
+   digit. Until this runs, production's equity curve is drawn from GROSS figures. Idempotent and
+   guarded — see above.
 
-2. **🔴 Re-export the run to populate `max_drawdown` / `worst_quarter_net` in production.**
+3. **🔴 Re-export the run to populate `max_drawdown` / `worst_quarter_net` in production.**
    The exporter now computes both (`8c7f4be`), but the run already in D1 predates it, so production
    still has NULLs and the two tiles render as em-dashes there. The controller computed them via SQL
    into **local D1 only** for the screenshot. Re-export via
-   `-Dsweep.exportDashboard=true` on `ConfluenceSweepTest`, then `npm run push -- run.json --remote`.
+   `-Dsweep.exportDashboard=true` on `ConfluenceSweepTest`, then `npm run push -- --remote`.
    (Note: a fresh export mints a NEW run id — `epic + timestamp` — so it lands as a second row.)
+   Doing this makes item 2 moot for the *new* row, but the old row keeps its gross figures.
 
-3. **Final whole-branch review** (most capable model), triaging the deferred-Minor list below, then
-   `superpowers:finishing-a-development-branch`. **Deploy has NOT been run and was not authorised.**
+4. **Deploy the phone UI** (`npm run deploy`, which builds first) — **not yet authorised**, and
+   then `superpowers:finishing-a-development-branch`.
+
+### Deferred Minors from the final review (none blocking, all verified as real)
+
+- **The win-rate tile is gross, and unlabelled as such** (`Overview.tsx:73`). `is_win` stays gross
+  by deliberate design (`DashboardExporter.java:49-51`), so a trade can read `is_win=1` with
+  `net_pnl < 0` — while every neighbouring pnl figure on the same screen is net. Given this
+  branch's headline finding is *precisely* that the tooling was flattering the strategy, this tile
+  should read "win rate (gross)". **Strongest candidate to fix next.**
+- **No in-Worker auth on the write surface** (`src/index.ts:10-19`). Access gates per-hostname at
+  the edge; adding a custom domain later silently un-gates `POST /api/feedback`, `POST /api/marks`,
+  `DELETE /api/marks`. Now documented in `DEPLOY.md`; revisit before a second hostname exists.
+- **`slices.ts:43-44` sums `is_win`/`net_pnl` without null handling** — nullable columns coerce to
+  0, so a partially-populated run yields a quietly wrong `win_pct` rather than an error.
+- **`slices.ts:21` `buckets` param degrades to empty on garbage input** — `Number("abc")` → NaN
+  propagates through `Math.max/min`, `slice(0, NaN)` is empty, returns HTTP 200 with no data.
+  Only reachable by hand-crafted URL. Wants a `Number.isFinite` guard → 400.
+- **`scripts/sql.ts:5-9` emits `NaN`/`Infinity` as bare SQL tokens** — a non-finite value from the
+  exporter yields `INSERT ... VALUES (NaN)`, a syntax error *after* the DELETEs have run.
+- **The push is not transactional** (`sql.ts:20-21`) — DELETE-then-INSERT with no `BEGIN`/`COMMIT`,
+  so a mid-file failure leaves the run deleted and partially re-inserted.
+- **Marks and feedback are not scoped by timeframe.** `signal_key` is `instrument|entryTs|direction`
+  (`DashboardExporter.java:38-40`). Two runs of the same instrument at 5m and 15m entering on the
+  same timestamp would share flags and marks. Harmless today (one hardcoded timeframe); a real
+  collision the moment per-instrument profiles land.
+- **`worst_quarter_net` means two different things in two stores.** `DashboardExporter` sums per
+  calendar quarter; the untouched `ExperimentStore.java:248-259` computes the *mean* per quarter
+  under the identical column name. Both self-consistent, but cross-checking one against the other
+  will look like a bug. Rename one.
+- **`getFeedback()`/`getMarks()` fetch entire tables on app start** (`api.ts:78, 83`), unscoped by
+  run. Fine at 102 trades; grows with every reviewed run.
+- **`useAnnotations` returns `loading` that `App.tsx` never consumes** — only tests read it.
 
 ### 🔴 THE HEADLINE FINDING — the tooling was flattering the strategy, twice
 
@@ -970,9 +1036,12 @@ file after any such restore. This produced one spurious red here.
 > **No sweep or re-export is needed.** `avgSpread` is exactly recoverable from data already stored,
 > because `net_avg_pnl = mean(pnl) - avgSpread`, giving **`avgSpread = 0.4794235424121257`** for
 > this run. A repair statement deriving it inline is committed at
-> **`dashboard/scripts/fix-net-pnl.sql`** (reversible via `UPDATE trades SET net_pnl = pnl`;
-> **NOT idempotent** — running twice subtracts the spread twice, so check with the SELECT in the
-> file's header first).
+> **`dashboard/scripts/fix-net-pnl.sql`** (reversible via `UPDATE trades SET net_pnl = pnl`).
+>
+> **Correction (final review, 2026-07-21): this script IS idempotent** — an earlier note here
+> claiming otherwise was wrong. It assigns `net_pnl = pnl - (AVG(pnl) - net_avg_pnl)` and writes
+> neither input, so re-running re-derives the same answer. Verified: three consecutive runs,
+> byte-identical. It now also carries an `EXISTS` guard against a missing run row.
 >
 > ```
 > cd dashboard
