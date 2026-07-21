@@ -656,6 +656,95 @@ Note Task 10 consumes this hook only as props (`flags`, `marks`, `onFlag`, `onTo
 **Task 10 is not truly blocked by Task 9's internals** — if Task 9 gets parked, Task 10 can proceed
 against that stable interface.
 
+## ⭐ SESSION HANDOVER — read this first (2026-07-21, late session)
+
+**Everything is committed and pushed.** Branch `claude/cloudflare-dashboard-plan`, HEAD `8c7f4be`.
+Working tree clean apart from `output/charts/runner-results.html`, a test-regenerated build artifact.
+
+**Suite state, verified by the controller (not claimed by a worker):**
+api 21/21 · ui 75/75 · Java 20/20 (1 pre-existing skip in `ConfluenceSweepTest`) · typecheck clean ·
+`npm run build` succeeds.
+
+### Tasks 9, 10, 11 COMPLETE and reviewed. Task 12 is PARTLY done.
+
+Task 12 was deliberately split. **Part A (shell wiring) and Part B (styling) are both DONE**
+(`App.tsx` run picker + ARIA tabs, `styles.css`, `main.tsx` imports it). **NOT done: deploy, and the
+final whole-branch review.**
+
+### THE THREE THINGS THAT STILL NEED DOING
+
+1. **🔴 Run the production `net_pnl` repair — needs the human, one command.**
+   ```
+   cd dashboard
+   npx wrangler d1 execute axe-trader-dashboard --remote --file scripts/fix-net-pnl.sql
+   ```
+   The controller was blocked by the permission classifier on both the Cloudflare MCP tool and
+   `wrangler`, and did not work around it. **Verified against local D1: after applying,
+   `AVG(net_pnl)` equals the run's `net_avg_pnl` to the last digit** — the script is correct.
+   Until this runs, production's equity curve is drawn from GROSS figures. NOT idempotent.
+
+2. **🔴 Re-export the run to populate `max_drawdown` / `worst_quarter_net` in production.**
+   The exporter now computes both (`8c7f4be`), but the run already in D1 predates it, so production
+   still has NULLs and the two tiles render as em-dashes there. The controller computed them via SQL
+   into **local D1 only** for the screenshot. Re-export via
+   `-Dsweep.exportDashboard=true` on `ConfluenceSweepTest`, then `npm run push -- run.json --remote`.
+   (Note: a fresh export mints a NEW run id — `epic + timestamp` — so it lands as a second row.)
+
+3. **Final whole-branch review** (most capable model), triaging the deferred-Minor list below, then
+   `superpowers:finishing-a-development-branch`. **Deploy has NOT been run and was not authorised.**
+
+### 🔴 THE HEADLINE FINDING — the tooling was flattering the strategy, twice
+
+The dashboard now renders, against the real 102-trade `emaCeil_3,0atr` run:
+**win rate 88% · net +0.85 pts/trade · max DD −83.54 · worst quarter −46.27.**
+
+Total net over the run is ~87.2 pts (0.85 × 102). **The deepest peak-to-trough drawdown is 96% of
+everything the strategy made.** Worst quarter alone is over half of it. That is a risk profile the
+north star (expectancy + risk-of-ruin) should care about a great deal, and it was invisible until
+this session because:
+- `trades.net_pnl` held **gross** pnl under a column named net (fixed `2cd6944`, pinned `30a182c`),
+  and nothing asserted on it — which is exactly why it survived; and
+- `max_drawdown` / `worst_quarter_net` were **never written at all** (fixed `8c7f4be`), though the
+  columns existed in the schema, the `Run` type and `sql.ts`, so the tiles sat blank.
+
+Both were caught only by looking at real output, not by tests. **Treat the +0.85 expectancy with
+suspicion until the drawdown geometry is addressed** — this corroborates the 2026-07-04 audit's
+conclusion that the entry edge is real but the exit geometry throws it away.
+
+### What landed this session, in order
+
+| Commit | What |
+|---|---|
+| `9957345` | Task 9 fix — marks load-merge reconciles per `(signal_key, kind)` |
+| `cc4167d` | Task 9 COMPLETE (fable APPROVE) + file closed-for-extension policy |
+| `5d82139` | Task 10 TradeDeck |
+| `5c1fc39` | Task 10 review fixes — swipe direction + single-touch guards, read-failure states |
+| `49be39f` | Task 11 Overview |
+| `2cd6944` | **exporter: `net_pnl` was gross, not net** |
+| `30a182c` | test pinning `net_pnl` (proven RED against the old code) |
+| `2c66c51` | Task 11 review fixes — max DD/worst qtr tiles, real chart tests, empty states |
+| `3e32373` | `scripts/fix-net-pnl.sql` repair for already-exported runs |
+| `8c7f4be` | **Task 12B styling + exporter max drawdown / worst quarter** |
+
+### Design direction (so a future session doesn't redesign it by accident)
+
+`styles.css` is **"calibrated instrument"**: every figure in tabular monospace so columns compare;
+**amber reserved exclusively for reference marks** (baseline win rate, zero axis) and never
+decorative; phone-first, holding a 480px column on desktop so a 320-unit chart viewBox is not
+stretched across 1400px. **Signature: slice-bar opacity encodes sample size** (relative to the
+largest bucket, floored at 0.3), so the routine runt bucket — 102 trades / 4 buckets gives
+25,25,25,25,**2** — visibly reads as weaker instead of as authoritative as a 25-trade bucket.
+
+Two bugs only the running app revealed: the equity polyline had `fill:none` and **no stroke**, so it
+drew nothing at all; and the SVGs had no height cap, growing to absurd heights.
+
+### Local dev environment (reproducible)
+
+Local D1 was seeded from `dashboard/run.json` (`npx tsx scripts/push-run.ts run.json`, local by
+default), the `net_pnl` repair applied locally, and `max_drawdown`/`worst_quarter_net` written in by
+hand via SQL so the tiles could be screenshotted. `npx wrangler dev --port 8788` then serves the
+whole app. **Local D1 therefore has correct data; production does not** — see items 1 and 2 above.
+
 ### Remaining
 
 **Task 10 (TradeDeck) implemented at `5d82139` — per-task review IN FLIGHT (opus tier).**
