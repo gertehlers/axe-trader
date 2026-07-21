@@ -33,6 +33,40 @@ A fresh session should trust this table plus `git log`.
 | 6 dashboard `tiers_filled` / `hit_t1` + migration 0003 | not started |
 | 7 OOS validation against the pre-registered gate | not started |
 
+### In-sample sweep, stage 1 — RAW RESULTS (recorded 2026-07-21, before any ranking)
+
+Window: in-sample (2024-12-04 → 2026-01-01). Recorded verbatim before the success gate was applied,
+per the pre-registration discipline. **`hitT1%` is 88% on every arm including the control**, which is
+the sanity check that the arms differ only in their exits — T1 stays at 0.75 ATR and entries are
+untouched.
+
+| config | trades | win% | hitT1% | netWin% | netAvgPnl |
+|---|---|---|---|---|---|
+| **control_singleTarget_0.75** | 102 | 88% | 88% | 88% | **+0.85** |
+| tier3_t3-2.0_breakeven_after_t1 | 102 | 88% | 88% | 81% | +0.52 |
+| tier3_t3-3.0_breakeven_after_t1 | 102 | 88% | 88% | 81% | +0.53 |
+| tier3_t3-4.0_breakeven_after_t1 | 102 | 88% | 88% | 81% | +0.45 |
+| tier3_t3-2.0_lagged | 102 | 70% | 88% | 70% | +0.32 |
+| tier3_t3-3.0_lagged | 102 | 70% | 88% | 70% | +0.49 |
+| **tier3_t3-4.0_lagged** | 102 | 70% | 88% | 70% | **+0.95** |
+| tier3_t3-2.0_none | 102 | 64% | 88% | 64% | +0.42 |
+| tier3_t3-3.0_none | 102 | 51% | 88% | 51% | +0.57 |
+| tier3_t3-4.0_none | 102 | 45% | 88% | 45% | +0.81 |
+
+**Eight of nine arms are WORSE than doing nothing.** Only `tier3_t3-4.0_lagged` (+0.95) beats the
+control (+0.85) in-sample, and only by 0.10 pts/trade.
+
+The `win%` vs `netWin%` gap on the breakeven arms (88% → 81%) is the predicted artifact made
+visible: banking a third at T1 then scratching at breakeven books a "win" that the spread turns into
+a loss. This is exactly why the spec forbids comparing `win%` across scale-out and single-target runs.
+
+**🔴 GATE NOT YET APPLICABLE — a gap in the plan, found here.** The pre-registered gate requires
+max drawdown and per-quarter consistency. The sweep reports **neither**, so the ranking cannot be
+done honestly yet. Task 5b (in flight) extracts `TradeStatistics` — one shared implementation
+delegated to by `DashboardExporter`, rather than a third copy of drawdown math — and adds `maxDD`
+and a `positiveQuarters/quarterCount` column. The sweep is then re-run and ranked. **No arm is
+promoted on net expectancy alone.**
+
 **Two hard rules a fresh session must not break:**
 1. `BacktestRunnerIntrabarTest` must pass **unchanged** — it is the regression gate proving the
    one-tier ladder reproduces today's exit behaviour exactly. If it fails, the implementation
