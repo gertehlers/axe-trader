@@ -658,9 +658,31 @@ against that stable interface.
 
 ### Remaining
 
-**NEXT ACTION: Task 10 (TradeDeck).** Task 9 is closed; nothing blocks it. Plan section at
-`docs/superpowers/plans/2026-07-20-trade-review-phone-ui.md` line ~1570 (fully specified, incl. the
-test file). Implement via sonnet-worker, then a mandatory per-task review before Task 11.
+**Task 10 (TradeDeck) implemented at `5d82139` — per-task review IN FLIGHT (opus tier).**
+Suite at that commit: **api 21/21, ui 59/59 (51 baseline + 8), typecheck clean**, verified by the
+controller. If no review verdict is recorded below, it did not finish — **re-dispatch it**; do not
+start Task 11 assuming it passed.
+
+Three deviations from the plan's reference code, all bugs rather than design changes:
+1. The plan's prefetch effect had `detail` as a dependency AND wrote to it — every arrival re-ran
+   the effect, and its cleanup discarded the other in-flight responses. Quadratic refetch burst
+   that threw away good responses. Replaced with a request-once ref, deps `[list, index]`.
+2. **Caught by the controller, not the implementer:** the request-once ref and a `live` cleanup
+   guard are *mutually destructive*. Advancing the index before a fetch resolved ran the cleanup,
+   discarding the responses while the ref suppressed any refetch — stranding the deck on
+   "Loading chart…" **permanently**, in the ordinary case of swiping on before the chart loads.
+   Proved with a failing test first, then fixed by dropping the guard (`detail` is an id-keyed
+   cache, so a late response files under its own id and cannot be misattributed). Failed fetches
+   now release the id so a retry is possible. Pinned by a regression test.
+3. The plan rendered "No trades for this filter." during the *initial* load. Added a loading state;
+   a failed `getTrades` now falls through to empty rather than spinning forever.
+
+Also: two plan-provided tests were racy (`getByTestId` immediately after `waitFor`, assuming the
+chart rendered in the same tick as the list) → `findByTestId`. Deviation 2's fix exposed them.
+
+**Lesson worth carrying:** deviation 2 was introduced *by the fix for* deviation 1 and was not
+caught by the implementer's own new test. The per-task review is not the only guard — the
+controller reading the actual diff is load-bearing too.
 
 - Task 10 — TradeDeck (swipe/prev/next, filter, flag + mark chips, neighbour prefetch)
 - Task 11 — Overview (KPI tiles, equity curve, EMA-distance slices)
