@@ -28,7 +28,7 @@ A fresh session should trust this table plus `git log`.
 | 1 config model (tiers, ratchet, validation) | ✅ complete — `1f0d009` + `298704e`, review clean |
 | 2 `tieredExit` ladder (degenerate case = today) | ✅ complete — `6e315c3` + `e81e8d4`, review clean |
 | 3 ratchet behaviour tests | ✅ complete — `db1fd9c`, mutation-tested |
-| 4 wire ladder through `TradeResult` + runner | not started |
+| 4 wire ladder through `TradeResult` + runner | ✅ complete — `a4252ed`, review clean |
 | 5 sweep arms + `hitT1` metric | not started |
 | 6 dashboard `tiers_filled` / `hit_t1` + migration 0003 | not started |
 | 7 OOS validation against the pre-registered gate | not started |
