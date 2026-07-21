@@ -779,6 +779,14 @@ case lifts a second finger 300px from finger 1's origin.
      data disposes"). Now renders the per-bucket count plus an accessible `<title>`.
      **Worth raising at the branch review: should the route itself distribute the remainder rather
      than emit a runt bucket?** The fix here makes the runt visible; it does not remove it.
+
+  **Implemented at `49be39f`. Suite: api 21/21, ui 70/70 (65 + 5), typecheck clean** — verified by
+  the controller. Per-task review IN FLIGHT (opus tier); if no verdict is recorded below it did not
+  finish — **re-dispatch it** before starting Task 12.
+
+  Still owed to the human once the review is clean: **run the app and send a screenshot of the
+  Overview against the real 102-trade run**, before Task 12 does any styling. That was the explicit
+  condition attached to the build-to-spec ruling.
 - Task 12 — wire run picker + tabs, styling via the frontend-design skill, build, deploy
 
 Then: final whole-branch review (most capable model), then finishing-a-development-branch.
