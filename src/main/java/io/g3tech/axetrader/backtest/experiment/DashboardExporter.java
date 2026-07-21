@@ -68,7 +68,7 @@ public final class DashboardExporter {
 
             ArrayNode arr = root.putArray("trades");
             for (TradeResult t : trades) {
-                arr.add(tradeNode(t, config, instrument, series));
+                arr.add(tradeNode(t, config, instrument, series, avgSpread));
             }
             Files.writeString(out, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(root));
         } catch (Exception e) {
@@ -77,7 +77,8 @@ public final class DashboardExporter {
     }
 
     private static ObjectNode tradeNode(
-            TradeResult t, BacktestProperties.Strategy config, String instrument, BarSeries series) {
+            TradeResult t, BacktestProperties.Strategy config, String instrument, BarSeries series,
+            double avgSpread) {
         TradeFeatures f = t.features();
         double atr = f == null ? 0 : f.atr();
         double stopDist = config.getStopAtrMultiple() * atr;
@@ -96,8 +97,16 @@ public final class DashboardExporter {
         n.put("stop_price", stop);
         n.put("target_price", target);
         n.put("pnl", t.pnl());
-        // net = pnl - spread is applied at run level; per-trade keeps raw pnl (no double-subtract).
-        n.put("net_pnl", t.pnl());
+        // Genuinely net: raw pnl less the average spread paid to get in and out. This MUST stay
+        // consistent with the run-level `net_avg_pnl` above (mean of `pnl - avgSpread`) — the
+        // dashboard's equity curve cumulates this column under a "net" heading, and when it held
+        // raw pnl the curve sloped upward while the net-expectancy KPI directly above it read
+        // negative. That is the close-based-model trap the 2026-07-04 pnl audit already caught
+        // once; do not "simplify" this back to t.pnl().
+        //
+        // `is_win` deliberately stays GROSS (see the win-rate comment above), so a trade can be
+        // is_win=1 with net_pnl<0 — that gap is the spread, and it is the point.
+        n.put("net_pnl", t.pnl() - avgSpread);
         n.put("r_multiple", t.rMultiple());
         n.put("exit_reason", t.exitReason() == null ? null : t.exitReason().name());
         n.put("is_win", t.isWin() ? 1 : 0);
