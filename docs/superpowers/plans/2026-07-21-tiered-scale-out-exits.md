@@ -586,6 +586,15 @@ Replace the existing `intrabarExit` method and the `ExitOutcome` record (lines ~
     static TieredExitOutcome tieredExit(
             BarSeries series, Direction direction, int entryIndex, double entryPrice,
             double stopDist, List<TierLevel> tiers, Ratchet ratchet, int maxHoldingBars) {
+        // Without this, an empty ladder makes the walk loop below skip its body entirely: the
+        // stop-loss check is never reached and the whole position closes at the series' last
+        // close. That fails silently with a plausible number rather than loudly. Note that
+        // Exit#validate() does NOT cover this — it deliberately early-returns on an empty list.
+        if (tiers.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "tieredExit requires at least one tier — an empty ladder would skip the "
+                            + "stop-loss check entirely and close at the series' last close");
+        }
         boolean isLong = direction == Direction.LONG;
         double stopLevel = isLong ? entryPrice - stopDist : entryPrice + stopDist;
         int lastIndex = series.getEndIndex();

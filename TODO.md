@@ -26,7 +26,7 @@ A fresh session should trust this table plus `git log`.
 | Task | State |
 |---|---|
 | 1 config model (tiers, ratchet, validation) | ✅ complete — `1f0d009` + `298704e`, review clean |
-| 2 `tieredExit` ladder (degenerate case = today) | not started |
+| 2 `tieredExit` ladder (degenerate case = today) | ✅ complete — `6e315c3` + `e81e8d4`, review clean |
 | 3 ratchet behaviour tests | not started |
 | 4 wire ladder through `TradeResult` + runner | not started |
 | 5 sweep arms + `hitT1` metric | not started |
