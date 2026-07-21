@@ -8,5 +8,7 @@ export default defineConfig({
     fs: { allow: [".."] },
     proxy: { "/api": "http://localhost:8787" },
   },
+  // emptyOutDir clears stale hashed assets, but it also wipes the tracked ../public/.gitkeep that
+  // keeps the dir present on a fresh clone — so the build script restores it immediately after.
   build: { outDir: "../public", emptyOutDir: true },
 });
