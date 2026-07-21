@@ -16,14 +16,23 @@ function Kpi({ label, value }: { label: string; value: string }) {
 
 export default function Overview({ run }: { run: Run }) {
   const [trades, setTrades] = useState<TradeSummary[]>([]);
+  const [tradesFailed, setTradesFailed] = useState(false);
   const [slices, setSlices] = useState<Slices | null>(null);
 
   useEffect(() => {
     let live = true;
     api
       .getTrades(run.id, "all")
-      .then((rows) => live && setTrades(rows))
-      .catch(() => live && setTrades([]));
+      .then((rows) => {
+        if (!live) return;
+        setTrades(rows);
+        setTradesFailed(false);
+      })
+      .catch(() => {
+        if (!live) return;
+        setTrades([]);
+        setTradesFailed(true);
+      });
     api
       .getSlices(run.id, "dist_to_trend_ema_atr", 4)
       .then((s) => live && setSlices(s))
@@ -47,8 +56,8 @@ export default function Overview({ run }: { run: Run }) {
     })
     .join(" ");
 
-  const pct = (v: number | null) => (v === null ? "—" : `${Math.round(v * 100)}%`);
-  const signed = (v: number | null) => (v === null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(2)}`);
+  const pct = (v: number | null) => (v == null ? "—" : `${Math.round(v * 100)}%`);
+  const signed = (v: number | null) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(2)}`);
 
   return (
     <section className="overview">
@@ -61,12 +70,23 @@ export default function Overview({ run }: { run: Run }) {
         <Kpi label="trades/day" value={run.trades_per_day?.toFixed(1) ?? "—"} />
         <Kpi label="avg R" value={signed(run.avg_r)} />
         <Kpi label="trades" value={String(run.trades_count ?? trades.length)} />
+        <Kpi label="max DD" value={signed(run.max_drawdown)} />
+        <Kpi label="worst qtr" value={signed(run.worst_quarter_net)} />
       </div>
 
       <h3>Equity (cumulative net pts)</h3>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="equity curve">
-        <polyline data-testid="equity-curve" points={points} className="equity" fill="none" />
-      </svg>
+      {tradesFailed ? (
+        <p className="empty">Couldn't load trade data.</p>
+      ) : cumulative.length === 0 ? (
+        <p className="empty">No trades in this run.</p>
+      ) : (
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="equity curve">
+          <polyline data-testid="equity-curve" points={points} className="equity" fill="none" />
+          {cumulative.length === 1 && (
+            <circle cx={W / 2} cy={H / 2} r={3} className="equity-point" />
+          )}
+        </svg>
+      )}
 
       <h3>Win% by distance to trend EMA</h3>
       {slices && slices.buckets.length > 0 ? (
