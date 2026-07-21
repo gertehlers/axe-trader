@@ -170,25 +170,40 @@ export function useAnnotations() {
 
   useEffect(() => {
     let live = true;
-    Promise.all([api.getFeedback(), api.getMarks()])
-      .then(([fb, mk]) => {
-        if (!live) return;
 
-        // Loaded rows can be stale by the time they arrive — a write issued before this
-        // resolves (the hook doesn't gate setFlag/toggleMark on `loading`) may have already
-        // landed on the server, in a POST the load's own GET was issued before. Merge rather
-        // than overwrite: loaded rows first, then anything already known locally wins.
+    // Feedback and marks are independent tables behind independent endpoints, so they are loaded
+    // independently. Loading them as one Promise.all meant either endpoint failing discarded the
+    // OTHER one's rows too — with /api/marks 500ing, flags silently vanished as well and every
+    // trade rendered unflagged, which reads as "my review verdicts are gone".
+    //
+    // In both branches: loaded rows can be stale by the time they arrive — a write issued before
+    // this resolves (the hook doesn't gate setFlag/toggleMark on `loading`) may have already
+    // landed on the server, in a POST the load's own GET was issued before. Merge rather than
+    // overwrite: loaded rows first, then anything already known locally wins.
+    const loadFeedback = api
+      .getFeedback()
+      .then((fb) => {
+        if (!live) return;
         const loadedFlags = new Map(fb.filter((f) => f.flag).map((f) => [f.signal_key, f.flag as Flag]));
         flagsRef.current = mergeKeepingOverrides(loadedFlags, flagsRef.current);
         setFlags((prev) => mergeKeepingOverrides(loadedFlags, prev));
+      })
+      .catch((e: unknown) => live && setError(errorMessage(e)));
 
+    const loadMarks = api
+      .getMarks()
+      .then((mk) => {
+        if (!live) return;
         const loadedMarks = new Map<string, Mark[]>();
         for (const m of mk) loadedMarks.set(m.signal_key, [...(loadedMarks.get(m.signal_key) ?? []), m]);
         marksRef.current = mergeMarksKeepingOverrides(loadedMarks, marksRef.current);
         setMarks((prev) => mergeMarksKeepingOverrides(loadedMarks, prev));
       })
-      .catch((e: unknown) => live && setError(errorMessage(e)))
-      .finally(() => live && setLoading(false));
+      .catch((e: unknown) => live && setError(errorMessage(e)));
+
+    // allSettled, not all: `loading` must clear once both have finished either way, and both
+    // chains already absorb their own rejection.
+    void Promise.allSettled([loadFeedback, loadMarks]).then(() => live && setLoading(false));
     return () => {
       live = false;
     };

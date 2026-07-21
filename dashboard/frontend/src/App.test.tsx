@@ -33,6 +33,27 @@ describe("App shell", () => {
     expect(screen.getByLabelText(/run/i)).toHaveValue("run-0");
   });
 
+  // Both tabs must reference a panel that is actually in the DOM. The panel element is swapped
+  // rather than duplicated, so an id templated off the active tab left the inactive tab's
+  // aria-controls dangling.
+  it("keeps both tabs' aria-controls pointed at a panel that exists, on either tab", async () => {
+    render(<App />);
+    for (const name of [/overview/i, /trades/i]) {
+      await userEvent.click(screen.getByRole("tab", { name }));
+      for (const tab of screen.getAllByRole("tab")) {
+        const target = tab.getAttribute("aria-controls")!;
+        expect(document.getElementById(target)).not.toBeNull();
+      }
+    }
+  });
+
+  it("says so when there are no runs, rather than spinning forever", async () => {
+    vi.spyOn(api, "getRuns").mockResolvedValue([]);
+    render(<App />);
+    expect(await screen.findByText(/no runs yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/loading runs/i)).not.toBeInTheDocument();
+  });
+
   it("switches to Overview when its tab is tapped", async () => {
     render(<App />);
     await userEvent.click(screen.getByRole("tab", { name: /overview/i }));

@@ -12,6 +12,7 @@
       "migrations_dir": "migrations"
     }
   ],
-  // Populated by the frontend build (Plan 2); .gitkeep keeps the dir present.
+  // Populated by the frontend build; its output is gitignored, so only the tracked .gitkeep
+  // keeps the dir present on a fresh clone. `npm run dev` and `npm run deploy` both build first.
   "assets": { "directory": "./public", "binding": "ASSETS" }
 }

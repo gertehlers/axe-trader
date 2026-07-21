@@ -14,6 +14,7 @@ export default function App() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [runId, setRunId] = useState<string>("");
   const [runsError, setRunsError] = useState<string | null>(null);
+  const [runsLoaded, setRunsLoaded] = useState(false);
   const { flags, marks, setFlag, toggleMark, error } = useAnnotations();
 
   useEffect(() => {
@@ -24,6 +25,7 @@ export default function App() {
         if (!live) return;
         setRuns(rows);
         if (rows.length > 0) setRunId(rows[0].id); // API returns newest first
+        setRunsLoaded(true);
       })
       .catch((e: unknown) => {
         if (!live) return;
@@ -53,9 +55,14 @@ export default function App() {
 
       {error && <p className="error">{error}</p>}
 
-      <main className="panel" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+      {/* One panel element is swapped between tabs rather than two persistent panels, so its id
+          must be stable: templating it off `tab` left the INACTIVE tab's aria-controls pointing
+          at an id no longer in the DOM. Both tabs reference this single id. */}
+      <main className="panel" role="tabpanel" id="panel" aria-labelledby={`tab-${tab}`}>
         {runsError ? (
           <p className="error">Couldn't load runs: {runsError}</p>
+        ) : runsLoaded && runs.length === 0 ? (
+          <p className="empty">No runs yet. Export one with the dashboard exporter, then push it.</p>
         ) : !run ? (
           <p className="loading">Loading runs…</p>
         ) : tab === "trades" ? (
@@ -75,7 +82,7 @@ export default function App() {
         <button
           role="tab"
           id="tab-overview"
-          aria-controls="panel-overview"
+          aria-controls="panel"
           aria-selected={tab === "overview"}
           onClick={() => setTab("overview")}
         >
@@ -84,7 +91,7 @@ export default function App() {
         <button
           role="tab"
           id="tab-trades"
-          aria-controls="panel-trades"
+          aria-controls="panel"
           aria-selected={tab === "trades"}
           onClick={() => setTab("trades")}
         >

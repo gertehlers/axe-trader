@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "npm run build && wrangler dev",
     "test": "npm run test:api && npm run test:ui",
     "test:api": "vitest run --exclude '**/frontend/**'",
     "test:ui": "vitest run --root frontend",

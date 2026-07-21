@@ -550,4 +550,36 @@ describe("useAnnotations", () => {
       expect.objectContaining({ id: "m3", kind: "T1", bar_ts: "2025-03-04T17:00:00Z" }),
     ]);
   });
+
+  // The two endpoints are independent tables. If /api/marks is down -- the concrete case being
+  // migration 0002_marks.sql not yet applied to remote D1, which 500s -- flags must still load.
+  // Loading them as one Promise.all meant a single dead endpoint blanked BOTH, so every trade
+  // rendered with no chip pressed and the reviewer's existing verdicts looked lost.
+  it("still loads flags when the marks endpoint fails", async () => {
+    vi.spyOn(api, "getFeedback").mockResolvedValue([
+      { id: "f1", signal_key: KEY, flag: "chop", note: null, created_at: "" },
+    ]);
+    vi.spyOn(api, "getMarks").mockRejectedValue(new Error("D1_ERROR: no such table: marks"));
+
+    const { result } = renderHook(() => useAnnotations());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.flags.get(KEY)).toBe("chop");
+    expect(result.current.error).toMatch(/marks/i);
+  });
+
+  it("still loads marks when the feedback endpoint fails", async () => {
+    vi.spyOn(api, "getFeedback").mockRejectedValue(new Error("D1_ERROR: no such table: feedback"));
+    vi.spyOn(api, "getMarks").mockResolvedValue([
+      { id: "m1", signal_key: KEY, kind: "T1", bar_ts: "2025-03-04T16:10:00Z", created_at: "" },
+    ]);
+
+    const { result } = renderHook(() => useAnnotations());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.marks.get(KEY)).toEqual([
+      expect.objectContaining({ id: "m1", kind: "T1" }),
+    ]);
+    expect(result.current.error).toMatch(/feedback/i);
+  });
 });

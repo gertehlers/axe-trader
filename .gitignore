@@ -51,11 +51,15 @@ build/
 !.claude/plugins/
 !.claude/skills/
 !.claude/CLAUDE.md
-.claudedashboard/node_modules/
+.claude
+dashboard/node_modules/
 dashboard/.wrangler/
 dashboard/run.json
 dashboard/.push.generated.sql
 experiments/feedback.json
 .superpowers/
 experiments/marks.json
-dashboard/public/
+# Note the /* — excluding the directory itself would make the negation below impossible,
+# because git cannot re-include a file whose parent directory is excluded.
+dashboard/public/*
+!dashboard/public/.gitkeep

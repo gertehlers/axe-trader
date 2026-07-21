@@ -16,8 +16,13 @@
 -- The statement below derives it inline rather than hardcoding it, so it cannot be mistranscribed.
 --
 -- Reversible: `UPDATE trades SET net_pnl = pnl WHERE run_id = '...'` restores the prior state.
--- Idempotent it is NOT -- running it twice subtracts the spread twice. Check with the SELECT above
--- first; if AVG(pnl) and AVG(net_pnl) already differ by the spread, it has already been applied.
+--
+-- IDEMPOTENT -- safe to run twice, verified empirically (3 consecutive runs, byte-identical state).
+-- The reason is load-bearing, so do not "simplify" it away: the statement assigns
+--   net_pnl = pnl - (AVG(pnl) - net_avg_pnl)
+-- and it never writes either `pnl` or `runs.net_avg_pnl`. Both inputs are therefore immutable
+-- under this script, so it re-derives the same answer from scratch every time and self-corrects.
+-- Rewriting it as `net_pnl = net_pnl - avgSpread` WOULD double-subtract on a second run. Don't.
 --
 -- Run with:
 --   cd dashboard
@@ -29,4 +34,11 @@ SET net_pnl = pnl - (
       (SELECT AVG(pnl) FROM trades WHERE run_id = 'US500-1784554730790')
     - (SELECT net_avg_pnl FROM runs WHERE id = 'US500-1784554730790')
   )
-WHERE run_id = 'US500-1784554730790';
+WHERE run_id = 'US500-1784554730790'
+  -- Guard: without this, a missing/renamed run row makes the net_avg_pnl subquery NULL, and
+  -- `pnl - NULL` silently NULLs net_pnl for EVERY trade in scope. Verified: it really does.
+  -- With the guard, that case degrades to a harmless no-op instead of data loss.
+  AND EXISTS (
+    SELECT 1 FROM runs
+    WHERE id = 'US500-1784554730790' AND net_avg_pnl IS NOT NULL
+  );
