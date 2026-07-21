@@ -462,7 +462,36 @@ authority if it is missing).
 | 7 | chart geometry (pure functions) | `df8f164` |
 | 8 | TradeCard — SVG candles, stop/target, markers, Focus/Full | `49d6df3` |
 
-### Task 9 (`useAnnotations`) — IN FLIGHT, not yet approved
+### Task 9 (`useAnnotations`) — ✅ COMPLETE, approved at `9957345` (fable review, 2026-07-21)
+
+Approved after 4 implementation rounds and 4 reviews. Final state: **api 21/21, ui 51/51, typecheck
+clean**, verified by the controller independently at each step. Three accepted limitations are
+documented below — they are deliberate, ruled on by the human, and pinned by regression tests.
+
+> **⚠️ THIS FILE IS CLOSED FOR FURTHER EXTENSION ON ITS CURRENT ARCHITECTURE.**
+> The approving fable reviewer's explicit recommendation, and the single most important thing to
+> carry forward from this task. The hook is *correct* as specced (flags + marks), but its
+> correctness rests on several global, comment-only invariants the type system does not enforce —
+> ref mirrors state synchronously; empty-array-means-absent-key; `apply`/`restore` must stay pure;
+> ownership is decided by an issue-time sequence number, not by value; array-valued slots must be
+> merged per sub-key, never wholesale. Evidence it has crossed from "reviewable" to "needs
+> fable-tier verification every time": two sonnet-tier reviews returned clean while real bugs were
+> live, and the final review needed the merge logic extracted into a standalone script and six
+> interleavings hand-simulated before it could be trusted.
+>
+> **If a third optimistic write type, bulk operations, or any change to `Mark`'s shape comes up,
+> do NOT patch this machine again.** Redesign onto a server-confirmed baseline (TanStack Query's
+> optimistic-mutation model, per-slot write serialisation, or confirm-on-response). Each of the last
+> two fixes required inventing new machinery — sequence numbers for ABA, then a parallel merge
+> function for per-kind reconciliation — rather than a local change. That is a design accumulating
+> moving parts under stress, not converging.
+
+Non-blocking follow-up noted by the reviewer: `mergeMarksKeepingOverrides` (`useAnnotations.ts:47-50`)
+silently depends on the DB's `UNIQUE(signal_key, kind)` constraint; two same-kind loaded rows would
+both pass through, worst case a duplicate React key warning. The dependency pre-dates this diff and
+is not widened by it. Worth a one-line comment; added to the deferred-Minor list.
+
+### Historical record of the Task 9 rounds (kept for the branch review)
 
 Commits: `90630af` (initial), `f2a7c51` (fix round 1), `c05ae39` (fix round 2 — latest).
 This is the optimistic flag/mark state hook — every write in the app flows through it, which is why
@@ -589,6 +618,14 @@ double-invoke safety; (iv) no regression test pins the *accepted* behaviour of (
 been wrong on this file three times) → only then Task 9 complete and Task 10 starts.** Task 9 is
 still NOT complete.
 
+### STOPPING RULE for Task 9 — RESOLVED, not triggered
+
+The next review came back **APPROVE**, so the stopping rule's "clean → proceed" branch applied and
+Task 9 shipped. The rule is retained below because its *redesign* branch is still the standing
+policy for any future change to this file (see the closed-for-extension note above).
+
+Original text:
+
 ### STOPPING RULE for Task 9 (set by the human 2026-07-21)
 
 Task 9 has now consumed **four implementation rounds and three reviews**, and each review round has
@@ -621,6 +658,10 @@ against that stable interface.
 
 ### Remaining
 
+**NEXT ACTION: Task 10 (TradeDeck).** Task 9 is closed; nothing blocks it. Plan section at
+`docs/superpowers/plans/2026-07-20-trade-review-phone-ui.md` line ~1570 (fully specified, incl. the
+test file). Implement via sonnet-worker, then a mandatory per-task review before Task 11.
+
 - Task 10 — TradeDeck (swipe/prev/next, filter, flag + mark chips, neighbour prefetch)
 - Task 11 — Overview (KPI tiles, equity curve, EMA-distance slices)
 - Task 12 — wire run picker + tabs, styling via the frontend-design skill, build, deploy
@@ -638,6 +679,8 @@ Held for the final whole-branch review to triage, not lost:
 - `priceRange` extras omit `exit_price` (a gap-through exit could render off-canvas).
 - `barIndexAtOrAfter` on an empty bars array returns 0, which would make `focusWindow` invert.
 - `pull-feedback.ts` `--remote` path and a non-empty feedback table are untested.
+- `mergeMarksKeepingOverrides` (`useAnnotations.ts:47-50`) has an undocumented dependency on the DB's
+  `UNIQUE(signal_key, kind)` constraint — one-line comment, pre-existing, not widened by `9957345`.
 
 ### Environment facts that survive the session
 
