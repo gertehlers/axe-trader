@@ -9,6 +9,43 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
 
 ---
 
+## ⭐ ACTIVE WORK — tiered scale-out exits (started 2026-07-21)
+
+**Branch:** `claude/tiered-scale-out-exits`.
+**Spec:** `docs/superpowers/specs/2026-07-21-tiered-scale-out-exits-design.md`
+**Plan:** `docs/superpowers/plans/2026-07-21-tiered-scale-out-exits.md`
+
+This is the expectancy lever — item 4 of `docs/observability-and-exits-design.md`. The dashboard
+round proved the entry edge is real (88% wins) but that max drawdown 83.54 against ~87 total net
+means **the deepest drawdown is ~96% of everything the strategy made**. Exits, not entries.
+
+**Execution mode:** subagent-driven, one implementer + one reviewer per task. The live ledger is
+`.superpowers/sdd/progress.md`, but **that path is gitignored** — this section is the durable copy.
+A fresh session should trust this table plus `git log`.
+
+| Task | State |
+|---|---|
+| 1 config model (tiers, ratchet, validation) | code `1f0d009`, review clean; NaN + YAML-binding fixes in flight |
+| 2 `tieredExit` ladder (degenerate case = today) | not started |
+| 3 ratchet behaviour tests | not started |
+| 4 wire ladder through `TradeResult` + runner | not started |
+| 5 sweep arms + `hitT1` metric | not started |
+| 6 dashboard `tiers_filled` / `hit_t1` + migration 0003 | not started |
+| 7 OOS validation against the pre-registered gate | not started |
+
+**Two hard rules a fresh session must not break:**
+1. `BacktestRunnerIntrabarTest` must pass **unchanged** — it is the regression gate proving the
+   one-tier ladder reproduces today's exit behaviour exactly. If it fails, the implementation
+   diverged; fix the code, never the test.
+2. The success gate in the spec was **pre-registered before any results existed** and must not be
+   tuned to the results. **"No arm passed" is a valid, reportable outcome.**
+
+**Counting Java tests:** `rm -rf target/surefire-reports` first. It accumulates stale reports from
+targeted `-Dtest=…` runs — including seven `*Tests` classes that no longer exist — and counting it
+dirty produced a phantom "34 tests" earlier today. The real baseline is **20**.
+
+---
+
 ## In Progress
 
 - [ ] Validate MONITOR mode end-to-end (auth → WebSocket → SQLite writes confirmed)
