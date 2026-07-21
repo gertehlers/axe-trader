@@ -763,9 +763,22 @@ case lifts a second finger 300px from finger 1's origin.
 **Task 10 is COMPLETE.** ✅
 
 - [x] Task 10 — TradeDeck ✅ complete (`5d82139` + `5c1fc39`, reviewed)
-- **NEXT: Task 11 — Overview (KPI tiles, equity curve, EMA-distance slices).** Nothing blocks it.
-  Implement via sonnet-worker, then the mandatory per-task review before Task 12. Note the `dataviz`
-  skill applies to the equity curve and KPI tiles — load it before writing chart code.
+- **Task 11 — Overview: IN FLIGHT (sonnet-worker).** Human ruling: build to the plan's spec now,
+  review for correctness, then show a screenshot before Task 12 styling — do NOT pull Task 12's
+  visual design forward (avoids doing it twice). Mandatory per-task review still applies.
+  If no result is recorded here, it did not finish — **re-dispatch it.**
+
+  Plan checked before dispatch; two deviations instructed:
+  1. The plan's effect `.catch`es `getSlices` but NOT `getTrades` → unhandled rejection, and a
+     silently blank equity curve in the app. Handled (no retry affordance — not in the spec).
+  2. **The slice chart hid sample size.** The Worker's slices route chunks by
+     `per = Math.max(1, Math.floor(n / buckets))`, so the last bucket is a short remainder —
+     n=102, buckets=4 → 25,25,25,25,**2**. The plan rendered `win_pct` only, so a 2-trade bucket at
+     100% looks exactly as authoritative as a 25-trade bucket at 60%. That invites precisely the
+     false hypothesis `docs/instrument-personality-playbook.md` exists to prevent ("eyes propose,
+     data disposes"). Now renders the per-bucket count plus an accessible `<title>`.
+     **Worth raising at the branch review: should the route itself distribute the remainder rather
+     than emit a runt bucket?** The fix here makes the runt visible; it does not remove it.
 - Task 12 — wire run picker + tabs, styling via the frontend-design skill, build, deploy
 
 Then: final whole-branch review (most capable model), then finishing-a-development-branch.
