@@ -159,11 +159,17 @@ public class BacktestRunner {
      * level was touched before or after the tier.
      *
      * @param tiers ascending target distances in price units (not ATR multiples), fractions summing
-     *              to 1.0; validated by {@code BacktestProperties.Strategy.Exit#validate()}
+     *              to 1.0; must not be empty (enforced by this method)
+     * @throws IllegalArgumentException if {@code tiers} is empty
      */
     static TieredExitOutcome tieredExit(
             BarSeries series, Direction direction, int entryIndex, double entryPrice,
             double stopDist, List<TierLevel> tiers, Ratchet ratchet, int maxHoldingBars) {
+        if (tiers.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "tieredExit requires at least one tier — an empty ladder would skip the "
+                            + "stop-loss check entirely and close at the series' last close");
+        }
         boolean isLong = direction == Direction.LONG;
         double stopLevel = isLong ? entryPrice - stopDist : entryPrice + stopDist;
         int lastIndex = series.getEndIndex();

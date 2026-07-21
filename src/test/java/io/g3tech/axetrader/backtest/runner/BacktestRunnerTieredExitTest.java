@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 
 /**
@@ -173,6 +174,20 @@ class BacktestRunnerTieredExitTest {
         assertThat(out.tiersFilled()).isEqualTo(3);
         // (99.25 + 98.5 + 97.0) / 3
         assertThat(out.weightedPrice()).isCloseTo((99.25 + 98.5 + 97.0) / 3.0, within(1e-9));
+    }
+
+    @Test
+    void emptyLadderIsRejectedRatherThanSilentlySkippingTheStopLoss() {
+        // An empty ladder made the walk loop skip its body entirely, so the stop was never checked
+        // and the whole position closed at the series' last close. Unreachable today, but it fails
+        // silently rather than loudly, so it is rejected explicitly.
+        BarSeries series = series(
+                bar(100, 100, 100),
+                bar(100.2, 96.0, 97.0));
+
+        assertThatThrownBy(() -> BacktestRunner.tieredExit(
+                series, Direction.LONG, 0, ENTRY, STOP_DIST, List.of(), Ratchet.NONE, 0))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     private static BarSeries series(double[]... bars) {
