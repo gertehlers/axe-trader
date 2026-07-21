@@ -32,6 +32,26 @@ function mergeKeepingOverrides<V>(base: Map<string, V>, overrides: Map<string, V
   return merged;
 }
 
+/** Same idea as mergeKeepingOverrides, but for marks: a `Mark[]` packs independent per-kind
+ * sub-slots (see `slot: ${signalKey}::${kind}` in toggleMark), so taking the local array for a
+ * key wholesale is wrong — it silently drops loaded marks of a kind the local write never
+ * touched. Resolve at (signal_key, kind) granularity instead: for each key known locally, keep
+ * loaded marks whose kind isn't present locally, then append the local marks — local still wins
+ * per kind, but untouched kinds from the load survive. Keys known only locally, or only loaded,
+ * pass through unchanged via the base clone / the loaded-marks fallback below. */
+function mergeMarksKeepingOverrides(
+  base: Map<string, Mark[]>,
+  overrides: Map<string, Mark[]>
+): Map<string, Mark[]> {
+  const merged = new Map(base);
+  for (const [key, localMarks] of overrides) {
+    const localKinds = new Set(localMarks.map((m) => m.kind));
+    const loadedMarks = merged.get(key) ?? [];
+    merged.set(key, [...loadedMarks.filter((m) => !localKinds.has(m.kind)), ...localMarks]);
+  }
+  return merged;
+}
+
 interface OptimisticWriteArgs<V> {
   /** Mirror of the state map, kept in sync synchronously (not just via effect) so a second call
    * in the same tick sees this call's contribution immediately. */
@@ -164,8 +184,8 @@ export function useAnnotations() {
 
         const loadedMarks = new Map<string, Mark[]>();
         for (const m of mk) loadedMarks.set(m.signal_key, [...(loadedMarks.get(m.signal_key) ?? []), m]);
-        marksRef.current = mergeKeepingOverrides(loadedMarks, marksRef.current);
-        setMarks((prev) => mergeKeepingOverrides(loadedMarks, prev));
+        marksRef.current = mergeMarksKeepingOverrides(loadedMarks, marksRef.current);
+        setMarks((prev) => mergeMarksKeepingOverrides(loadedMarks, prev));
       })
       .catch((e: unknown) => live && setError(errorMessage(e)))
       .finally(() => live && setLoading(false));
