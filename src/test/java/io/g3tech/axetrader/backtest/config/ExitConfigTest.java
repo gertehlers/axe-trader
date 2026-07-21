@@ -68,4 +68,20 @@ class ExitConfigTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("ascending");
     }
+
+    @Test
+    void nanFractionIsRejected() {
+        BacktestProperties.Strategy.Exit exit = new BacktestProperties.Strategy.Exit();
+        exit.setTiers(List.of(tier(1.0, 0.75), tier(Double.NaN, 1.5)));
+
+        assertThatThrownBy(exit::validate).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void infiniteFractionIsRejected() {
+        BacktestProperties.Strategy.Exit exit = new BacktestProperties.Strategy.Exit();
+        exit.setTiers(List.of(tier(Double.POSITIVE_INFINITY, 0.75)));
+
+        assertThatThrownBy(exit::validate).isInstanceOf(IllegalStateException.class);
+    }
 }

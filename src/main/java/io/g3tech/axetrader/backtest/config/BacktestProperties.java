@@ -335,11 +335,11 @@ public class BacktestProperties {
                 double sum = 0.0;
                 double previousTarget = Double.NEGATIVE_INFINITY;
                 for (ExitTier tier : tiers) {
-                    if (tier.getFraction() <= 0.0) {
+                    if (!(tier.getFraction() > 0.0)) {
                         throw new IllegalStateException(
                                 "exit tier fraction must be positive, got " + tier.getFraction());
                     }
-                    if (tier.getTargetAtrMultiple() <= previousTarget) {
+                    if (!(tier.getTargetAtrMultiple() > previousTarget)) {
                         throw new IllegalStateException(
                                 "exit tiers must be in ascending target order, got "
                                         + tier.getTargetAtrMultiple() + " after " + previousTarget);
@@ -347,7 +347,7 @@ public class BacktestProperties {
                     previousTarget = tier.getTargetAtrMultiple();
                     sum += tier.getFraction();
                 }
-                if (Math.abs(sum - 1.0) > 1e-6) {
+                if (!(Math.abs(sum - 1.0) <= 1e-6)) {
                     throw new IllegalStateException(
                             "exit tier fractions must sum to 1.0, got " + sum);
                 }
