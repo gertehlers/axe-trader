@@ -496,6 +496,19 @@ reviewer — the sonnet-tier reviews passed this task twice while real bugs were
 residual edge cases explicitly: accept as documented limitations, or fix. Do not mark Task 9
 complete until that review is clean.
 
+**Session 2026-07-21 progress:**
+- Re-verified `c05ae39` independently (not just trusting the prior checkpoint): `npm test` →
+  **api 21/21, ui 47/47**; `npm run typecheck` → **clean** on both projects. Claims hold.
+- Re-review dispatched to a **fable-worker** (not sonnet — this is ABA / out-of-order-settlement /
+  ref-vs-committed-state race logic, and the sonnet tier has already passed this file twice with
+  live bugs in it). Asked for an explicit ruling on both residual edge cases and for the
+  "diverges local state only, nothing wrong is persisted" claim to be *verified*, not assumed.
+- If that review is still unrecorded below, it did not finish — **re-dispatch it**; do not start
+  Task 10 on the assumption it passed.
+- Open decision for the human once the review lands: if the verdict is "accept the two residual
+  edge cases as documented limitations", that is a deliberate correctness tradeoff in the write
+  path of every annotation in the app — surface it, don't decide it silently.
+
 ### Remaining
 
 - Task 10 — TradeDeck (swipe/prev/next, filter, flag + mark chips, neighbour prefetch)
