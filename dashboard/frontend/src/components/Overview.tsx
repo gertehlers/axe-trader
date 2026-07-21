@@ -58,6 +58,11 @@ export default function Overview({ run }: { run: Run }) {
 
   const pct = (v: number | null) => (v == null ? "—" : `${Math.round(v * 100)}%`);
   const signed = (v: number | null) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(2)}`);
+  /** Max drawdown is stored as a non-negative MAGNITUDE (the conventional definition — see
+   * DashboardExporter.maxDrawdown), so `signed()` would print it as "+4.00" and make a
+   * peak-to-trough loss read as a gain. Always render it as the give-back it is. A true zero
+   * stays "0.00" rather than "-0.00" — that case means the curve never dipped below a prior peak. */
+  const drawdown = (v: number | null) => (v == null ? "—" : v === 0 ? "0.00" : `−${v.toFixed(2)}`);
 
   return (
     <section className="overview">
@@ -70,7 +75,7 @@ export default function Overview({ run }: { run: Run }) {
         <Kpi label="trades/day" value={run.trades_per_day?.toFixed(1) ?? "—"} />
         <Kpi label="avg R" value={signed(run.avg_r)} />
         <Kpi label="trades" value={String(run.trades_count ?? trades.length)} />
-        <Kpi label="max DD" value={signed(run.max_drawdown)} />
+        <Kpi label="max DD" value={drawdown(run.max_drawdown)} />
         <Kpi label="worst qtr" value={signed(run.worst_quarter_net)} />
       </div>
 
@@ -98,10 +103,17 @@ export default function Overview({ run }: { run: Run }) {
             y2={H - slices.baseline_win * H}
             className="baseline"
           />
+          {/* Sample size drives opacity as well as the printed n=: the Worker chunks by
+           * `per = max(1, floor(n / buckets))`, so the last bucket is routinely a short remainder
+           * (102 trades / 4 buckets -> 25,25,25,25,2). A 2-trade bucket at 100% win must not read
+           * as strongly as a 25-trade bucket at 60%. Confidence is relative to the largest bucket
+           * in this chart, floored at 0.3 so a faint bar is still legible. */}
           {slices.buckets.map((b, i) => {
             const bw = W / slices.buckets.length;
             const h = b.win_pct * H;
             const winPct = Math.round(b.win_pct * 100);
+            const maxCount = Math.max(...slices.buckets.map((x) => x.count), 1);
+            const confidence = Math.max(0.3, b.count / maxCount);
             return (
               <g key={i}>
                 <rect
@@ -110,6 +122,7 @@ export default function Overview({ run }: { run: Run }) {
                   width={bw - 8}
                   y={H - h}
                   height={h}
+                  style={{ "--confidence": confidence } as React.CSSProperties}
                   className={b.win_pct >= slices.baseline_win ? "bucket good" : "bucket bad"}
                 >
                   <title>

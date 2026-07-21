@@ -12,7 +12,7 @@ const run = {
   net_avg_pnl_usd: 4.25,
   trades_per_day: 0.3,
   avg_r: 0.1,
-  max_drawdown: -3.5,
+  max_drawdown: 3.5, // stored as a non-negative magnitude; rendered as a give-back
   worst_quarter_net: -12.25,
 } as unknown as Run;
 
@@ -42,7 +42,8 @@ describe("Overview", () => {
     expect(screen.getByText("+0.85")).toBeInTheDocument(); // net pts/trade
     expect(screen.getByText("+4.25")).toBeInTheDocument(); // net $/trade
     expect(screen.getByText("0.3")).toBeInTheDocument();
-    expect(screen.getByText("-3.50")).toBeInTheDocument(); // max DD
+    // A drawdown is stored positive but must never display as "+3.50" -- that reads as a gain.
+    expect(screen.getByText("−3.50")).toBeInTheDocument(); // max DD (U+2212 minus)
     expect(screen.getByText("-12.25")).toBeInTheDocument(); // worst qtr
   });
 
