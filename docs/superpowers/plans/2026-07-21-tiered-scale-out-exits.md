@@ -1020,10 +1020,12 @@ Declare the two new locals alongside the existing ones, above the `if (config ==
         boolean hitT1 = false;
 ```
 
-In the `config == null` legacy branch, set them to reflect a single all-or-nothing exit:
+In the `config == null` legacy branch, set them to reflect a single all-or-nothing exit. Key off the
+**exit reason**, not the sign of pnl — "a tier filled" means the target was reached, which is not the
+same thing as finishing in profit (a TIME exit can close green without ever tagging the target):
 
 ```java
-            tiersFilled = pnl(direction, entryPrice, exitPrice) > 0.0 ? 1 : 0;
+            tiersFilled = exitReason == ExitReason.TARGET ? 1 : 0;
             hitT1 = tiersFilled == 1;
 ```
 
