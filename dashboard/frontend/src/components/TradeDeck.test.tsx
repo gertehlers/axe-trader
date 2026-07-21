@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import TradeDeck from "./TradeDeck";
@@ -38,6 +38,7 @@ const summary = (id: string, key: string): TradeSummary =>
 
 const KEY_A = "US500|2025-03-04T15:00:00Z|LONG";
 const KEY_B = "US500|2025-03-05T15:00:00Z|LONG";
+const KEY_C = "US500|2025-03-06T15:00:00Z|LONG";
 
 beforeEach(() => {
   vi.spyOn(api, "getTrades").mockResolvedValue([summary("t-a", KEY_A), summary("t-b", KEY_B)]);
@@ -115,19 +116,40 @@ describe("TradeDeck", () => {
     expect(onToggleMark).not.toHaveBeenCalled();
   });
 
-  it("fetches each trade's detail exactly once even though the prefetch effect re-renders on every arrival", async () => {
+  it("does not issue a duplicate fetch for a trade whose neighbour arrives first (guards against `detail` re-running the prefetch effect)", async () => {
+    // Staggered, gate-controlled resolution — unlike two plain-async mocks settling in the same
+    // microtask drain (which batches both setDetail calls into one render and never re-runs the
+    // effect either way), this reproduces the bug the plan's original code had: deps
+    // `[list, index, detail]` with a `detail[row.id]` skip-guard. There, resolving t-a's fetch
+    // changes `detail`, which re-runs the effect; t-b's fetch is still pending so `detail[t-b]`
+    // is still absent, and a second request for t-b fires before the first one has even settled.
+    const resolvers: Record<string, Array<(t: Trade) => void>> = { "t-a": [], "t-b": [], "t-c": [] };
+    vi.spyOn(api, "getTrades").mockResolvedValue([
+      summary("t-a", KEY_A),
+      summary("t-b", KEY_B),
+      summary("t-c", KEY_C),
+    ]);
+    vi.spyOn(api, "getTrade").mockImplementation(
+      (id) =>
+        new Promise<Trade>((resolve) => {
+          resolvers[id].push(resolve);
+        })
+    );
+
     renderDeck();
-    await waitFor(() => expect(screen.getByText(/1 of 2/i)).toBeInTheDocument());
-    await waitFor(() => expect(api.getTrade).toHaveBeenCalledWith("t-b"));
+    await waitFor(() => expect(screen.getByText(/1 of 3/i)).toBeInTheDocument());
+    // index 0 prefetches itself (t-a) and its next neighbour (t-b); t-c is out of the window.
+    await waitFor(() => {
+      expect(resolvers["t-a"]).toHaveLength(1);
+      expect(resolvers["t-b"]).toHaveLength(1);
+    });
+
+    // Resolve t-a only. t-b's fetch is still in flight.
+    resolvers["t-a"][0]({ ...summary("t-a", KEY_A), bars_json: JSON.stringify(bars) } as Trade);
+    await waitFor(() => expect(screen.getByTestId("candles")).toBeInTheDocument());
     // Give any redundant re-fetch a chance to fire before asserting the count.
     await new Promise((r) => setTimeout(r, 0));
-    const callsFor = (id: string) =>
-      (api.getTrade as unknown as { mock: { calls: unknown[][] } }).mock.calls.filter(
-        (args) => args[0] === id
-      );
-    expect(callsFor("t-a")).toHaveLength(1);
-    expect(callsFor("t-b")).toHaveLength(1);
-    expect(api.getTrade).toHaveBeenCalledTimes(2);
+    expect(resolvers["t-b"]).toHaveLength(1);
   });
 
   it("still renders the chart when the user advances before the detail fetches resolve", async () => {
@@ -161,10 +183,90 @@ describe("TradeDeck", () => {
     await waitFor(() => expect(screen.getByTestId("candles")).toBeInTheDocument());
   });
 
-  it("falls through to the empty state when the trade list fails to load", async () => {
-    vi.spyOn(api, "getTrades").mockRejectedValue(new Error("boom"));
+  it("shows a distinct failed state (not the empty state) when the trade list fails to load, and retries", async () => {
+    vi.spyOn(api, "getTrades")
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValueOnce([summary("t-a", KEY_A), summary("t-b", KEY_B)]);
     renderDeck();
-    // Must not spin on "Loading trades…" forever, and must not raise an unhandled rejection.
+    // Must not spin on "Loading trades…" forever, must not raise an unhandled rejection, and must
+    // not be confusable with a genuinely empty filter — an expired session looks identical to "no
+    // trades" otherwise, and the user stops reviewing a run that actually has trades in it.
+    await waitFor(() => expect(screen.getByText(/couldn't load trades/i)).toBeInTheDocument());
+    expect(screen.queryByText(/no trades for this filter/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /retry/i }));
+    await waitFor(() => expect(screen.getByText(/1 of 2/i)).toBeInTheDocument());
+  });
+
+  it("still shows the genuinely-empty state (unchanged) when the filter has no trades", async () => {
+    vi.spyOn(api, "getTrades").mockResolvedValue([]);
+    renderDeck();
     await waitFor(() => expect(screen.getByText(/no trades for this filter/i)).toBeInTheDocument());
+  });
+
+  it("shows a distinct failed state (not indefinite loading) when the current trade's detail fails to load, and retries", async () => {
+    vi.spyOn(api, "getTrade")
+      .mockRejectedValueOnce(new Error("boom")) // t-a, the trade at index 0
+      .mockImplementation(
+        async (id) =>
+          ({ ...summary(id, id === "t-a" ? KEY_A : KEY_B), bars_json: JSON.stringify(bars) }) as Trade
+      );
+    renderDeck();
+    await waitFor(() => expect(screen.getByText(/couldn't load chart/i)).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /retry/i }));
+    await waitFor(() => expect(screen.getByTestId("candles")).toBeInTheDocument());
+  });
+});
+
+describe("TradeDeck swipe gestures", () => {
+  async function waitForFirst() {
+    await waitFor(() => expect(screen.getByText(/1 of 2/i)).toBeInTheDocument());
+  }
+
+  it("advances on a predominantly horizontal swipe past the threshold", async () => {
+    renderDeck();
+    await waitForFirst();
+    const deck = screen.getByTestId("deck");
+    fireEvent.touchStart(deck, { touches: [{ clientX: 200, clientY: 100 }] });
+    fireEvent.touchEnd(deck, { changedTouches: [{ clientX: 140, clientY: 100 }] }); // dx=-60, dy=0
+    expect(screen.getByText(/2 of 2/i)).toBeInTheDocument();
+  });
+
+  it("does not advance on a predominantly vertical drag with a >50px horizontal component (guards F1)", async () => {
+    renderDeck();
+    await waitForFirst();
+    const deck = screen.getByTestId("deck");
+    // ~50px horizontal over a 200px vertical drag — the natural thumb arc reaching the chips below.
+    fireEvent.touchStart(deck, { touches: [{ clientX: 100, clientY: 50 }] });
+    fireEvent.touchEnd(deck, { changedTouches: [{ clientX: 150, clientY: 250 }] }); // dx=50, dy=200
+    expect(screen.getByText(/1 of 2/i)).toBeInTheDocument();
+  });
+
+  it("does not advance on a two-finger gesture (guards F2)", async () => {
+    renderDeck();
+    await waitForFirst();
+    const deck = screen.getByTestId("deck");
+    // Finger 1 touches down.
+    fireEvent.touchStart(deck, { touches: [{ clientX: 100, clientY: 50 }] });
+    // Finger 2 joins — a real touchstart reports ALL active touches, mimicking a pinch-zoom attempt.
+    fireEvent.touchStart(deck, {
+      touches: [
+        { clientX: 100, clientY: 50 },
+        { clientX: 220, clientY: 50 },
+      ],
+    });
+    // Finger 2 lifts first, far from where finger 1 started — a phantom horizontal delta if paired.
+    fireEvent.touchEnd(deck, { changedTouches: [{ clientX: 400, clientY: 50 }] });
+    expect(screen.getByText(/1 of 2/i)).toBeInTheDocument();
+  });
+
+  it("does not advance when the horizontal movement is below SWIPE_PX", async () => {
+    renderDeck();
+    await waitForFirst();
+    const deck = screen.getByTestId("deck");
+    fireEvent.touchStart(deck, { touches: [{ clientX: 100, clientY: 50 }] });
+    fireEvent.touchEnd(deck, { changedTouches: [{ clientX: 130, clientY: 50 }] }); // dx=30
+    expect(screen.getByText(/1 of 2/i)).toBeInTheDocument();
   });
 });
