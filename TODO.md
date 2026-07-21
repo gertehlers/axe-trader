@@ -753,11 +753,19 @@ on the wrong trade.
   goes RED against the plan's buggy deps before trusting it.
 - **F7 → deferred** to the Minor list for the final whole-branch review.
 
-If no result is recorded below, the fix round did not finish — **re-dispatch it**; Task 10 is
-approved but these follow-ups are not yet landed.
+**All landed in `5c1fc39`.** Suite: **api 21/21, ui 65/65** (59 + 6 net new), typecheck clean —
+verified by the controller. F3's rewritten test was proven RED against the plan's buggy deps
+(2 calls for `t-b`) before being accepted, independently matching the reviewer's reproduction.
+Swipe tests confirmed to be genuine guards, not decoration: the F1 case uses `dx=50, dy=200`, which
+sits exactly at the old `SWIPE_PX` threshold and *would* advance without the direction check; the F2
+case lifts a second finger 300px from finger 1's origin.
 
-- Task 10 — TradeDeck (swipe/prev/next, filter, flag + mark chips, neighbour prefetch)
-- Task 11 — Overview (KPI tiles, equity curve, EMA-distance slices)
+**Task 10 is COMPLETE.** ✅
+
+- [x] Task 10 — TradeDeck ✅ complete (`5d82139` + `5c1fc39`, reviewed)
+- **NEXT: Task 11 — Overview (KPI tiles, equity curve, EMA-distance slices).** Nothing blocks it.
+  Implement via sonnet-worker, then the mandatory per-task review before Task 12. Note the `dataviz`
+  skill applies to the equity curve and KPI tiles — load it before writing chart code.
 - Task 12 — wire run picker + tabs, styling via the frontend-design skill, build, deploy
 
 Then: final whole-branch review (most capable model), then finishing-a-development-branch.
