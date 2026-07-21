@@ -555,9 +555,12 @@ double-invoke safety; (iv) no regression test pins the *accepted* behaviour of (
 
 ### Human rulings taken 2026-07-21
 
-- **Finding 1 → FIX.** Reconcile the initial-load marks merge per `(signal_key, kind)` instead of
-  per `signal_key`. Dispatched to a sonnet-worker with TDD (failing test first) plus the test gaps
-  below. This also narrows accepted limitation (b).
+- **Finding 1 → FIXED in `9957345`.** Reconcile the initial-load marks merge per
+  `(signal_key, kind)` instead of per `signal_key`, via a new `mergeMarksKeepingOverrides`; flags
+  keep the original helper. Regression test confirmed failing first. Diff read and suite re-run by
+  the controller, not just taken from the worker's report: **api 21/21, ui 51/51, typecheck clean.**
+  Four tests added (regression, StrictMode, and pins for limitations (a) and (b)).
+  **It does not narrow limitation (b) — see (b) below.**
 - **Finding 2b → ACCEPT as a documented limitation.** The plan's singular `error: string | null`
   stays; Task 10's interface is unaffected. Recorded as limitation **(c)** below.
 - Plan doc annotated (this session) with a ⚠️ block above the buggy `toggleMark` reference code so a
@@ -569,8 +572,14 @@ double-invoke safety; (iv) no regression test pins the *accepted* behaviour of (
   leave state holding a value the server has neither of. `restore` returns an issue-time capture,
   not a server-confirmed baseline. Local-state-only; nothing wrong is persisted; reload reconciles.
 - **(b)** A mark removed locally while a load is in flight can resurface if that load's stale GET
-  still carried the pre-removal row. Narrowed by the Finding 1 fix — see the fix report for the
-  post-fix scope.
+  still carried the pre-removal row. **The Finding 1 fix (`9957345`) does NOT narrow this — it makes
+  it manifest more consistently.** Before the fix, a mixed-kind case (one kind removed, another still
+  present locally) *accidentally masked* the resurfacing, because the wholesale key overwrite threw
+  the entire loaded row set away. Per-kind merging cannot distinguish "this kind was never touched
+  locally" from "this kind was touched and then removed to nothing" — both read as *absent from the
+  local array* — so a stale loaded row for a removed kind now wins consistently. Pinned by test.
+  A real fix needs an explicit "locally touched" / tombstone concept, which is exactly the kind of
+  extra machinery the stopping rule below says not to bolt on in another patch round.
 - **(c)** `error` is a single global string with no slot affinity: a success on ANY slot clears the
   banner belonging to a different, still-failed write, and a superseded write's late failure can
   raise a banner although the current value is correct. A trader can therefore miss that one tap
