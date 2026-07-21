@@ -738,6 +738,24 @@ guard and confirmed it fails.
 the spec's "three taps, no menus" rhythm — but combined with F1 it is exactly how a stray mark lands
 on the wrong trade.
 
+### Human rulings on the Task 10 follow-ups (2026-07-21) — fixes IN FLIGHT
+
+- **F1 + F2 → FIX BOTH, plus the missing swipe tests (F6).** Direction check
+  (`|dx| > |dy|`) and a single-touch guard on `touchstart`. Swipe is the tool's primary navigation
+  and had zero test coverage; adding horizontal-advances / vertical-does-not / two-finger-does-not /
+  below-threshold-does-not.
+- **F4 + F5 → distinct failed states, local state only.** Failed list read renders
+  `Couldn't load trades.` + Retry; a genuinely empty result keeps the exact existing text
+  `No trades for this filter.`; a failed chart read renders `Couldn't load chart.` + Retry instead
+  of an indefinite `Loading chart…`. **No new props** — `TradeDeck`'s interface is unchanged, so
+  Task 12's call site is unaffected.
+- **F3 → fix the overclaiming test.** Rewrite with staggered/gate-controlled mocks and *prove* it
+  goes RED against the plan's buggy deps before trusting it.
+- **F7 → deferred** to the Minor list for the final whole-branch review.
+
+If no result is recorded below, the fix round did not finish — **re-dispatch it**; Task 10 is
+approved but these follow-ups are not yet landed.
+
 - Task 10 — TradeDeck (swipe/prev/next, filter, flag + mark chips, neighbour prefetch)
 - Task 11 — Overview (KPI tiles, equity curve, EMA-distance slices)
 - Task 12 — wire run picker + tabs, styling via the frontend-design skill, build, deploy
