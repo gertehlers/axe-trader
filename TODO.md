@@ -787,6 +787,69 @@ case lifts a second finger 300px from finger 1's origin.
   Still owed to the human once the review is clean: **run the app and send a screenshot of the
   Overview against the real 102-trade run**, before Task 12 does any styling. That was the explicit
   condition attached to the build-to-spec ruling.
+
+### Task 11 review verdict: **APPROVE WITH FOLLOW-UPS** (opus tier, 2026-07-21)
+
+Spec compliance PASS against the plan (interface matches Task 12's call site, plan line 2202).
+Suite re-verified by the reviewer: api 21/21, ui 70/70, typecheck clean.
+
+> ## 🔴 THE EQUITY CURVE PLOTS GROSS PNL UNDER A "NET" HEADING — data-integrity, needs a human call
+>
+> `Overview.tsx:39,66` cumulates `t.net_pnl` and titles it "Equity (cumulative net pts)". But
+> `DashboardExporter.java:99-100` writes:
+> ```java
+> // net = pnl - spread is applied at run level; per-trade keeps raw pnl (no double-subtract).
+> n.put("net_pnl", t.pnl());
+> ```
+> **`trades.net_pnl` is GROSS.** Only the run-level `net_avg_pnl` is genuinely net
+> (`DashboardExporter.java:48`: `mean(t.pnl() - avgSpread)`). Verified by the controller directly,
+> not taken from the review.
+>
+> **Concrete consequence on the real 102-trade run:** the KPI tile reads **−0.14 net pts/trade**
+> while the curve *directly beneath it* slopes **upward** by ~`102 × avgSpread`. That is exactly the
+> "close-based model looks profitable, honest fills say otherwise" trap that `CLAUDE.md` records the
+> 2026-07-04 audit already falling into once — and this chart re-creates it visually, right next to
+> the number that contradicts it. The frontend **cannot** fix this: `avgSpread` is not in the `runs`
+> table, so the client has no way to derive true net.
+>
+> Options: **(a)** relabel the heading "cumulative gross pts" — one line, honest, no pipeline
+> change, but the headline chart then answers a question nobody asked; **(b)** add an `avg_spread`
+> column to `runs` and subtract `i × avg_spread` in the curve; **(c)** make `trades.net_pnl`
+> genuinely net in the exporter. Reviewer preferred (b) or (c).
+
+**Design-spec gap — PLAN-MANDATED, needs a human call.** The design spec
+(`specs/2026-07-20-trade-review-phone-ui-design.md:25-26`) lists KPI tiles including **max DD** and
+**worst quarter**. The plan's Task 11 interface (line 1886) silently drops both; the implementation
+faithfully followed the plan. `max_drawdown` and `worst_quarter_net` already exist on the `Run`
+type, in `RunRow`, and in `migrations/0001_init.sql:21-22` — so this is two more `<Kpi>` lines, not
+a pipeline change. Given the north star is expectancy and risk-of-ruin, max DD is arguably the
+second-most-important number on the page.
+
+**Other follow-ups:**
+- **Every degenerate case renders as an identical blank chart.** `.catch` on `getTrades` converts
+  `api.ts`'s deliberate loud `ApiError` ("should fail loudly rather than render as a silent dash")
+  into `points=""` — pixel-identical to "loading" and to "no trades". A one-trade run is also
+  invisible (`Overview.tsx:44` → `points="0.0,0.0"`, a zero-length polyline renders nothing under
+  `stroke-linecap: butt`) — realistic at ~1 trade/day. The slice chart has an empty state; the
+  equity curve has none.
+- **The `<title>` added for the sample-size fix is dead code on both its paths.** The parent `<svg>`
+  has `role="img"`, which makes it a leaf in the a11y tree and prunes descendants, so no screen
+  reader will announce it; and there is no hover on a phone, so no tooltip either. The *visible*
+  `n=` label is the real fix and does work. Expose counts via the svg's `aria-label` in Task 12.
+- **Test quality — the two most important assertions are the two weakest.** The equity-curve test
+  asserts only that there are 3 points; replacing `cum += t.net_pnl` with `t.net_pnl`, inverting the
+  y-axis, or dropping the sort all still pass. Exact fix for this fixture:
+  `expect(points).toBe("0.0,30.0 160.0,90.0 320.0,0.0")` — pins cumulation, ordering, range and
+  y-flip at once. And the `n=4` test can't distinguish per-bucket counts because the plan's fixture
+  gives *both* buckets `count: 4` — **the test for the deviation does not test the deviation.**
+- Low: `=== null` guards should be `== null` (fixtures build partial `Run`s `as unknown as Run`;
+  adding a `signed(run.max_drawdown)` tile against the current fixture would throw).
+
+**Reviewer checked and cleared:** entry-order cumulation is fine (ta4j holds one position at a time,
+`enable-short: false` means no overlaps, and the x-axis is trade index not time); `localeCompare` is
+safe (`Instant.toString()`, always `Z`, minute-aligned → fixed width); `Math.min(0, ...cumulative)`
+is not a stack risk (measured: OK at 100k args, `RangeError` at 125k); forcing 0 into the range does
+not flatten the curve.
 - Task 12 — wire run picker + tabs, styling via the frontend-design skill, build, deploy
 
 Then: final whole-branch review (most capable model), then finishing-a-development-branch.
