@@ -187,6 +187,33 @@ class ConfluenceSweepTest {
                 .isEqualTo(4.0);
     }
 
+    @Test
+    void variantPreservesAnExistingExitLadderFromTheSourceConfig() {
+        // Build a source config with a 3-tier ladder and non-default ratchet
+        BacktestProperties.Strategy source = new BacktestProperties.Strategy();
+        source.setExit(ladder(3.0, Ratchet.BREAKEVEN_AFTER_T1));
+
+        // Pass it through variant() with a mutation unrelated to the exit block
+        BacktestProperties.Strategy copy = variant(source, s -> s.setStopAtrMultiple(2.5));
+
+        // Assert the copy has 3 tiers with the same fractions and target multiples
+        assertThat(copy.getExit().getTiers()).hasSize(3);
+        assertThat(copy.getExit().getTiers().get(0).getFraction()).isEqualTo(1.0 / 3.0);
+        assertThat(copy.getExit().getTiers().get(0).getTargetAtrMultiple()).isEqualTo(0.75);
+        assertThat(copy.getExit().getTiers().get(1).getFraction()).isEqualTo(1.0 / 3.0);
+        assertThat(copy.getExit().getTiers().get(1).getTargetAtrMultiple()).isEqualTo(1.5);
+        assertThat(copy.getExit().getTiers().get(2).getFraction()).isEqualTo(1.0 / 3.0);
+        assertThat(copy.getExit().getTiers().get(2).getTargetAtrMultiple()).isEqualTo(3.0);
+
+        // Assert the copy has the same ratchet
+        assertThat(copy.getExit().getRatchet()).isEqualTo(Ratchet.BREAKEVEN_AFTER_T1);
+
+        // Assert deep copy: mutating source's exit must not affect the copy
+        source.setExit(new BacktestProperties.Strategy.Exit());
+        assertThat(copy.getExit().getTiers()).hasSize(3);
+        assertThat(copy.getExit().getRatchet()).isEqualTo(Ratchet.BREAKEVEN_AFTER_T1);
+    }
+
     /**
      * Iteration 8 grid (see TODO.md tuning log): the pre-committed final candidate, LONG-only —
      * iteration 7 unmasked shorts as crash-only on US500. Run once on the in-sample window to
