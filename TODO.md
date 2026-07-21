@@ -580,6 +580,36 @@ double-invoke safety; (iv) no regression test pins the *accepted* behaviour of (
 been wrong on this file three times) → only then Task 9 complete and Task 10 starts.** Task 9 is
 still NOT complete.
 
+### STOPPING RULE for Task 9 (set by the human 2026-07-21)
+
+Task 9 has now consumed **four implementation rounds and three reviews**, and each review round has
+found real bugs that the previous round's tests passed straight through. That is the signature of a
+design that is too hard to get right by patching, not of unlucky implementations. Do not keep
+grinding it round after round.
+
+**The next fable re-review is the decision point:**
+
+- **Clean →** mark Task 9 complete, proceed to Task 10. Done.
+- **More substantive findings →** STOP patching. Do not dispatch a fifth fix round. Escalate to
+  **fable to redesign the approach**, not to fix another symptom. If that does not produce a design
+  fable is confident in, **park Task 9 and brainstorm it as its own exercise**
+  (`superpowers:brainstorming`) rather than blocking the rest of Plan 2 on it.
+
+**Redesign directions worth putting in front of fable when that happens** (the recurring root cause
+is a hand-rolled per-slot optimistic state machine — refs mirroring state, sequence gates, issue-time
+restore captures — which is genuinely hard concurrent code we keep re-deriving by hand):
+1. **Adopt a library that already solves this** — TanStack Query's mutation + optimistic-update model
+   (`onMutate`/`onError` rollback with a server-confirmed cache as the baseline) directly addresses
+   accepted limitation (a), which is precisely the "no last-confirmed-by-server baseline" gap.
+2. **Serialise writes per slot** — a small per-slot promise queue removes every out-of-order
+   settlement case by construction, at the cost of a little latency no phone user would notice.
+3. **Reduce the optimism** — confirm-on-response with a pending indicator. Loses some instant-tap
+   feel; deletes the entire class of divergence bugs.
+
+Note Task 10 consumes this hook only as props (`flags`, `marks`, `onFlag`, `onToggleMark`), so
+**Task 10 is not truly blocked by Task 9's internals** — if Task 9 gets parked, Task 10 can proceed
+against that stable interface.
+
 ### Remaining
 
 - Task 10 — TradeDeck (swipe/prev/next, filter, flag + mark chips, neighbour prefetch)
