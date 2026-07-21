@@ -190,6 +190,33 @@ class BacktestRunnerTieredExitTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void tiersFilledAndHitT1ReportTheFullLossCase() {
+        BarSeries series = series(
+                bar(100, 100, 100),
+                bar(100.2, 96.5, 97.0));
+
+        BacktestRunner.TieredExitOutcome out = BacktestRunner.tieredExit(
+                series, Direction.LONG, 0, ENTRY, STOP_DIST, THIRDS, Ratchet.NONE, 0);
+
+        assertThat(out.tiersFilled()).isZero();
+        assertThat(out.hitT1()).isFalse();
+    }
+
+    @Test
+    void tiersFilledAndHitT1ReportTheStopAfterT1Case() {
+        BarSeries series = series(
+                bar(100, 100, 100),
+                bar(100.8, 99.9, 100.6),
+                bar(100.7, 96.5, 97.0));
+
+        BacktestRunner.TieredExitOutcome out = BacktestRunner.tieredExit(
+                series, Direction.LONG, 0, ENTRY, STOP_DIST, THIRDS, Ratchet.NONE, 0);
+
+        assertThat(out.tiersFilled()).isEqualTo(1);
+        assertThat(out.hitT1()).isTrue();
+    }
+
     private static BarSeries series(double[]... bars) {
         BarSeries series = new BaseBarSeriesBuilder().withName("tiered-test").build();
         Instant start = Instant.parse("2026-01-01T00:00:00Z");

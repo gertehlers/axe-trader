@@ -15,6 +15,8 @@ public record TradeResult(
         boolean isWin,
         ExitReason exitReason,
         TradeFeatures features,
-        List<String> reasons
+        List<String> reasons,
+        int tiersFilled,
+        boolean hitT1
 ) {
 }

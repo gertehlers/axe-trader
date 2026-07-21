@@ -49,7 +49,8 @@ class DashboardExporterTest {
 
         TradeFeatures f = new TradeFeatures(28, 0, 0, 0, 0, 1.2, 0, 4.0, 0.6, 1.0, 14, 2, 3);
         TradeResult tr = new TradeResult(entry, exit, Direction.LONG, 5000, 5003, 3.0, 0.75,
-                VolatilityRegime.NORMAL, true, ExitReason.TARGET, f, List.of("RSI", "BB", "S/R"));
+                VolatilityRegime.NORMAL, true, ExitReason.TARGET, f, List.of("RSI", "BB", "S/R"),
+                1, true);
 
         BacktestProperties.Strategy cfg = new BacktestProperties.Strategy();
         cfg.setStopAtrMultiple(3.0);
@@ -133,7 +134,7 @@ class DashboardExporterTest {
             ZonedDateTime exit = entry.plus(Duration.ofMinutes(10));
             trades.add(new TradeResult(entry, exit, Direction.LONG, 5000, 5000 + rawPnl[i],
                     rawPnl[i], 0, VolatilityRegime.NORMAL, rawPnl[i] > 0, ExitReason.TARGET, null,
-                    List.of()));
+                    List.of(), rawPnl[i] > 0 ? 1 : 0, rawPnl[i] > 0));
         }
 
         BacktestProperties.Strategy cfg = new BacktestProperties.Strategy();

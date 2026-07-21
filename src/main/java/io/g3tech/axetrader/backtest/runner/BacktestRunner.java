@@ -84,6 +84,8 @@ public class BacktestRunner {
         double exitPrice;
         ExitReason exitReason;
         double riskPerUnit;
+        int tiersFilled = 0;
+        boolean hitT1 = false;
 
         if (config == null) {
             // Legacy fixed-rule path (no stop/target config): trust ta4j's close-based exit and
@@ -93,22 +95,26 @@ public class BacktestRunner {
             exitPrice = exit.getPricePerAsset(series).doubleValue();
             exitReason = classifyExit(series, exitIndex, pnl(direction, entryPrice, exitPrice));
             riskPerUnit = atrAtEntry;
+            tiersFilled = exitReason == ExitReason.TARGET ? 1 : 0;
+            hitT1 = tiersFilled == 1;
         } else {
-            // Confluence path: model the stop/target as a fixed bracket posted at entry (entry price
-            // ± multiple x ATR-at-entry, the way a real OCO order rests) and fill AT the level on the
-            // first bar whose intrabar range touches it — not at bar close. This removes the
-            // optimism of the old close-based rules (which never stopped out on a bar that pierced
-            // the stop but closed back inside, and filled past the level on gap bars). R is measured
-            // against the actual stop distance, so a target win is +targetAtr/stopAtr R, not inflated.
+            // Confluence path: model the stop/target as a bracket posted at entry and fill AT the
+            // level intrabar. With a tier ladder configured, bank a fraction at each rung and
+            // ratchet the stop; with no ladder, this is one 100% tier at targetAtrMultiple, which
+            // is exactly the previous behaviour.
             double stopDist = config.getStopAtrMultiple() * atrAtEntry;
-            double targetDist = config.getTargetAtrMultiple() * atrAtEntry;
-            ExitOutcome outcome = intrabarExit(
-                    series, direction, entryIndex, entryPrice, stopDist, targetDist,
-                    config.getMaxHoldingBars());
+            List<TierLevel> tiers = tierLevels(config, atrAtEntry);
+
+            TieredExitOutcome outcome = tieredExit(
+                    series, direction, entryIndex, entryPrice, stopDist, tiers,
+                    config.getExit().getRatchet(), config.getMaxHoldingBars());
+
             exitIndex = outcome.index();
-            exitPrice = outcome.price();
-            exitReason = outcome.reason();
+            exitPrice = outcome.weightedPrice();
+            exitReason = outcome.finalReason();
             riskPerUnit = stopDist == 0.0 ? atrAtEntry : stopDist;
+            tiersFilled = outcome.tiersFilled();
+            hitT1 = outcome.hitT1();
         }
 
         double pnl = pnl(direction, entryPrice, exitPrice);
@@ -127,7 +133,27 @@ public class BacktestRunner {
                 pnl > 0.0,
                 exitReason,
                 config == null ? null : featuresAt(series, indicators, config, entryIndex, reasons.size()),
-                reasons);
+                reasons,
+                tiersFilled,
+                hitT1);
+    }
+
+    /**
+     * Converts the configured ladder (ATR multiples) into engine tiers (price distances). An empty
+     * ladder yields the single 100% tier at {@code targetAtrMultiple} — today's behaviour.
+     */
+    private static List<TierLevel> tierLevels(
+            BacktestProperties.Strategy config, double atrAtEntry) {
+        List<BacktestProperties.Strategy.ExitTier> configured = config.getExit().getTiers();
+        if (configured.isEmpty()) {
+            return List.of(new TierLevel(1.0, config.getTargetAtrMultiple() * atrAtEntry));
+        }
+        List<TierLevel> levels = new ArrayList<>(configured.size());
+        for (BacktestProperties.Strategy.ExitTier tier : configured) {
+            levels.add(new TierLevel(
+                    tier.getFraction(), tier.getTargetAtrMultiple() * atrAtEntry));
+        }
+        return levels;
     }
 
     /**
