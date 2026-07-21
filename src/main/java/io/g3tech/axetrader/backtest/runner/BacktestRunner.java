@@ -1,6 +1,7 @@
 package io.g3tech.axetrader.backtest.runner;
 
 import io.g3tech.axetrader.backtest.config.BacktestProperties;
+import io.g3tech.axetrader.backtest.config.Ratchet;
 import io.g3tech.axetrader.backtest.indicators.IndicatorBundle;
 import io.g3tech.axetrader.backtest.strategy.ConfluenceStrategies;
 import io.g3tech.axetrader.backtest.strategy.PillarVote;
@@ -131,43 +132,152 @@ public class BacktestRunner {
 
     /**
      * Walks bars forward from the fill and returns the first stop/target/time exit, filled at the
-     * bracket <em>level</em> (not bar close). Tie-break is deliberately <b>conservative</b>: when a
-     * single bar's high–low range spans both the stop and the target, OHLC cannot tell which was
-     * touched first, so the stop is assumed — we never book an intrabar win we can't prove. A
-     * position that touches neither before {@code maxHoldingBars} exits at that bar's close (TIME);
-     * one that survives to the last bar is force-closed at the last close (END).
+     * bracket <em>level</em> (not bar close). Retained for the single-target path and for callers
+     * that want one outcome; implemented as a one-tier {@link #tieredExit} ladder so there is a
+     * single exit engine to reason about.
      */
     static ExitOutcome intrabarExit(
             BarSeries series, Direction direction, int entryIndex, double entryPrice,
             double stopDist, double targetDist, int maxHoldingBars) {
-        double stopLevel = direction == Direction.LONG ? entryPrice - stopDist : entryPrice + stopDist;
-        double targetLevel = direction == Direction.LONG ? entryPrice + targetDist : entryPrice - targetDist;
+        TieredExitOutcome out = tieredExit(
+                series, direction, entryIndex, entryPrice, stopDist,
+                List.of(new TierLevel(1.0, targetDist)), Ratchet.NONE, maxHoldingBars);
+        TierFill only = out.fills().get(out.fills().size() - 1);
+        return new ExitOutcome(only.index(), only.price(), only.reason());
+    }
+
+    /**
+     * Scale-out exit: walks bars forward banking a fraction of the position at each tier level and
+     * ratcheting the stop as tiers fill.
+     *
+     * <p><b>Conservative tie-break.</b> When one bar's range spans the current stop and any unfilled
+     * tier, OHLC cannot reveal the order, so the stop is assumed and <b>no tier banks on that
+     * bar</b> — we never book an intrabar win we cannot prove.
+     *
+     * <p><b>Ratchet timing.</b> A ratchet triggered by a tier filling on bar {@code i} takes effect
+     * from bar {@code i+1}. Within the filling bar itself OHLC cannot show whether the ratcheted
+     * level was touched before or after the tier.
+     *
+     * @param tiers ascending target distances in price units (not ATR multiples), fractions summing
+     *              to 1.0; validated by {@code BacktestProperties.Strategy.Exit#validate()}
+     */
+    static TieredExitOutcome tieredExit(
+            BarSeries series, Direction direction, int entryIndex, double entryPrice,
+            double stopDist, List<TierLevel> tiers, Ratchet ratchet, int maxHoldingBars) {
+        boolean isLong = direction == Direction.LONG;
+        double stopLevel = isLong ? entryPrice - stopDist : entryPrice + stopDist;
         int lastIndex = series.getEndIndex();
 
-        for (int i = entryIndex + 1; i <= lastIndex; i++) {
+        List<TierFill> fills = new ArrayList<>();
+        int nextTier = 0;
+        double remaining = 1.0;
+
+        for (int i = entryIndex + 1; i <= lastIndex && nextTier < tiers.size(); i++) {
             Bar bar = series.getBar(i);
             double high = bar.getHighPrice().doubleValue();
             double low = bar.getLowPrice().doubleValue();
 
-            boolean stopHit = direction == Direction.LONG ? low <= stopLevel : high >= stopLevel;
-            boolean targetHit = direction == Direction.LONG ? high >= targetLevel : low <= targetLevel;
-
+            boolean stopHit = isLong ? low <= stopLevel : high >= stopLevel;
             if (stopHit) {
-                return new ExitOutcome(i, stopLevel, ExitReason.STOP);
+                fills.add(new TierFill(i, stopLevel, remaining, ExitReason.STOP));
+                return outcome(fills, nextTier);
             }
-            if (targetHit) {
-                return new ExitOutcome(i, targetLevel, ExitReason.TARGET);
+
+            // Bank every tier this bar reaches, in order.
+            while (nextTier < tiers.size()) {
+                TierLevel tier = tiers.get(nextTier);
+                double level = isLong ? entryPrice + tier.targetDist() : entryPrice - tier.targetDist();
+                boolean tierHit = isLong ? high >= level : low <= level;
+                if (!tierHit) {
+                    break;
+                }
+                fills.add(new TierFill(i, level, tier.fraction(), ExitReason.TARGET));
+                remaining -= tier.fraction();
+                nextTier++;
             }
+            if (nextTier >= tiers.size()) {
+                return outcome(fills, nextTier);
+            }
+
+            // Ratchet applies from the NEXT bar (see javadoc).
+            stopLevel = ratchetedStop(
+                    ratchet, nextTier, isLong, entryPrice, stopLevel, tiers);
+
             if (maxHoldingBars > 0 && (i - entryIndex) >= maxHoldingBars) {
-                return new ExitOutcome(i, bar.getClosePrice().doubleValue(), ExitReason.TIME);
+                fills.add(new TierFill(
+                        i, bar.getClosePrice().doubleValue(), remaining, ExitReason.TIME));
+                return outcome(fills, nextTier);
             }
         }
 
-        return new ExitOutcome(lastIndex, series.getBar(lastIndex).getClosePrice().doubleValue(), ExitReason.END);
+        if (remaining > 0.0) {
+            fills.add(new TierFill(
+                    lastIndex, series.getBar(lastIndex).getClosePrice().doubleValue(),
+                    remaining, ExitReason.END));
+        }
+        return outcome(fills, nextTier);
+    }
+
+    /**
+     * The stop level to use from the next bar onward, given how many tiers have filled.
+     * {@code Ratchet.NONE} always returns the current level unchanged.
+     */
+    private static double ratchetedStop(
+            Ratchet ratchet, int tiersFilled, boolean isLong, double entryPrice,
+            double currentStop, List<TierLevel> tiers) {
+        return switch (ratchet) {
+            case NONE -> currentStop;
+            case BREAKEVEN_AFTER_T1 -> {
+                if (tiersFilled >= 2) {
+                    double t1 = tiers.get(0).targetDist();
+                    yield isLong ? entryPrice + t1 : entryPrice - t1;
+                }
+                yield tiersFilled >= 1 ? entryPrice : currentStop;
+            }
+            case LAGGED -> tiersFilled >= 2 ? entryPrice : currentStop;
+        };
+    }
+
+    private static TieredExitOutcome outcome(List<TierFill> fills, int tiersFilled) {
+        return new TieredExitOutcome(List.copyOf(fills), tiersFilled, tiersFilled >= 1);
     }
 
     /** One resolved exit: the bar it happened on, the fill price, and why. */
     record ExitOutcome(int index, double price, ExitReason reason) {
+    }
+
+    /** One rung of the ladder, in price distance from entry (not ATR multiples). */
+    record TierLevel(double fraction, double targetDist) {
+    }
+
+    /** One tranche closing: which bar, at what price, how much of the position, and why. */
+    record TierFill(int index, double price, double fraction, ExitReason reason) {
+    }
+
+    /**
+     * The full scale-out result. {@code weightedPrice()} is the size-weighted average fill, which —
+     * because pnl is linear in price and the fractions sum to 1 — yields exactly the size-weighted
+     * sum of the per-tier pnls when passed to {@code pnl(direction, entryPrice, ...)}.
+     */
+    record TieredExitOutcome(List<TierFill> fills, int tiersFilled, boolean hitT1) {
+
+        /** The bar the position finished closing on. */
+        int index() {
+            return fills.get(fills.size() - 1).index();
+        }
+
+        double weightedPrice() {
+            double sum = 0.0;
+            for (TierFill fill : fills) {
+                sum += fill.fraction() * fill.price();
+            }
+            return sum;
+        }
+
+        /** Reason the final tranche closed. */
+        ExitReason finalReason() {
+            return fills.get(fills.size() - 1).reason();
+        }
     }
 
     /**
