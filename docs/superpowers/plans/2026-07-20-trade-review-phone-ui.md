@@ -1517,6 +1517,19 @@ export function useAnnotations() {
     });
   }, []);
 
+  // ⚠️ DO NOT IMPLEMENT THE `toggleMark` BELOW AS WRITTEN — IT IS BUGGY.
+  // Annotated 2026-07-21 after review. `removing` and `previous` are assigned INSIDE the
+  // `setMarks` updater and read OUTSIDE it, on a later line. React does not run the updater
+  // synchronously, so both are still at their initial values when the request is chosen:
+  // `removing` is always `false`, so `deleteMark` is NEVER called. Removing a mark would
+  // disappear from the UI and silently persist in D1 — the worst class of bug for this tool.
+  // Reading `previous` the same way also makes the revert restore a stale snapshot.
+  //
+  // The shipped implementation (`dashboard/frontend/src/useAnnotations.ts`, commit c05ae39+)
+  // deliberately deviates: it resolves `removing`/`existing` synchronously against a ref
+  // mirror BEFORE issuing the write, computes every state change functionally from `prev`,
+  // and gates reverts on a per-slot monotonic sequence number. Read that file, not this block.
+  // Kept here only so the plan's history stays legible. See TODO.md "Fable re-review of c05ae39".
   const toggleMark = useCallback((signalKey: string, kind: MarkKind, barIso: string) => {
     let previous: Mark[] = [];
     let removing = false;

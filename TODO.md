@@ -553,8 +553,32 @@ merge where the load returns *other kinds* for a key with a concurrent local wri
 renders under `<StrictMode>` despite the code's comments (lines 69-72, 132-133) leaning hard on
 double-invoke safety; (iv) no regression test pins the *accepted* behaviour of (a)/(b).
 
-**NEXT ACTION: fixes for Findings 1 and 2a + the test gaps, then re-review. Task 9 is still NOT
-complete.** Awaiting human ruling on 2b (plan-shape) before implementing that part.
+### Human rulings taken 2026-07-21
+
+- **Finding 1 → FIX.** Reconcile the initial-load marks merge per `(signal_key, kind)` instead of
+  per `signal_key`. Dispatched to a sonnet-worker with TDD (failing test first) plus the test gaps
+  below. This also narrows accepted limitation (b).
+- **Finding 2b → ACCEPT as a documented limitation.** The plan's singular `error: string | null`
+  stays; Task 10's interface is unaffected. Recorded as limitation **(c)** below.
+- Plan doc annotated (this session) with a ⚠️ block above the buggy `toggleMark` reference code so a
+  cold re-read cannot reintroduce the never-calls-`deleteMark` bug. Plan-mandated finding closed.
+
+### Accepted limitations of `useAnnotations` (deliberate, not oversights)
+
+- **(a)** Two concurrent writes to the same slot that BOTH fail with out-of-order settlement can
+  leave state holding a value the server has neither of. `restore` returns an issue-time capture,
+  not a server-confirmed baseline. Local-state-only; nothing wrong is persisted; reload reconciles.
+- **(b)** A mark removed locally while a load is in flight can resurface if that load's stale GET
+  still carried the pre-removal row. Narrowed by the Finding 1 fix — see the fix report for the
+  post-fix scope.
+- **(c)** `error` is a single global string with no slot affinity: a success on ANY slot clears the
+  banner belonging to a different, still-failed write, and a superseded write's late failure can
+  raise a banner although the current value is correct. A trader can therefore miss that one tap
+  didn't stick. Accepted 2026-07-21 as an acceptable tradeoff for a single-toast phone tool.
+
+**NEXT ACTION: Finding 1 fix + tests land → re-review (fable tier again — the sonnet tier has now
+been wrong on this file three times) → only then Task 9 complete and Task 10 starts.** Task 9 is
+still NOT complete.
 
 ### Remaining
 
