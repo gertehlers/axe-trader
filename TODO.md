@@ -857,6 +857,21 @@ second-most-important number on the page.
 - Also in the same round: distinct empty/failed/one-trade states for the equity curve, an exact
   `points` assertion, an ordering test, and a per-bucket-count fixture fix.
 
+**All landed. `2c66c51` (frontend) + `2cd6944` (exporter) + `30a182c` (exporter test).**
+Suite: **api 21/21, ui 74/74 (70 + 4), typecheck clean**; Java `DashboardExporterTest` green.
+
+**`net_pnl` had NO test at all** — that is how a gross-for-net bug survived in money-handling code.
+Now pinned: `pnl=3.0` and `net_pnl=2.5` (avgSpread 0.5) asserted as deliberately *different* values
+so they can never silently collapse together, plus `is_win` pinned gross. **Verified RED against the
+pre-fix exporter** (`expected: 2.5 but was: 3.0`), not merely asserted to pass.
+
+⚠️ *Gotcha for future sessions:* restoring a Java file via `mv file.bak file` gives it an older
+mtime than the compiled class, so Maven skips recompilation and silently re-runs stale bytecode —
+it will report a pass (or a failure) that has nothing to do with the source on disk. `touch` the
+file after any such restore. This produced one spurious red here.
+
+**Task 11 is COMPLETE.** ✅
+
 > ### ⚠️ OUTSTANDING: the D1 run still holds GROSS `net_pnl`
 > The `emaCeil_3,0atr` run (102 trades) in D1 was exported **before** `2cd6944`, so its `net_pnl`
 > column still contains raw pnl. **The dashboard will keep showing the wrong equity curve until that
