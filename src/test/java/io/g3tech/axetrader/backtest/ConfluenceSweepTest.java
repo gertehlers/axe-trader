@@ -2,8 +2,10 @@ package io.g3tech.axetrader.backtest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.g3tech.axetrader.backtest.config.BacktestProperties;
+import io.g3tech.axetrader.backtest.config.Ratchet;
 import io.g3tech.axetrader.backtest.experiment.DashboardExporter;
 import io.g3tech.axetrader.backtest.experiment.ExperimentStore;
+import io.g3tech.axetrader.backtest.experiment.TradeStatistics;
 import io.g3tech.axetrader.backtest.indicators.IndicatorBundle;
 import io.g3tech.axetrader.backtest.runner.BacktestRunner;
 import io.g3tech.axetrader.backtest.runner.TradeResult;
@@ -24,11 +26,14 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Parameter-sweep harness for the 5-pillar confluence strategy. Loads the bar series once,
@@ -150,15 +155,71 @@ class ConfluenceSweepTest {
         double valuePerPoint = backtestProperties.getContract().getValuePerPoint();
         System.out.printf("%n(net = after one bid/ask spread per round trip; $ at %.2f per point)%n",
                 valuePerPoint);
-        System.out.printf("%-34s %6s %8s %6s %9s %7s %10s %11s %10s%n",
-                "config", "trades", "per-day", "win%", "netWin%", "avgR", "netAvgPnl", "$net/trade", "$net/day");
+        // maxDD / posQ / MAR are the pre-registered success-gate columns (see the tiered-scale-out
+        // spec): consistency = net-positive in >=3 of 4 in-sample quarters; ranking = total net /
+        // max drawdown. netTot and maxDD are in net points.
+        System.out.printf("%-34s %6s %8s %6s %8s %9s %7s %10s %9s %8s %6s %7s %11s %10s%n",
+                "config", "trades", "per-day", "win%", "hitT1%", "netWin%", "avgR", "netAvgPnl",
+                "netTot", "maxDD", "posQ", "MAR", "$net/trade", "$net/day");
         for (SweepResult r : results) {
-            System.out.printf("%-34s %6d %8.1f %5.0f%% %8.0f%% %7.2f %10.2f %11.2f %10.2f%n",
-                    r.id, r.trades, r.tradesPerDay, r.winRate * 100, r.netWinRate * 100,
+            System.out.printf("%-34s %6d %8.1f %5.0f%% %7.0f%% %8.0f%% %7.2f %10.2f %9.1f %8.1f %6s %7s %11.2f %10.2f%n",
+                    r.id, r.trades, r.tradesPerDay, r.winRate * 100,
+                    r.hitT1Rate * 100, r.netWinRate * 100,
                     r.avgR, r.netAvgPnl,
+                    r.totalNet(), r.maxDrawdown,
+                    r.positiveQuarters + "/" + r.quarterCount,
+                    Double.isNaN(r.mar()) ? "inf" : String.format("%.2f", r.mar()),
                     r.netAvgPnl * valuePerPoint,
                     r.netAvgPnl * r.tradesPerDay * valuePerPoint);
         }
+    }
+
+    @Test
+    void gridArmsCarryDistinctExitLaddersRatherThanSharingOne() {
+        Map<String, BacktestProperties.Strategy> grid = buildGrid(backtestProperties.getStrategy());
+
+        assertThat(grid).containsKey("control_singleTarget_0.75");
+        assertThat(grid.get("control_singleTarget_0.75").getExit().getTiers()).isEmpty();
+
+        BacktestProperties.Strategy none = grid.get("tier3_t3-3.0_none");
+        BacktestProperties.Strategy breakeven = grid.get("tier3_t3-3.0_breakeven_after_t1");
+
+        assertThat(none.getExit().getTiers()).hasSize(3);
+        assertThat(none.getExit().getRatchet()).isEqualTo(Ratchet.NONE);
+        assertThat(breakeven.getExit().getRatchet()).isEqualTo(Ratchet.BREAKEVEN_AFTER_T1);
+
+        // T3 must actually vary across arms.
+        assertThat(grid.get("tier3_t3-2.0_none").getExit().getTiers().get(2).getTargetAtrMultiple())
+                .isEqualTo(2.0);
+        assertThat(grid.get("tier3_t3-4.0_none").getExit().getTiers().get(2).getTargetAtrMultiple())
+                .isEqualTo(4.0);
+    }
+
+    @Test
+    void variantPreservesAnExistingExitLadderFromTheSourceConfig() {
+        // Build a source config with a 3-tier ladder and non-default ratchet
+        BacktestProperties.Strategy source = new BacktestProperties.Strategy();
+        source.setExit(ladder(3.0, Ratchet.BREAKEVEN_AFTER_T1));
+
+        // Pass it through variant() with a mutation unrelated to the exit block
+        BacktestProperties.Strategy copy = variant(source, s -> s.setStopAtrMultiple(2.5));
+
+        // Assert the copy has 3 tiers with the same fractions and target multiples
+        assertThat(copy.getExit().getTiers()).hasSize(3);
+        assertThat(copy.getExit().getTiers().get(0).getFraction()).isEqualTo(1.0 / 3.0);
+        assertThat(copy.getExit().getTiers().get(0).getTargetAtrMultiple()).isEqualTo(0.75);
+        assertThat(copy.getExit().getTiers().get(1).getFraction()).isEqualTo(1.0 / 3.0);
+        assertThat(copy.getExit().getTiers().get(1).getTargetAtrMultiple()).isEqualTo(1.5);
+        assertThat(copy.getExit().getTiers().get(2).getFraction()).isEqualTo(1.0 / 3.0);
+        assertThat(copy.getExit().getTiers().get(2).getTargetAtrMultiple()).isEqualTo(3.0);
+
+        // Assert the copy has the same ratchet
+        assertThat(copy.getExit().getRatchet()).isEqualTo(Ratchet.BREAKEVEN_AFTER_T1);
+
+        // Assert deep copy: mutating source's exit must not affect the copy
+        source.setExit(new BacktestProperties.Strategy.Exit());
+        assertThat(copy.getExit().getTiers()).hasSize(3);
+        assertThat(copy.getExit().getRatchet()).isEqualTo(Ratchet.BREAKEVEN_AFTER_T1);
     }
 
     /**
@@ -224,7 +285,44 @@ class ConfluenceSweepTest {
                     variant(promoted, s -> s.setTrendEmaMaxAtr(maxAtr)));
         }
 
+        // ---- Stage 1 of the tiered scale-out experiment ----
+        // Spec: docs/superpowers/specs/2026-07-21-tiered-scale-out-exits-design.md
+        // Anchor is the emaCeil champion. T1/T2 fixed at 0.75/1.5 ATR (T1 is where the ~80% hit
+        // rate is already demonstrated -- moving it would change entry edge and exit geometry at
+        // once). T3 and the ratchet are swept. The single-target control runs on the same data and
+        // the same code, so nothing is compared against historical numbers from another window.
+        BacktestProperties.Strategy scaleOutAnchor = variant(promoted, s -> s.setTrendEmaMaxAtr(3.0));
+
+        grid.put("control_singleTarget_0.75", variant(scaleOutAnchor, s -> {
+            // Empty ladder == today's all-or-nothing exit. This is the baseline every arm must beat.
+        }));
+
+        for (double t3 : new double[] {2.0, 3.0, 4.0}) {
+            for (Ratchet ratchet : Ratchet.values()) {
+                // Locale.US: the default JVM locale is not guaranteed to use '.' as the decimal
+                // separator, and these keys are asserted on verbatim (see the guard test below).
+                grid.put(String.format(Locale.US, "tier3_t3-%.1f_%s", t3, ratchet.name().toLowerCase()),
+                        variant(scaleOutAnchor, s -> s.setExit(ladder(t3, ratchet))));
+            }
+        }
+
         return grid;
+    }
+
+    /** A three-equal-thirds ladder at 0.75 / 1.5 / t3 ATR with the given ratchet. */
+    private static BacktestProperties.Strategy.Exit ladder(double t3, Ratchet ratchet) {
+        BacktestProperties.Strategy.Exit exit = new BacktestProperties.Strategy.Exit();
+        exit.setTiers(List.of(tier(1.0 / 3.0, 0.75), tier(1.0 / 3.0, 1.5), tier(1.0 / 3.0, t3)));
+        exit.setRatchet(ratchet);
+        exit.validate();
+        return exit;
+    }
+
+    private static BacktestProperties.Strategy.ExitTier tier(double fraction, double target) {
+        BacktestProperties.Strategy.ExitTier t = new BacktestProperties.Strategy.ExitTier();
+        t.setFraction(fraction);
+        t.setTargetAtrMultiple(target);
+        return t;
     }
 
     /** Win%/net-expectancy breakdown of one config's trades, grouped by the given key. */
@@ -274,6 +372,14 @@ class ConfluenceSweepTest {
         c.setEnableVolumeTrend(s.isEnableVolumeTrend());
         c.setEnableLong(s.isEnableLong());
         c.setEnableShort(s.isEnableShort());
+        BacktestProperties.Strategy.Exit exitCopy = new BacktestProperties.Strategy.Exit();
+        exitCopy.setRatchet(s.getExit().getRatchet());
+        List<BacktestProperties.Strategy.ExitTier> tierCopies = new ArrayList<>();
+        for (BacktestProperties.Strategy.ExitTier t : s.getExit().getTiers()) {
+            tierCopies.add(tier(t.getFraction(), t.getTargetAtrMultiple()));
+        }
+        exitCopy.setTiers(tierCopies);
+        c.setExit(exitCopy);
         return c;
     }
 
@@ -283,25 +389,47 @@ class ConfluenceSweepTest {
             double tradesPerDay,
             double winRate,
             double netWinRate,
+            double hitT1Rate,
             double avgR,
             double avgPnl,
-            double netAvgPnl) {
+            double netAvgPnl,
+            double maxDrawdown,
+            long positiveQuarters,
+            int quarterCount) {
 
         /** "Net" = after subtracting one full bid/ask spread per round trip from each trade's pnl. */
         static SweepResult of(String id, List<TradeResult> trades, long tradingDays, double avgSpread) {
             int count = trades.size();
             if (count == 0) {
-                return new SweepResult(id, 0, 0, 0, 0, 0, 0, 0);
+                return new SweepResult(id, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
             }
             long wins = trades.stream().filter(t -> t.pnl() > 0).count();
             long netWins = trades.stream().filter(t -> t.pnl() - avgSpread > 0).count();
+            long t1Hits = trades.stream().filter(TradeResult::hitT1).count();
             double avgR = trades.stream().mapToDouble(TradeResult::rMultiple).average().orElse(0);
             double avgPnl = trades.stream().mapToDouble(TradeResult::pnl).average().orElse(0);
             return new SweepResult(id, count,
                     tradingDays == 0 ? 0 : (double) count / tradingDays,
                     (double) wins / count,
                     (double) netWins / count,
-                    avgR, avgPnl, avgPnl - avgSpread);
+                    (double) t1Hits / count,
+                    avgR, avgPnl, avgPnl - avgSpread,
+                    TradeStatistics.maxDrawdown(trades, avgSpread),
+                    TradeStatistics.positiveQuarters(trades, avgSpread),
+                    TradeStatistics.quarterCount(trades, avgSpread));
+        }
+
+        /** Total net points over the run — the numerator of the MAR-style ranking ratio. */
+        double totalNet() {
+            return netAvgPnl * trades;
+        }
+
+        /**
+         * MAR-style ratio the spec ranks survivors by: total net ÷ max drawdown (most money, least
+         * risk). {@code NaN} when there was no drawdown at all (an infinite ratio has no useful rank).
+         */
+        double mar() {
+            return maxDrawdown == 0 ? Double.NaN : totalNet() / maxDrawdown;
         }
     }
 }
