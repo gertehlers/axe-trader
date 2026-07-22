@@ -29,9 +29,10 @@ A fresh session should trust this table plus `git log`.
 | 2 `tieredExit` ladder (degenerate case = today) | ✅ complete — `6e315c3` + `e81e8d4`, review clean |
 | 3 ratchet behaviour tests | ✅ complete — `db1fd9c`, mutation-tested |
 | 4 wire ladder through `TradeResult` + runner | ✅ complete — `a4252ed`, review clean |
-| 5 sweep arms + `hitT1` metric | not started |
+| 5 sweep arms + `hitT1` metric | ✅ complete — `2ae2fc9` + `173eebc`, review clean |
+| 5b `TradeStatistics` extract + `maxDD`/`posQ`/`MAR` sweep columns | ✅ complete — this commit |
 | 6 dashboard `tiers_filled` / `hit_t1` + migration 0003 | not started |
-| 7 OOS validation against the pre-registered gate | not started |
+| 7 OOS validation against the pre-registered gate | ⏸ **decision point — see ranking below** |
 
 ### In-sample sweep, stage 1 — RAW RESULTS (recorded 2026-07-21, before any ranking)
 
@@ -60,12 +61,63 @@ The `win%` vs `netWin%` gap on the breakeven arms (88% → 81%) is the predicted
 visible: banking a third at T1 then scratching at breakeven books a "win" that the spread turns into
 a loss. This is exactly why the spec forbids comparing `win%` across scale-out and single-target runs.
 
-**🔴 GATE NOT YET APPLICABLE — a gap in the plan, found here.** The pre-registered gate requires
-max drawdown and per-quarter consistency. The sweep reports **neither**, so the ranking cannot be
-done honestly yet. Task 5b (in flight) extracts `TradeStatistics` — one shared implementation
-delegated to by `DashboardExporter`, rather than a third copy of drawdown math — and adds `maxDD`
-and a `positiveQuarters/quarterCount` column. The sweep is then re-run and ranked. **No arm is
-promoted on net expectancy alone.**
+### In-sample sweep, stage 1 — RANKED with drawdown + consistency (task 5b, recorded 2026-07-22)
+
+Task 5b landed: `TradeStatistics` extracted (one shared drawdown/quarter implementation, delegated to
+by both `DashboardExporter` and the sweep), and the sweep now prints `netTot`, `maxDD`, `posQ` and
+`MAR` (= total net ÷ max drawdown, the spec's ranking metric). All figures are **net points**,
+in-sample. `posQ` is positive quarters / total quarters — see the ⚠️ quarter-count note below.
+
+Scale-out cohort only (all 102 identical entries), sorted by MAR (risk-adjusted, the metric the spec
+ranks survivors by):
+
+| config | netAvgPnl | netTot | maxDD | posQ | MAR |
+|---|---|---|---|---|---|
+| **control_singleTarget_0.75** | +0.85 | 87.2 | **83.5** | 3/5 | **1.04** |
+| tier3_t3-4.0_lagged | +0.95 | 96.8 | 101.2 | 2/5 | 0.96 |
+| tier3_t3-4.0_none | +0.81 | 82.4 | 120.0 | 2/5 | 0.69 |
+| tier3_t3-3.0_breakeven_after_t1 | +0.53 | 54.3 | 81.7 | 3/5 | 0.67 |
+| tier3_t3-2.0_breakeven_after_t1 | +0.52 | 52.9 | 82.7 | 3/5 | 0.64 |
+| tier3_t3-4.0_breakeven_after_t1 | +0.45 | 46.1 | 80.6 | 3/5 | 0.57 |
+| tier3_t3-3.0_lagged | +0.49 | 49.5 | 102.2 | 2/5 | 0.48 |
+| tier3_t3-3.0_none | +0.57 | 58.5 | 121.1 | 3/5 | 0.48 |
+| tier3_t3-2.0_none | +0.42 | 42.3 | 116.3 | 2/5 | 0.36 |
+| tier3_t3-2.0_lagged | +0.32 | 32.4 | 102.0 | 2/5 | 0.32 |
+
+**🔴 HEADLINE — the control (do-nothing single target) tops the MAR ranking. Every scale-out arm is
+risk-adjusted WORSE than doing nothing.** The prior raw-net read ("only `tier3_t3-4.0_lagged` beats
+control, by +0.10") was an artifact of ignoring drawdown: that arm makes +0.10 more per trade only by
+carrying **+17.7 points more max drawdown** (101.2 vs 83.5). On MAR it is 0.96 vs 1.04 — behind.
+
+**The vise (why scale-out cannot win here — a structural, not tuning, result):** the arms split
+cleanly into two families and each fails a different pre-registered criterion:
+- **Ratchet to cut drawdown** (`breakeven_*`): maxDD drops to ~81 (≈ control), but banking a third at
+  T1 and scratching the rest **halves expectancy** (0.45–0.53 vs 0.85). Fails criterion 1 (beat control net).
+- **Let the tail run to keep expectancy** (`lagged_*`/`none_*`): net stays 0.4–0.95, but maxDD blows
+  out to **101–121**. Fails criterion 2 (do not worsen max drawdown).
+- **The intersection of "beats control on net" ∩ "does not worsen drawdown" is EMPTY in-sample.** No
+  arm is on the right side of both. This is the entry's win/loss shape (many ~0.5-ATR wins, rare
+  ~3-ATR losses) reasserting itself: the tail that drives drawdown is the same tail the tight target
+  was avoiding, and you cannot both bank early and let it run.
+
+**⚠️ Pre-registration flaw found (recorded, NOT fixed to fit results):** the gate says "net-positive
+in ≥3 of the **4** in-sample quarters," but the IS window (2024-12 → 2026-01) actually spans **5**
+quarters (2024Q4 + 2025 Q1–Q4). `posQ` is reported as x/5. The control clears 3/5 — but that means it
+has **2 negative quarters**, and no scale-out arm does better than 3/5 either. The "of 4" wording was
+wrong at pre-registration time; the ≥3 threshold is applied as written against the real 5.
+
+**Recommendation to the human (this is the pivot review point): scale-out is falsified in-sample as
+specced.** Two honest paths — the human decides:
+1. **Spend the one OOS shot anyway** on `tier3_t3-4.0_lagged` (the raw-net leader, criterion-1
+   candidate) to formally honour the pre-registration and close it with a recorded result. Cheap (one
+   command), disciplined, and "no arm passed" is the expected, publishable outcome. **But** it already
+   fails criterion 2 in-sample (worsens drawdown by 21%), so OOS is very unlikely to rescue it.
+2. **Declare scale-out falsified now** on the empty-intersection finding and pivot without burning the
+   OOS window — keeping Jan–May 2026 clean for whatever the next real lever is. The design spec always
+   said "none passed" was a valid stop.
+
+Either way the entry edge (88% hitT1) is still real and still un-monetised; the next lever is neither
+entries nor this exit family. **No arm is promoted.**
 
 **Two hard rules a fresh session must not break:**
 1. `BacktestRunnerIntrabarTest` must pass **unchanged** — it is the regression gate proving the
@@ -76,7 +128,9 @@ promoted on net expectancy alone.**
 
 **Counting Java tests:** `rm -rf target/surefire-reports` first. It accumulates stale reports from
 targeted `-Dtest=…` runs — including seven `*Tests` classes that no longer exist — and counting it
-dirty produced a phantom "34 tests" earlier today. The real baseline is **20**.
+dirty produced a phantom "34 tests" earlier today. Clean full-suite baseline after task 5b is
+**56 run / 0 failures / 1 skipped** (the skip is `ConfluenceSweepTest.sweep` when `-Dsweep` is off);
+the new `TradeStatisticsTest` adds 8.
 
 ---
 

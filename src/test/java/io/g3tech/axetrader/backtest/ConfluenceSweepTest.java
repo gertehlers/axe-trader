@@ -5,6 +5,7 @@ import io.g3tech.axetrader.backtest.config.BacktestProperties;
 import io.g3tech.axetrader.backtest.config.Ratchet;
 import io.g3tech.axetrader.backtest.experiment.DashboardExporter;
 import io.g3tech.axetrader.backtest.experiment.ExperimentStore;
+import io.g3tech.axetrader.backtest.experiment.TradeStatistics;
 import io.g3tech.axetrader.backtest.indicators.IndicatorBundle;
 import io.g3tech.axetrader.backtest.runner.BacktestRunner;
 import io.g3tech.axetrader.backtest.runner.TradeResult;
@@ -154,13 +155,20 @@ class ConfluenceSweepTest {
         double valuePerPoint = backtestProperties.getContract().getValuePerPoint();
         System.out.printf("%n(net = after one bid/ask spread per round trip; $ at %.2f per point)%n",
                 valuePerPoint);
-        System.out.printf("%-34s %6s %8s %6s %8s %9s %7s %10s %11s %10s%n",
-                "config", "trades", "per-day", "win%", "hitT1%", "netWin%", "avgR", "netAvgPnl", "$net/trade", "$net/day");
+        // maxDD / posQ / MAR are the pre-registered success-gate columns (see the tiered-scale-out
+        // spec): consistency = net-positive in >=3 of 4 in-sample quarters; ranking = total net /
+        // max drawdown. netTot and maxDD are in net points.
+        System.out.printf("%-34s %6s %8s %6s %8s %9s %7s %10s %9s %8s %6s %7s %11s %10s%n",
+                "config", "trades", "per-day", "win%", "hitT1%", "netWin%", "avgR", "netAvgPnl",
+                "netTot", "maxDD", "posQ", "MAR", "$net/trade", "$net/day");
         for (SweepResult r : results) {
-            System.out.printf("%-34s %6d %8.1f %5.0f%% %7.0f%% %8.0f%% %7.2f %10.2f %11.2f %10.2f%n",
+            System.out.printf("%-34s %6d %8.1f %5.0f%% %7.0f%% %8.0f%% %7.2f %10.2f %9.1f %8.1f %6s %7s %11.2f %10.2f%n",
                     r.id, r.trades, r.tradesPerDay, r.winRate * 100,
                     r.hitT1Rate * 100, r.netWinRate * 100,
                     r.avgR, r.netAvgPnl,
+                    r.totalNet(), r.maxDrawdown,
+                    r.positiveQuarters + "/" + r.quarterCount,
+                    Double.isNaN(r.mar()) ? "inf" : String.format("%.2f", r.mar()),
                     r.netAvgPnl * valuePerPoint,
                     r.netAvgPnl * r.tradesPerDay * valuePerPoint);
         }
@@ -384,13 +392,16 @@ class ConfluenceSweepTest {
             double hitT1Rate,
             double avgR,
             double avgPnl,
-            double netAvgPnl) {
+            double netAvgPnl,
+            double maxDrawdown,
+            long positiveQuarters,
+            int quarterCount) {
 
         /** "Net" = after subtracting one full bid/ask spread per round trip from each trade's pnl. */
         static SweepResult of(String id, List<TradeResult> trades, long tradingDays, double avgSpread) {
             int count = trades.size();
             if (count == 0) {
-                return new SweepResult(id, 0, 0, 0, 0, 0, 0, 0, 0);
+                return new SweepResult(id, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
             }
             long wins = trades.stream().filter(t -> t.pnl() > 0).count();
             long netWins = trades.stream().filter(t -> t.pnl() - avgSpread > 0).count();
@@ -402,7 +413,23 @@ class ConfluenceSweepTest {
                     (double) wins / count,
                     (double) netWins / count,
                     (double) t1Hits / count,
-                    avgR, avgPnl, avgPnl - avgSpread);
+                    avgR, avgPnl, avgPnl - avgSpread,
+                    TradeStatistics.maxDrawdown(trades, avgSpread),
+                    TradeStatistics.positiveQuarters(trades, avgSpread),
+                    TradeStatistics.quarterCount(trades, avgSpread));
+        }
+
+        /** Total net points over the run — the numerator of the MAR-style ranking ratio. */
+        double totalNet() {
+            return netAvgPnl * trades;
+        }
+
+        /**
+         * MAR-style ratio the spec ranks survivors by: total net ÷ max drawdown (most money, least
+         * risk). {@code NaN} when there was no drawdown at all (an infinite ratio has no useful rank).
+         */
+        double mar() {
+            return maxDrawdown == 0 ? Double.NaN : totalNet() / maxDrawdown;
         }
     }
 }
