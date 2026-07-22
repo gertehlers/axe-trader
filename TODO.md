@@ -31,8 +31,8 @@ A fresh session should trust this table plus `git log`.
 | 4 wire ladder through `TradeResult` + runner | ✅ complete — `a4252ed`, review clean |
 | 5 sweep arms + `hitT1` metric | ✅ complete — `2ae2fc9` + `173eebc`, review clean |
 | 5b `TradeStatistics` extract + `maxDD`/`posQ`/`MAR` sweep columns | ✅ complete — this commit |
-| 6 dashboard `tiers_filled` / `hit_t1` + migration 0003 | not started |
-| 7 OOS validation against the pre-registered gate | ⏸ **decision point — see ranking below** |
+| 6 dashboard `tiers_filled` / `hit_t1` + migration 0003 | ⛔ dropped — no arm to promote (see below) |
+| 7 OOS validation against the pre-registered gate | ⛔ **NOT RUN by decision (2026-07-22)** — scale-out falsified in-sample; OOS window kept clean |
 
 ### In-sample sweep, stage 1 — RAW RESULTS (recorded 2026-07-21, before any ranking)
 
@@ -118,6 +118,29 @@ specced.** Two honest paths — the human decides:
 
 Either way the entry edge (88% hitT1) is still real and still un-monetised; the next lever is neither
 entries nor this exit family. **No arm is promoted.**
+
+### ✅ DECISION (2026-07-22, human): PIVOT NOW, keep OOS clean
+
+The human chose option 2 above: **scale-out is declared falsified on the in-sample empty-intersection
+finding; the one OOS shot was deliberately NOT spent**, so the Jan–May 2026 window stays pristine for
+the next real lever. Tasks 6 and 7 are dropped — there is no arm to surface on the dashboard or to
+validate. This is the pre-registered "none passed" outcome, honoured as written.
+
+**What stays (not wasted):** the tier-ladder machinery (config model, `tieredExit`, ratchet, wiring
+through `TradeResult`), `TradeStatistics`, and the sweep's `maxDD`/`posQ`/`MAR` gate columns are all
+reusable infrastructure and are pinned by tests. The negative result itself is the deliverable.
+
+**What is now known, cumulatively:** entry filtering doesn't add net edge (iterations 9–10), and this
+exit family (3-tier scale-out) doesn't either — both because the entry's win/loss *shape* (many
+~0.5-ATR wins, rare ~3-ATR losers) is what caps the strategy, and neither lever changes that shape.
+
+**Next lever — OPEN, to brainstorm with the human.** Candidates on the table (none started):
+- **Change the loss shape at the source** — e.g. a structural stop (below the swing / prior bar)
+  instead of a fixed 3-ATR stop, so the rare losers are smaller, not just rarer.
+- **Cadence via breadth** — a second instrument through the same playbook, its own profile.
+- **Regime/session gating that survives OOS** (prior attempts falsified; needs a genuinely
+  independent signal, not another slice of the same data).
+This is direction-setting work → use `superpowers:brainstorming` before committing to one.
 
 **Two hard rules a fresh session must not break:**
 1. `BacktestRunnerIntrabarTest` must pass **unchanged** — it is the regression gate proving the
