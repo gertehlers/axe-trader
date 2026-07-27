@@ -14,6 +14,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class HistoricalSessionCalendarTest {
 
     @Test
+    void rejectsThresholdsBelowTheHardMinimumOfTenOccurrences() {
+        assertThatThrownBy(() -> HistoricalSessionCalendar.fit(oneMinuteTimes(), 9))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void recognizesARecurringMaintenanceGapAsTheSessionBoundary() {
         HistoricalSessionCalendar calendar = HistoricalSessionCalendar.fit(oneMinuteTimes(), 10);
 

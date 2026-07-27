@@ -18,6 +18,7 @@ import java.util.TreeMap;
 public final class HistoricalSessionCalendar implements TradingSessionCalendar {
 
     private static final Duration ONE_MINUTE = Duration.ofMinutes(1);
+    private static final int MINIMUM_SESSION_BOUNDARY_OCCURRENCES = 10;
 
     private final Set<Instant> availableBarTimes;
     private final NavigableMap<Instant, ObservedGap> gapsByFinalBar;
@@ -29,8 +30,9 @@ public final class HistoricalSessionCalendar implements TradingSessionCalendar {
 
     public static HistoricalSessionCalendar fit(List<Instant> oneMinuteBarTimes, int minimumOccurrences) {
         Objects.requireNonNull(oneMinuteBarTimes, "oneMinuteBarTimes");
-        if (minimumOccurrences < 1) {
-            throw new IllegalArgumentException("minimumOccurrences must be positive");
+        if (minimumOccurrences < MINIMUM_SESSION_BOUNDARY_OCCURRENCES) {
+            throw new IllegalArgumentException("minimumOccurrences must be at least "
+                    + MINIMUM_SESSION_BOUNDARY_OCCURRENCES);
         }
 
         List<Instant> times = oneMinuteBarTimes.stream()
