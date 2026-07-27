@@ -19,11 +19,17 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 @Component
 public class BacktestRunner {
 
     private static final int ATR_LOOKBACK = 20;
+    private final EntryFeatureExtractor entryFeatureExtractor;
+
+    public BacktestRunner(EntryFeatureExtractor entryFeatureExtractor) {
+        this.entryFeatureExtractor = Objects.requireNonNull(entryFeatureExtractor, "entryFeatureExtractor");
+    }
 
     /**
      * Runs a single long-only strategy (kept for fixed-rule tests and simple backtests). No config
@@ -132,7 +138,8 @@ public class BacktestRunner {
                 classifyVolatility(indicators, entryIndex),
                 pnl > 0.0,
                 exitReason,
-                config == null ? null : featuresAt(series, indicators, config, entryIndex, reasons.size()),
+                config == null ? null : entryFeatureExtractor.at(
+                        series, indicators, config, entryIndex - 1, reasons.size()),
                 reasons,
                 tiersFilled,
                 hitT1);
@@ -310,72 +317,6 @@ public class BacktestRunner {
         ExitReason finalReason() {
             return fills.get(fills.size() - 1).reason();
         }
-    }
-
-    /**
-     * Computes the entry feature vector at the signal bar ({@code entryIndex - 1}, the bar the votes
-     * agreed on — ta4j fills on the next bar), using only backward-looking data. Distances are in
-     * ATR units so they compare across volatility regimes.
-     */
-    private static TradeFeatures featuresAt(
-            BarSeries series, IndicatorBundle ind, BacktestProperties.Strategy config,
-            int entryIndex, int confluenceScore) {
-        int i = Math.max(0, entryIndex - 1);
-        double atr = ind.atr.getValue(i).doubleValue();
-        double denom = atr == 0.0 ? Double.NaN : atr;
-        double close = ind.closePrice.getValue(i).doubleValue();
-
-        double distBbLower = (close - ind.bbLower.getValue(i).doubleValue()) / denom;
-        double distBbUpper = (ind.bbUpper.getValue(i).doubleValue() - close) / denom;
-
-        int lookback = Math.max(1, config.getSwingLookbackBars());
-        int start = Math.max(0, i - lookback + 1);
-        double lowest = Double.MAX_VALUE;
-        double highest = -Double.MAX_VALUE;
-        for (int j = start; j <= i; j++) {
-            double c = ind.closePrice.getValue(j).doubleValue();
-            lowest = Math.min(lowest, c);
-            highest = Math.max(highest, c);
-        }
-        double distSupport = (close - lowest) / denom;
-        double distResistance = (highest - close) / denom;
-
-        Double distTrendEma = ind.trendEma == null
-                ? null
-                : (close - ind.trendEma.getValue(i).doubleValue()) / denom;
-
-        var slopeEma = ind.trendEma != null ? ind.trendEma : ind.ema;
-        int k = 10;
-        int back = Math.max(0, i - k);
-        int span = Math.max(1, i - back);
-        double slope = (slopeEma.getValue(i).doubleValue() - slopeEma.getValue(back).doubleValue()) / (span * denom);
-
-        double volSma = ind.volumeSma.getValue(i).doubleValue();
-        double volumeRatio = volSma == 0.0 ? Double.NaN : ind.volume.getValue(i).doubleValue() / volSma;
-
-        var time = series.getBar(entryIndex).getEndTime().atZone(ZoneOffset.UTC);
-        return new TradeFeatures(
-                ind.rsi.getValue(i).doubleValue(),
-                distBbLower, distBbUpper, distSupport, distResistance,
-                distTrendEma, slope, atr,
-                atrPercentile(ind, i, 100),
-                volumeRatio,
-                time.getHour(), time.getDayOfWeek().getValue(), confluenceScore);
-    }
-
-    /** Rank of the ATR at {@code index} within the trailing {@code window} bars, in [0, 1]. */
-    private static double atrPercentile(IndicatorBundle indicators, int index, int window) {
-        int start = Math.max(0, index - window + 1);
-        double current = indicators.atr.getValue(index).doubleValue();
-        int countBelow = 0;
-        int total = 0;
-        for (int j = start; j <= index; j++) {
-            if (indicators.atr.getValue(j).doubleValue() <= current) {
-                countBelow++;
-            }
-            total++;
-        }
-        return total == 0 ? 0.0 : (double) countBelow / total;
     }
 
     /**
