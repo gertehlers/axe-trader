@@ -41,30 +41,164 @@ public class BarSeriesFactory {
      * instead of being bound to the epic+limit query above.
      */
     public BarSeries fromPrices(String epic, List<HistoricalPrice> prices, int timeframeMinutes) {
-        BarSeries oneMinute = new BaseBarSeriesBuilder().withName(epic + "_1m").build();
+        return fromPricesWithSides(epic, prices, timeframeMinutes).mid();
+    }
+
+    public MarketSeries fromPricesWithSides(String epic, List<HistoricalPrice> prices, int timeframeMinutes) {
+        for (HistoricalPrice price : prices) {
+            validate(price);
+        }
+
+        BarSeries mid = aggregate(epic, prices, timeframeMinutes, PriceSide.MID);
+        BarSeries bid = aggregate(epic, prices, timeframeMinutes, PriceSide.BID);
+        BarSeries ask = aggregate(epic, prices, timeframeMinutes, PriceSide.ASK);
+        verifyMatchingEndTimes(mid, bid, ask);
+
+        logger.info("Built market series {}: {} 1m bars aggregated to {} {}m bars",
+                epic, prices.size(), mid.getBarCount(), timeframeMinutes);
+
+        return new MarketSeries(mid, bid, ask);
+    }
+
+    private static BarSeries aggregate(String epic, List<HistoricalPrice> prices, int timeframeMinutes, PriceSide side) {
+        BarSeries oneMinute = new BaseBarSeriesBuilder().withName(seriesName(epic, side, 1)).build();
         for (HistoricalPrice price : prices) {
             oneMinute.barBuilder()
                     .timePeriod(Duration.ofMinutes(1))
                     .endTime(price.getSnapshotTimeUtc())
-                    .openPrice(mid(price.getOpenBid(), price.getOpenAsk()))
-                    .highPrice(mid(price.getHighBid(), price.getHighAsk()))
-                    .lowPrice(mid(price.getLowBid(), price.getLowAsk()))
-                    .closePrice(mid(price.getCloseBid(), price.getCloseAsk()))
+                    .openPrice(side.open(price))
+                    .highPrice(side.high(price))
+                    .lowPrice(side.low(price))
+                    .closePrice(side.close(price))
                     .volume(price.getLastTradedVolume())
                     .add();
         }
 
         BaseBarSeriesAggregator aggregator = new BaseBarSeriesAggregator(
                 new DurationBarAggregator(Duration.ofMinutes(timeframeMinutes), true));
-        BarSeries aggregated = aggregator.aggregate(oneMinute, epic + "_" + timeframeMinutes + "m");
-
-        logger.info("Built bar series {}: {} 1m bars aggregated to {} {}m bars",
-                epic, oneMinute.getBarCount(), aggregated.getBarCount(), timeframeMinutes);
-
-        return aggregated;
+        return aggregator.aggregate(oneMinute, seriesName(epic, side, timeframeMinutes));
     }
 
-    private static double mid(double bid, double ask) {
-        return (bid + ask) / 2;
+    private static String seriesName(String epic, PriceSide side, int timeframeMinutes) {
+        String sidePrefix = side == PriceSide.MID ? "" : "_" + side.name().toLowerCase();
+        return epic + sidePrefix + "_" + timeframeMinutes + "m";
+    }
+
+    private static void validate(HistoricalPrice price) {
+        validatePositive(price.getOpenBid(), "open bid");
+        validatePositive(price.getHighBid(), "high bid");
+        validatePositive(price.getLowBid(), "low bid");
+        validatePositive(price.getCloseBid(), "close bid");
+        validatePositive(price.getOpenAsk(), "open ask");
+        validatePositive(price.getHighAsk(), "high ask");
+        validatePositive(price.getLowAsk(), "low ask");
+        validatePositive(price.getCloseAsk(), "close ask");
+
+        validateAskNotBelowBid(price.getOpenBid(), price.getOpenAsk(), "open");
+        validateAskNotBelowBid(price.getHighBid(), price.getHighAsk(), "high");
+        validateAskNotBelowBid(price.getLowBid(), price.getLowAsk(), "low");
+        validateAskNotBelowBid(price.getCloseBid(), price.getCloseAsk(), "close");
+    }
+
+    private static void validatePositive(double value, String field) {
+        if (!Double.isFinite(value) || value <= 0) {
+            throw new IllegalArgumentException(field + " must be positive");
+        }
+    }
+
+    private static void validateAskNotBelowBid(double bid, double ask, String field) {
+        if (ask < bid) {
+            throw new IllegalArgumentException(field + " ask must be greater than or equal to bid");
+        }
+    }
+
+    private static void verifyMatchingEndTimes(BarSeries mid, BarSeries bid, BarSeries ask) {
+        if (mid.getBarCount() != bid.getBarCount() || mid.getBarCount() != ask.getBarCount()) {
+            throw new IllegalArgumentException("mid, bid and ask series must have equal bar counts");
+        }
+        for (int index = 0; index < mid.getBarCount(); index++) {
+            if (!mid.getBar(index).getEndTime().equals(bid.getBar(index).getEndTime())
+                    || !mid.getBar(index).getEndTime().equals(ask.getBar(index).getEndTime())) {
+                throw new IllegalArgumentException("mid, bid and ask series must have matching bar end times");
+            }
+        }
+    }
+
+    private enum PriceSide {
+        MID {
+            @Override
+            double open(HistoricalPrice price) {
+                return mid(price.getOpenBid(), price.getOpenAsk());
+            }
+
+            @Override
+            double high(HistoricalPrice price) {
+                return mid(price.getHighBid(), price.getHighAsk());
+            }
+
+            @Override
+            double low(HistoricalPrice price) {
+                return mid(price.getLowBid(), price.getLowAsk());
+            }
+
+            @Override
+            double close(HistoricalPrice price) {
+                return mid(price.getCloseBid(), price.getCloseAsk());
+            }
+        },
+        BID {
+            @Override
+            double open(HistoricalPrice price) {
+                return price.getOpenBid();
+            }
+
+            @Override
+            double high(HistoricalPrice price) {
+                return price.getHighBid();
+            }
+
+            @Override
+            double low(HistoricalPrice price) {
+                return price.getLowBid();
+            }
+
+            @Override
+            double close(HistoricalPrice price) {
+                return price.getCloseBid();
+            }
+        },
+        ASK {
+            @Override
+            double open(HistoricalPrice price) {
+                return price.getOpenAsk();
+            }
+
+            @Override
+            double high(HistoricalPrice price) {
+                return price.getHighAsk();
+            }
+
+            @Override
+            double low(HistoricalPrice price) {
+                return price.getLowAsk();
+            }
+
+            @Override
+            double close(HistoricalPrice price) {
+                return price.getCloseAsk();
+            }
+        };
+
+        abstract double open(HistoricalPrice price);
+
+        abstract double high(HistoricalPrice price);
+
+        abstract double low(HistoricalPrice price);
+
+        abstract double close(HistoricalPrice price);
+
+        private static double mid(double bid, double ask) {
+            return (bid + ask) / 2;
+        }
     }
 }
