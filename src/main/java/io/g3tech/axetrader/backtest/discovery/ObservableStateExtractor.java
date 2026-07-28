@@ -19,6 +19,7 @@ import org.springframework.stereotype.Component;
 import org.ta4j.core.Bar;
 import org.ta4j.core.BarSeries;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -87,6 +88,12 @@ public final class ObservableStateExtractor {
         if (availableHistory < requiredHistory) {
             return exclusions(ids, signalIndex, ObservationExclusion.Reason.INDICATOR_WARMUP,
                     "Requires " + requiredHistory + " completed prior indices; found " + availableHistory);
+        }
+
+        String timelineIssue = timelineIssue(
+                market, calendar, signalIndex - requiredHistory, entryIndex, timeframeMinutes);
+        if (timelineIssue != null) {
+            return exclusions(ids, signalIndex, ObservationExclusion.Reason.UNKNOWN_SESSION, timelineIssue);
         }
 
         int minutesToClose;
@@ -379,11 +386,58 @@ public final class ObservableStateExtractor {
                         Math.max(config.getBbPeriod(), config.getEmaPeriod())),
                 Math.max(Math.max(config.getAtrPeriod(), config.getVolumeSmaPeriod()),
                         config.getTrendEmaPeriod()));
-        int stableLaggedTrend = Math.max(1, largestIndicatorPeriod) - 1
-                + MAX_LAG + TREND_SLOPE_LOOKBACK;
-        int laggedAtrPercentile = ATR_PERCENTILE_WINDOW - 1 + MAX_LAG;
+        int stableLaggedTrend = Math.max(1, largestIndicatorPeriod)
+                + MAX_LAG + TREND_SLOPE_LOOKBACK + 1;
+        int laggedAtrPercentile = Math.max(1, config.getAtrPeriod())
+                + ATR_PERCENTILE_WINDOW - 1 + MAX_LAG;
         int laggedSwing = Math.max(1, config.getSwingLookbackBars()) - 1 + MAX_LAG;
         return Math.max(stableLaggedTrend, Math.max(laggedAtrPercentile, laggedSwing));
+    }
+
+    private static String timelineIssue(
+            MarketSeries market,
+            TradingSessionCalendar calendar,
+            int firstIndex,
+            int lastIndex,
+            int timeframeMinutes) {
+        if (timeframeMinutes <= 0) {
+            return "Timeframe must be positive: " + timeframeMinutes;
+        }
+        Duration timeframe = Duration.ofMinutes(timeframeMinutes);
+        Instant previousTime = null;
+        for (int index = firstIndex; index <= lastIndex; index++) {
+            if (!hasBar(market.mid(), index) || !hasBar(market.bid(), index) || !hasBar(market.ask(), index)) {
+                return "Missing market bar at index " + index;
+            }
+            Bar mid = market.mid().getBar(index);
+            Bar bid = market.bid().getBar(index);
+            Bar ask = market.ask().getBar(index);
+            if (!isAligned(mid, bid, timeframe) || !isAligned(mid, ask, timeframe)) {
+                return "Unaligned mid/bid/ask bar at index " + index;
+            }
+            Instant currentTime = mid.getEndTime();
+            if (previousTime != null && !currentTime.equals(previousTime.plus(timeframe))
+                    && !isKnownSessionBoundary(calendar, previousTime, currentTime)) {
+                return "Unexplained data gap between " + previousTime + " and " + currentTime;
+            }
+            previousTime = currentTime;
+        }
+        return null;
+    }
+
+    private static boolean isAligned(Bar expected, Bar actual, Duration timeframe) {
+        return expected.getTimePeriod().equals(timeframe)
+                && actual.getTimePeriod().equals(timeframe)
+                && expected.getBeginTime().equals(actual.getBeginTime())
+                && expected.getEndTime().equals(actual.getEndTime());
+    }
+
+    private static boolean isKnownSessionBoundary(
+            TradingSessionCalendar calendar, Instant finalExecutableBar, Instant nextOpen) {
+        return calendar.boundaryAfter(finalExecutableBar)
+                .filter(boundary -> boundary.finalExecutableBar().equals(finalExecutableBar)
+                        && boundary.nextOpen().equals(nextOpen))
+                .isPresent();
     }
 
     private static boolean hasBar(BarSeries series, int index) {

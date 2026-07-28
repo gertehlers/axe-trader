@@ -31,6 +31,7 @@ import static io.g3tech.axetrader.backtest.discovery.model.ObservationExclusion.
 import static io.g3tech.axetrader.backtest.discovery.model.ObservationExclusion.Reason.UNKNOWN_SESSION;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.within;
 
 class ObservableStateExtractorTest {
 
@@ -131,12 +132,85 @@ class ObservableStateExtractorTest {
     }
 
     @Test
+    void excludesBothDirectionsWhenRequiredHistoryContainsAnUnexplainedFiveMinuteGap() {
+        Fixture fixture = gappedFixture();
+
+        ObservationBatch batch = extract(fixture, knownCalendar(), SIGNAL_INDEX);
+
+        assertExcludesBothDirections(batch, UNKNOWN_SESSION);
+    }
+
+    @Test
+    void acceptsARequiredHistoryGapThatMatchesAKnownSessionBoundary() {
+        Fixture fixture = gappedFixture();
+        Instant finalExecutableBar = fixture.market().mid().getBar(150).getEndTime();
+        Instant nextOpen = fixture.market().mid().getBar(151).getEndTime();
+
+        ObservationBatch batch = extract(
+                fixture, calendarWithKnownBoundary(finalExecutableBar, nextOpen), SIGNAL_INDEX);
+
+        assertThat(batch.exclusions()).isEmpty();
+        assertThat(batch.states()).hasSize(2);
+    }
+
+    @Test
+    void excludesBothDirectionsWhenTheNextBidBarIsNotTimeAlignedWithMidAndAsk() {
+        Fixture fixture = misalignedNextBarFixture();
+
+        ObservationBatch batch = extract(fixture, knownCalendar(), SIGNAL_INDEX);
+
+        assertExcludesBothDirections(batch, UNKNOWN_SESSION);
+    }
+
+    @Test
     void countsBothDirectionExclusionsWhenAFeatureIsNotFinite() {
         Fixture fixture = fixture(false, true);
 
         ObservationBatch batch = extract(fixture, knownCalendar(), SIGNAL_INDEX);
 
         assertExcludesBothDirections(batch, NON_FINITE_FEATURE);
+    }
+
+    @Test
+    void excludesBarImmediatelyBeforeLaggedAtrPercentileWindowIsStable() {
+        Fixture fixture = atrBoundaryFixture();
+
+        ObservationBatch batch = extract(fixture, knownCalendar(), 124);
+
+        assertExcludesBothDirections(batch, INDICATOR_WARMUP);
+    }
+
+    @Test
+    void acceptsFirstBarWithStableLaggedAtrPercentileAndExactLaggedAcceleration() {
+        Fixture fixture = atrBoundaryFixture();
+
+        ObservationBatch batch = extract(fixture, knownCalendar(), 125);
+
+        assertThat(batch.exclusions()).isEmpty();
+        assertThat(batch.states()).hasSize(2).allSatisfy(state -> {
+            assertThat(state.features().required("atr.percentile.lag.12")).isEqualTo(1.0);
+            assertThat(state.features().required("trend.acceleration_atr.lag.12"))
+                    .isCloseTo(0.002, within(1e-12));
+        });
+    }
+
+    @Test
+    void excludesBarImmediatelyBeforeLaggedAccelerationHistoryIsStable() {
+        Fixture fixture = fixture(false, false);
+
+        ObservationBatch batch = extract(fixture, knownCalendar(), 222);
+
+        assertExcludesBothDirections(batch, INDICATOR_WARMUP);
+    }
+
+    @Test
+    void acceptsFirstBarWithStableLaggedAccelerationHistory() {
+        Fixture fixture = fixture(false, false);
+
+        ObservationBatch batch = extract(fixture, knownCalendar(), 223);
+
+        assertThat(batch.exclusions()).isEmpty();
+        assertThat(batch.states()).hasSize(2);
     }
 
     private static void assertExcludesBothDirections(
@@ -158,6 +232,48 @@ class ObservableStateExtractorTest {
     private static Fixture fixture(boolean mutateFuture, boolean constantPrices) {
         BacktestProperties.Strategy config = config();
         MarketSeries market = market(mutateFuture, constantPrices);
+        return fixture(market, config);
+    }
+
+    private static Fixture atrBoundaryFixture() {
+        return fixture(quadraticMarket(), atrBoundaryConfig());
+    }
+
+    private static Fixture gappedFixture() {
+        BacktestProperties.Strategy config = config();
+        BarSeries mid = new BaseBarSeriesBuilder().withName("gapped-mid").build();
+        BarSeries bid = new BaseBarSeriesBuilder().withName("gapped-bid").build();
+        BarSeries ask = new BaseBarSeriesBuilder().withName("gapped-ask").build();
+        Instant start = Instant.parse("2026-01-05T08:00:00Z");
+        for (int i = 0; i < 240; i++) {
+            double close = 100.0 + i * 0.05 + Math.sin(i * 0.37) * 2.0;
+            double volume = 100.0 + (i % 17) * 7.0;
+            Duration gap = i > 150 ? Duration.ofMinutes(5) : Duration.ZERO;
+            addBar(mid, start.plus(gap), i, close, volume);
+            addBar(bid, start.plus(gap), i, close - 0.25, volume);
+            addBar(ask, start.plus(gap), i, close + 0.25, volume);
+        }
+        return fixture(new MarketSeries(mid, bid, ask), config);
+    }
+
+    private static Fixture misalignedNextBarFixture() {
+        BacktestProperties.Strategy config = config();
+        BarSeries mid = new BaseBarSeriesBuilder().withName("misaligned-mid").build();
+        BarSeries bid = new BaseBarSeriesBuilder().withName("misaligned-bid").build();
+        BarSeries ask = new BaseBarSeriesBuilder().withName("misaligned-ask").build();
+        Instant start = Instant.parse("2026-01-05T08:00:00Z");
+        for (int i = 0; i < 240; i++) {
+            double close = 100.0 + i * 0.05 + Math.sin(i * 0.37) * 2.0;
+            double volume = 100.0 + (i % 17) * 7.0;
+            addBar(mid, start, i, close, volume);
+            addBar(bid, i >= SIGNAL_INDEX + 1 ? start.plus(Duration.ofMinutes(5)) : start,
+                    i, close - 0.25, volume);
+            addBar(ask, start, i, close + 0.25, volume);
+        }
+        return fixture(new MarketSeries(mid, bid, ask), config);
+    }
+
+    private static Fixture fixture(MarketSeries market, BacktestProperties.Strategy config) {
         IndicatorBundle indicators = IndicatorBundle.from(market.mid(), config);
         ConfluenceStrategies strategies = new StrategyFactory().build(indicators, config);
         return new Fixture(market, indicators, strategies, config);
@@ -184,6 +300,21 @@ class ObservableStateExtractorTest {
         return new MarketSeries(mid, bid, ask);
     }
 
+    private static MarketSeries quadraticMarket() {
+        BarSeries mid = new BaseBarSeriesBuilder().withName("quadratic-mid").build();
+        BarSeries bid = new BaseBarSeriesBuilder().withName("quadratic-bid").build();
+        BarSeries ask = new BaseBarSeriesBuilder().withName("quadratic-ask").build();
+        Instant start = Instant.parse("2026-01-05T08:00:00Z");
+        for (int i = 0; i < 130; i++) {
+            double close = 1_000_000.0 + i * i;
+            double volume = 100.0 + i;
+            addWideBar(mid, start, i, close, volume);
+            addWideBar(bid, start, i, close - 0.25, volume);
+            addWideBar(ask, start, i, close + 0.25, volume);
+        }
+        return new MarketSeries(mid, bid, ask);
+    }
+
     private static void addBar(
             BarSeries series, Instant start, int index, double close, double volume) {
         double range = Math.max(0.5, Math.abs(close) * 0.001);
@@ -193,6 +324,19 @@ class ObservableStateExtractorTest {
                 .openPrice(close - range * 0.2)
                 .highPrice(close + range)
                 .lowPrice(close - range)
+                .closePrice(close)
+                .volume(volume)
+                .add();
+    }
+
+    private static void addWideBar(
+            BarSeries series, Instant start, int index, double close, double volume) {
+        series.barBuilder()
+                .timePeriod(Duration.ofMinutes(5))
+                .endTime(start.plus(Duration.ofMinutes(5L * (index + 1))))
+                .openPrice(close)
+                .highPrice(close + 500.0)
+                .lowPrice(close - 500.0)
                 .closePrice(close)
                 .volume(volume)
                 .add();
@@ -225,12 +369,52 @@ class ObservableStateExtractorTest {
         return config;
     }
 
+    private static BacktestProperties.Strategy atrBoundaryConfig() {
+        BacktestProperties.Strategy config = new BacktestProperties.Strategy();
+        config.setRsiPeriod(2);
+        config.setRsiSmoothPeriod(1);
+        config.setBbPeriod(2);
+        config.setBbMultiplier(2.0);
+        config.setEmaPeriod(1);
+        config.setAtrPeriod(14);
+        config.setRsiOversold(25);
+        config.setRsiOverbought(75);
+        config.setStopAtrMultiple(3.0);
+        config.setTargetAtrMultiple(0.75);
+        config.setTrendEmaPeriod(0);
+        config.setConfluenceThreshold(1);
+        config.setProximityAtrMultiple(0.5);
+        config.setSwingLookbackBars(2);
+        config.setVolumeSmaPeriod(1);
+        config.setEnableLong(true);
+        config.setEnableShort(true);
+        return config;
+    }
+
     private static TradingSessionCalendar knownCalendar() {
         return new TradingSessionCalendar() {
             @Override
             public Optional<SessionBoundary> boundaryAfter(Instant barTime) {
                 return Optional.of(new SessionBoundary(barTime.plus(Duration.ofMinutes(75)),
                         barTime.plus(Duration.ofMinutes(80))));
+            }
+
+            @Override
+            public int minutesToClose(Instant barTime) {
+                return 75;
+            }
+        };
+    }
+
+    private static TradingSessionCalendar calendarWithKnownBoundary(Instant finalExecutableBar, Instant nextOpen) {
+        SessionBoundary boundary = new SessionBoundary(finalExecutableBar, nextOpen);
+        return new TradingSessionCalendar() {
+            @Override
+            public Optional<SessionBoundary> boundaryAfter(Instant barTime) {
+                return barTime.equals(finalExecutableBar)
+                        ? Optional.of(boundary)
+                        : Optional.of(new SessionBoundary(
+                                barTime.plus(Duration.ofMinutes(75)), barTime.plus(Duration.ofMinutes(80))));
             }
 
             @Override
