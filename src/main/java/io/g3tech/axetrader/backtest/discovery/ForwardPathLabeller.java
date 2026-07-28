@@ -2,7 +2,6 @@ package io.g3tech.axetrader.backtest.discovery;
 
 import io.g3tech.axetrader.backtest.discovery.model.ForwardPathLabel;
 import io.g3tech.axetrader.backtest.discovery.model.LabelStatus;
-import io.g3tech.axetrader.backtest.discovery.model.ObservableState;
 import io.g3tech.axetrader.backtest.discovery.model.PathPoint;
 import io.g3tech.axetrader.backtest.discovery.session.SessionBoundary;
 import io.g3tech.axetrader.backtest.discovery.session.TradingSessionCalendar;
@@ -30,13 +29,18 @@ public final class ForwardPathLabeller {
     private static final int[] HORIZON_MINUTES = {5, 15, 30, 60, 120, 240};
 
     public ForwardPathLabel label(
-            ObservableState state, MarketSeries market, TradingSessionCalendar calendar) {
-        Objects.requireNonNull(state, "state");
+            Direction direction,
+            int entryIndex,
+            double entryAtr,
+            MarketSeries market,
+            TradingSessionCalendar calendar) {
+        Objects.requireNonNull(direction, "direction");
         Objects.requireNonNull(market, "market");
         Objects.requireNonNull(calendar, "calendar");
+        if (!Double.isFinite(entryAtr)) {
+            throw new IllegalArgumentException("entryAtr must be finite");
+        }
 
-        Direction direction = state.id().direction();
-        int entryIndex = state.entryIndex();
         if (!hasAlignedBar(market, entryIndex)) {
             return noExecutableNextBar();
         }
@@ -46,23 +50,23 @@ public final class ForwardPathLabeller {
         double entryPrice = market.entryPrice(direction, entryIndex);
         Optional<SessionBoundary> boundary = calendar.boundaryAfter(entryTime);
         if (boundary.isEmpty()) {
-            return incomplete(entryPrice, entryTime, List.of(), direction, state.entryAtr());
+            return incomplete(entryPrice, entryTime, List.of(), direction, entryAtr);
         }
 
         int finalSessionIndex = indexAt(market.mid(), boundary.get().finalExecutableBar());
         if (finalSessionIndex < entryIndex) {
-            return incomplete(entryPrice, entryTime, List.of(), direction, state.entryAtr());
+            return incomplete(entryPrice, entryTime, List.of(), direction, entryAtr);
         }
         int finalIndex = Math.min(entryIndex + MAX_HOLDING_BARS, finalSessionIndex);
         List<PathPoint> path = new ArrayList<>();
         Instant previousTime = entryTime;
         for (int index = entryIndex + 1; index <= finalIndex; index++) {
             if (!hasAlignedBar(market, index)) {
-                return incomplete(entryPrice, entryTime, path, direction, state.entryAtr());
+                return incomplete(entryPrice, entryTime, path, direction, entryAtr);
             }
             Bar exit = market.exitBar(direction, index);
             if (!exit.getEndTime().equals(previousTime.plus(FIVE_MINUTES))) {
-                return incomplete(entryPrice, entryTime, path, direction, state.entryAtr());
+                return incomplete(entryPrice, entryTime, path, direction, entryAtr);
             }
             path.add(new PathPoint(
                     index,
@@ -77,7 +81,7 @@ public final class ForwardPathLabeller {
         LabelStatus status = finalIndex == entryIndex + MAX_HOLDING_BARS
                 ? LabelStatus.COMPLETE_48_BARS
                 : LabelStatus.TRADING_CLOSE;
-        return completed(status, entryPrice, entryTime, path, direction, state.entryAtr());
+        return completed(status, entryPrice, entryTime, path, direction, entryAtr);
     }
 
     private static ForwardPathLabel noExecutableNextBar() {

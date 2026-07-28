@@ -28,8 +28,9 @@ class ForwardPathLabellerTest {
                 new double[] {101, 101, 105, 104, 105},
                 new double[] {101, 101, 105, 104, 105});
 
+        ObservableState state = state(Direction.LONG, 0, 1, 1.0);
         ForwardPathLabel label = new ForwardPathLabeller().label(
-                state(Direction.LONG, 0, 1, 1.0), market, closeAt(market, 4));
+                state.id().direction(), state.entryIndex(), state.entryAtr(), market, closeAt(market, 4));
 
         assertThat(label.status()).isEqualTo(LabelStatus.TRADING_CLOSE);
         assertThat(label.entryPrice()).isEqualTo(101.0);
@@ -52,8 +53,9 @@ class ForwardPathLabellerTest {
                 new double[] {102, 101, 96, 98, 97},
                 new double[] {102, 101, 99, 100, 100});
 
+        ObservableState state = state(Direction.SHORT, 0, 1, 1.0);
         ForwardPathLabel label = new ForwardPathLabeller().label(
-                state(Direction.SHORT, 0, 1, 1.0), market, closeAt(market, 4));
+                state.id().direction(), state.entryIndex(), state.entryAtr(), market, closeAt(market, 4));
 
         assertThat(label.status()).isEqualTo(LabelStatus.TRADING_CLOSE);
         assertThat(label.entryPrice()).isEqualTo(99.0);
@@ -67,8 +69,9 @@ class ForwardPathLabellerTest {
     void keepsExactlyFortyEightExecutableExitBars() {
         MarketSeries market = flatMarket(60);
 
+        ObservableState state = state(Direction.LONG, 0, 1, 2.0);
         ForwardPathLabel label = new ForwardPathLabeller().label(
-                state(Direction.LONG, 0, 1, 2.0), market, closeAt(market, 59));
+                state.id().direction(), state.entryIndex(), state.entryAtr(), market, closeAt(market, 59));
 
         assertThat(label.status()).isEqualTo(LabelStatus.COMPLETE_48_BARS);
         assertThat(label.exitPath()).hasSize(48);
@@ -80,8 +83,9 @@ class ForwardPathLabellerTest {
     void stopsAtTheKnownBrokerCloseAfterTwelveBars() {
         MarketSeries market = flatMarket(20);
 
+        ObservableState state = state(Direction.LONG, 0, 1, 2.0);
         ForwardPathLabel label = new ForwardPathLabeller().label(
-                state(Direction.LONG, 0, 1, 2.0), market, closeAt(market, 13));
+                state.id().direction(), state.entryIndex(), state.entryAtr(), market, closeAt(market, 13));
 
         assertThat(label.status()).isEqualTo(LabelStatus.TRADING_CLOSE);
         assertThat(label.exitPath()).hasSize(12);
@@ -93,8 +97,9 @@ class ForwardPathLabellerTest {
     void marksAnUnexplainedGapIncompleteRatherThanTreatingItAsAClose() {
         MarketSeries market = flatMarketWithGap(8, 4);
 
+        ObservableState state = state(Direction.LONG, 0, 1, 2.0);
         ForwardPathLabel label = new ForwardPathLabeller().label(
-                state(Direction.LONG, 0, 1, 2.0), market, closeAt(market, 7));
+                state.id().direction(), state.entryIndex(), state.entryAtr(), market, closeAt(market, 7));
 
         assertThat(label.status()).isEqualTo(LabelStatus.INCOMPLETE_GAP);
         assertThat(label.eligibleForDiscovery()).isFalse();
@@ -105,8 +110,9 @@ class ForwardPathLabellerTest {
     void marksAnUnavailableEntryBarAsNotExecutable() {
         MarketSeries market = flatMarket(1);
 
+        ObservableState state = state(Direction.LONG, 0, 1, 2.0);
         ForwardPathLabel label = new ForwardPathLabeller().label(
-                state(Direction.LONG, 0, 1, 2.0), market, closeAt(market, 0));
+                state.id().direction(), state.entryIndex(), state.entryAtr(), market, closeAt(market, 0));
 
         assertThat(label.status()).isEqualTo(LabelStatus.NO_EXECUTABLE_NEXT_BAR);
         assertThat(label.eligibleForDiscovery()).isFalse();
