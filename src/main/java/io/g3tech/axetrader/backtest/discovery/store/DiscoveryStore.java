@@ -1,9 +1,17 @@
 package io.g3tech.axetrader.backtest.discovery.store;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import io.g3tech.axetrader.backtest.discovery.analysis.CandidateRule;
+import io.g3tech.axetrader.backtest.discovery.analysis.OpportunityZone;
 import io.g3tech.axetrader.backtest.discovery.model.FeatureVector;
 import io.g3tech.axetrader.backtest.discovery.model.ForwardPathLabel;
 import io.g3tech.axetrader.backtest.discovery.model.LabelStatus;
@@ -11,6 +19,11 @@ import io.g3tech.axetrader.backtest.discovery.model.ObservableState;
 import io.g3tech.axetrader.backtest.discovery.model.ObservationExclusion;
 import io.g3tech.axetrader.backtest.discovery.model.ObservationId;
 import io.g3tech.axetrader.backtest.discovery.model.PathPoint;
+import io.g3tech.axetrader.backtest.discovery.validation.FrozenCandidate;
+import io.g3tech.axetrader.backtest.discovery.validation.MonthlyResult;
+import io.g3tech.axetrader.backtest.discovery.validation.ValidationStatistics;
+import io.g3tech.axetrader.backtest.discovery.validation.ValidationSummary;
+import io.g3tech.axetrader.backtest.discovery.validation.ValidationTrade;
 import io.g3tech.axetrader.backtest.runner.Direction;
 
 import java.io.IOException;
@@ -24,6 +37,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -38,12 +52,43 @@ import java.util.Optional;
 public final class DiscoveryStore implements AutoCloseable {
 
     private static final ObjectMapper JSON = new ObjectMapper()
-            .findAndRegisterModules()
+            .registerModule(timeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     private static final TypeReference<Map<String, Double>> FEATURE_MAP = new TypeReference<>() { };
     private static final TypeReference<Map<Integer, Double>> HORIZON_MAP = new TypeReference<>() { };
 
     private final Connection connection;
+
+    private static SimpleModule timeModule() {
+        SimpleModule module = new SimpleModule();
+        module.addSerializer(Instant.class, new JsonSerializer<>() {
+            @Override
+            public void serialize(Instant value, JsonGenerator generator, SerializerProvider provider)
+                    throws IOException {
+                generator.writeString(value.toString());
+            }
+        });
+        module.addDeserializer(Instant.class, new JsonDeserializer<>() {
+            @Override
+            public Instant deserialize(JsonParser parser, DeserializationContext context) throws IOException {
+                return Instant.parse(parser.getValueAsString());
+            }
+        });
+        module.addSerializer(YearMonth.class, new JsonSerializer<>() {
+            @Override
+            public void serialize(YearMonth value, JsonGenerator generator, SerializerProvider provider)
+                    throws IOException {
+                generator.writeString(value.toString());
+            }
+        });
+        module.addDeserializer(YearMonth.class, new JsonDeserializer<>() {
+            @Override
+            public YearMonth deserialize(JsonParser parser, DeserializationContext context) throws IOException {
+                return YearMonth.parse(parser.getValueAsString());
+            }
+        });
+        return module;
+    }
 
     private DiscoveryStore(Connection connection) {
         this.connection = connection;
@@ -227,6 +272,68 @@ public final class DiscoveryStore implements AutoCloseable {
         }
     }
 
+    public boolean windowSpent(Instant from, Instant to) {
+        Objects.requireNonNull(from, "from");
+        Objects.requireNonNull(to, "to");
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT 1 FROM window_spent WHERE window_from = ? AND window_to = ?")) {
+            statement.setString(1, from.toString());
+            statement.setString(2, to.toString());
+            try (ResultSet rows = statement.executeQuery()) {
+                return rows.next();
+            }
+        } catch (SQLException exception) {
+            throw failed("read spent window", exception);
+        }
+    }
+
+    public void saveZone(long runId, OpportunityZone zone) {
+        Objects.requireNonNull(zone, "zone");
+        try {
+            inTransaction(() -> {
+                long zoneId;
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        INSERT INTO opportunity_zone (run_id, direction, score_version, opened_at, closed_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        """, Statement.RETURN_GENERATED_KEYS)) {
+                    statement.setLong(1, runId);
+                    statement.setString(2, zone.direction().name());
+                    statement.setString(3, zone.scoreVersion());
+                    statement.setString(4, zone.firstSignalTime().toString());
+                    statement.setString(5, zone.lastSignalTime().toString());
+                    statement.executeUpdate();
+                    try (ResultSet keys = statement.getGeneratedKeys()) {
+                        if (!keys.next()) {
+                            throw new SQLException("No generated key for opportunity zone");
+                        }
+                        zoneId = keys.getLong(1);
+                    }
+                }
+                try (PreparedStatement observation = connection.prepareStatement("""
+                        SELECT id FROM observation WHERE run_id = ? AND instrument = ? AND timeframe_min = ?
+                            AND signal_ts = ? AND direction = ?
+                        """);
+                     PreparedStatement member = connection.prepareStatement(
+                             "INSERT INTO zone_member (zone_id, observation_id) VALUES (?, ?)")) {
+                    for (var score : zone.scores()) {
+                        setObservationIdentity(observation, runId, score.labelledObservation().state().id());
+                        try (ResultSet rows = observation.executeQuery()) {
+                            if (!rows.next()) {
+                                throw new IllegalStateException("Cannot persist zone member before observation");
+                            }
+                            member.setLong(1, zoneId);
+                            member.setLong(2, rows.getLong(1));
+                            member.addBatch();
+                        }
+                    }
+                    member.executeBatch();
+                }
+            });
+        } catch (SQLException exception) {
+            throw failed("save opportunity zone", exception);
+        }
+    }
+
     /**
      * Persists a frozen rule and the complete derivation interval before any later monthly fold can
      * read it. The candidate definition is its canonical JSON, so threshold-order variants share a
@@ -266,6 +373,174 @@ public final class DiscoveryStore implements AutoCloseable {
         } catch (SQLException exception) {
             throw failed("register candidate rule", exception);
         }
+    }
+
+    public void saveFrozenCandidate(long candidateRuleId, FrozenCandidate candidate) {
+        Objects.requireNonNull(candidate, "candidate");
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO exit_policy (candidate_rule_id, definition_json, created_at)
+                VALUES (?, ?, ?)
+                """)) {
+            statement.setLong(1, candidateRuleId);
+            statement.setString(2, json(candidate));
+            statement.setString(3, Instant.now().toString());
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw failed("save frozen candidate", exception);
+        }
+    }
+
+    public void saveValidation(long candidateRuleId, List<ValidationTrade> trades) {
+        List<ValidationTrade> immutableTrades = List.copyOf(Objects.requireNonNull(trades, "trades"));
+        try {
+            inTransaction(() -> {
+                try (PreparedStatement trade = connection.prepareStatement("""
+                        INSERT INTO validation_trade (candidate_rule_id, entry_ts, exit_ts, result_json)
+                        VALUES (?, ?, ?, ?)
+                        """)) {
+                    for (ValidationTrade result : immutableTrades) {
+                        trade.setLong(1, candidateRuleId);
+                        trade.setString(2, result.entryTime().toString());
+                        trade.setString(3, result.exitTime().toString());
+                        trade.setString(4, json(result));
+                        trade.addBatch();
+                    }
+                    trade.executeBatch();
+                }
+                for (var monthly : ValidationStatistics.monthlyResults(immutableTrades)) {
+                    upsertMonthlyResult(candidateRuleId, monthly);
+                }
+            });
+        } catch (SQLException exception) {
+            throw failed("save validation results", exception);
+        }
+    }
+
+    public void saveMonthlyResult(long candidateRuleId, MonthlyResult result) {
+        Objects.requireNonNull(result, "result");
+        try {
+            upsertMonthlyResult(candidateRuleId, result);
+        } catch (SQLException exception) {
+            throw failed("save monthly validation result", exception);
+        }
+    }
+
+    private void upsertMonthlyResult(long candidateRuleId, MonthlyResult monthly) throws SQLException {
+        try (PreparedStatement result = connection.prepareStatement("""
+                INSERT INTO monthly_result (candidate_rule_id, month, result_json)
+                VALUES (?, ?, ?)
+                ON CONFLICT(candidate_rule_id, month) DO UPDATE SET result_json = excluded.result_json
+                """)) {
+            result.setLong(1, candidateRuleId);
+            result.setString(2, monthly.month().toString());
+            result.setString(3, json(monthly));
+            result.executeUpdate();
+        }
+    }
+
+    public Optional<StoredCandidate> findFrozenCandidate(String candidateId) {
+        if (candidateId == null || candidateId.isBlank()) {
+            throw new IllegalArgumentException("candidateId must not be blank");
+        }
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT ep.candidate_rule_id, ep.definition_json, pf.run_id
+                FROM exit_policy ep
+                JOIN candidate_rule cr ON cr.id = ep.candidate_rule_id
+                JOIN pattern_family pf ON pf.id = cr.pattern_family_id
+                ORDER BY ep.id
+                """);
+             ResultSet rows = statement.executeQuery()) {
+            while (rows.next()) {
+                FrozenCandidate candidate = JSON.readValue(
+                        rows.getString("definition_json"), FrozenCandidate.class);
+                if (candidate.id().equals(candidateId)) {
+                    long databaseCandidateId = rows.getLong("candidate_rule_id");
+                    List<ValidationTrade> trades = readValidationTrades(databaseCandidateId);
+                    ValidationSummary summary = summary(candidate, trades, readMonthlyResults(databaseCandidateId));
+                    return Optional.of(new StoredCandidate(
+                            rows.getLong("run_id"), databaseCandidateId, candidate, summary));
+                }
+            }
+            return Optional.empty();
+        } catch (SQLException | IOException exception) {
+            throw failed("read frozen candidate", exception);
+        }
+    }
+
+    public void appendExperimentEvent(long runId, String eventType, Object event) {
+        if (eventType == null || eventType.isBlank()) {
+            throw new IllegalArgumentException("eventType must not be blank");
+        }
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO experiment_event (run_id, event_type, event_json, created_at)
+                VALUES (?, ?, ?, ?)
+                """)) {
+            statement.setLong(1, runId);
+            statement.setString(2, eventType);
+            statement.setString(3, json(event));
+            statement.setString(4, Instant.now().toString());
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw failed("append experiment event", exception);
+        }
+    }
+
+    private List<ValidationTrade> readValidationTrades(long candidateRuleId) throws SQLException, IOException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT result_json FROM validation_trade
+                WHERE candidate_rule_id = ? ORDER BY entry_ts, id
+                """)) {
+            statement.setLong(1, candidateRuleId);
+            try (ResultSet rows = statement.executeQuery()) {
+                List<ValidationTrade> trades = new ArrayList<>();
+                while (rows.next()) {
+                    trades.add(JSON.readValue(rows.getString("result_json"), ValidationTrade.class));
+                }
+                return List.copyOf(trades);
+            }
+        }
+    }
+
+    private List<MonthlyResult> readMonthlyResults(long candidateRuleId) throws SQLException, IOException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT result_json FROM monthly_result
+                WHERE candidate_rule_id = ? ORDER BY month
+                """)) {
+            statement.setLong(1, candidateRuleId);
+            try (ResultSet rows = statement.executeQuery()) {
+                List<MonthlyResult> results = new ArrayList<>();
+                while (rows.next()) {
+                    results.add(JSON.readValue(rows.getString("result_json"), MonthlyResult.class));
+                }
+                return List.copyOf(results);
+            }
+        }
+    }
+
+    private static ValidationSummary summary(
+            FrozenCandidate candidate, List<ValidationTrade> trades, List<MonthlyResult> persistedMonths) {
+        ValidationSummary calculated = trades.isEmpty()
+                ? new ValidationSummary(
+                        candidate.id(), candidate.rule().independentZones(), List.of(), 0, 0, 0,
+                        0, 0, Map.of(candidate.rule().direction(), 0.0),
+                        java.util.Set.of(candidate.rule().direction()), Double.NaN)
+                : ValidationStatistics.summarize(candidate, trades);
+        if (persistedMonths.isEmpty()) {
+            return calculated;
+        }
+        List<Double> nets = persistedMonths.stream().map(MonthlyResult::netPnl).sorted().toList();
+        int middle = nets.size() / 2;
+        double median = nets.size() % 2 == 0
+                ? (nets.get(middle - 1) + nets.get(middle)) / 2.0
+                : nets.get(middle);
+        List<MonthlyResult> sampled = persistedMonths.stream().filter(MonthlyResult::sampled).toList();
+        double profitablePercentage = sampled.isEmpty() ? Double.NaN
+                : sampled.stream().filter(month -> month.netPnl() > 0).count() * 100.0 / sampled.size();
+        return new ValidationSummary(
+                calculated.candidateId(), calculated.independentZones(), persistedMonths,
+                calculated.totalNet(), median, nets.getFirst(), calculated.maximumDrawdown(),
+                calculated.netToMaximumDrawdown(), calculated.totalNetByDirection(),
+                calculated.enabledDirections(), profitablePercentage);
     }
 
     /** Reads backward-only state without exposing a forward label. */
@@ -520,6 +795,17 @@ public final class DiscoveryStore implements AutoCloseable {
             connection.close();
         } catch (SQLException exception) {
             throw failed("close discovery store", exception);
+        }
+    }
+
+    public record StoredCandidate(
+            long runId,
+            long databaseCandidateId,
+            FrozenCandidate candidate,
+            ValidationSummary developmentSummary) {
+        public StoredCandidate {
+            Objects.requireNonNull(candidate, "candidate");
+            Objects.requireNonNull(developmentSummary, "developmentSummary");
         }
     }
 

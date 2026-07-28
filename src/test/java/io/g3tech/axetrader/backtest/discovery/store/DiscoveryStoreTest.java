@@ -1,14 +1,24 @@
 package io.g3tech.axetrader.backtest.discovery.store;
 
 import io.g3tech.axetrader.backtest.discovery.analysis.CandidateRule;
+import io.g3tech.axetrader.backtest.discovery.analysis.OpportunityClass;
+import io.g3tech.axetrader.backtest.discovery.analysis.OpportunityScore;
+import io.g3tech.axetrader.backtest.discovery.analysis.OpportunityZone;
 import io.g3tech.axetrader.backtest.discovery.analysis.RuleClause;
+import io.g3tech.axetrader.backtest.discovery.exit.ExitPolicy;
 import io.g3tech.axetrader.backtest.discovery.model.FeatureVector;
 import io.g3tech.axetrader.backtest.discovery.model.ForwardPathLabel;
 import io.g3tech.axetrader.backtest.discovery.model.LabelStatus;
+import io.g3tech.axetrader.backtest.discovery.model.LabelledObservation;
 import io.g3tech.axetrader.backtest.discovery.model.ObservableState;
 import io.g3tech.axetrader.backtest.discovery.model.ObservationId;
 import io.g3tech.axetrader.backtest.discovery.model.PathPoint;
+import io.g3tech.axetrader.backtest.discovery.validation.FrozenCandidate;
+import io.g3tech.axetrader.backtest.discovery.validation.ValidationStatistics;
+import io.g3tech.axetrader.backtest.discovery.validation.ValidationTrade;
+import io.g3tech.axetrader.backtest.config.Ratchet;
 import io.g3tech.axetrader.backtest.runner.Direction;
+import io.g3tech.axetrader.backtest.runner.ExitReason;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -120,6 +130,61 @@ class DiscoveryStoreTest {
             assertThat(rows.getString("definition_json")).isEqualTo(candidate.canonicalJson());
             assertThat(rows.getString("derivation_from")).isEqualTo(derivationFrom.toString());
             assertThat(rows.getString("derivation_to")).isEqualTo(derivationTo.toString());
+        }
+    }
+
+    @Test
+    void persistsAndReloadsAllFrozenValidationEntitiesUnderOneRun() throws Exception {
+        Path database = tempDir.resolve("discovery.sqlite");
+        ObservableState state = state();
+        LabelledObservation labelled = new LabelledObservation(state, label());
+        OpportunityScore score = new OpportunityScore(
+                labelled, 1, 1, 1, 1, 0, 0.8, OpportunityClass.RUN, "score-v1");
+        OpportunityZone zone = new OpportunityZone(
+                "zone-1", Direction.LONG, state.id().signalTime(), state.id().signalTime(),
+                "score-v1", List.of(score));
+        CandidateRule rule = CandidateRule.create(Direction.LONG,
+                List.of(new RuleClause("rsi", RuleClause.Operator.LT, 60)), 30, 2, 0.8);
+        FrozenCandidate candidate = new FrozenCandidate(
+                "frozen-1", rule,
+                new ExitPolicy(rule, List.of(new ExitPolicy.Tier(1, 1)),
+                        new ExitPolicy.Stop(ExitPolicy.StopSource.MAE_P50, 1),
+                        Ratchet.NONE, List.of(), 48),
+                run().windowFrom(), run().windowTo(), "features-v1", "score-v1");
+        ValidationTrade trade = new ValidationTrade(
+                candidate.id(), Direction.LONG, 11, 12,
+                Instant.parse("2025-01-05T00:10:00Z"), Instant.parse("2025-01-05T00:15:00Z"),
+                5000, 5002, 2, ExitReason.TARGET, List.of(), 0.5);
+
+        try (DiscoveryStore store = DiscoveryStore.open(database)) {
+            long runId = store.beginRun(run());
+            store.saveObservation(runId, state);
+            store.saveLabel(runId, state.id(), labelled.label());
+            store.saveZone(runId, zone);
+            long databaseCandidateId = store.registerCandidate(
+                    runId, rule, candidate.derivationFrom(), candidate.derivationTo());
+            store.saveFrozenCandidate(databaseCandidateId, candidate);
+            store.saveValidation(databaseCandidateId, List.of(trade));
+
+            DiscoveryStore.StoredCandidate stored = store.findFrozenCandidate(candidate.id()).orElseThrow();
+            assertThat(stored.runId()).isEqualTo(runId);
+            assertThat(stored.candidate()).isEqualTo(candidate);
+            assertThat(stored.developmentSummary().totalNet()).isEqualTo(2);
+        }
+
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database)) {
+            assertThat(rowCount(connection, "opportunity_zone")).isEqualTo(1);
+            assertThat(rowCount(connection, "zone_member")).isEqualTo(1);
+            assertThat(rowCount(connection, "exit_policy")).isEqualTo(1);
+            assertThat(rowCount(connection, "monthly_result")).isEqualTo(1);
+            assertThat(rowCount(connection, "validation_trade")).isEqualTo(1);
+        }
+    }
+
+    private static int rowCount(java.sql.Connection connection, String table) throws Exception {
+        try (var statement = connection.createStatement();
+             var rows = statement.executeQuery("SELECT COUNT(*) FROM " + table)) {
+            return rows.getInt(1);
         }
     }
 

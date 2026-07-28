@@ -55,8 +55,10 @@ build/
 dashboard/node_modules/
 dashboard/.wrangler/
 dashboard/run.json
+dashboard/discovery-report.json
 dashboard/.push.generated.sql
 experiments/feedback.json
+experiments/discovery.sqlite
 .superpowers/
 .worktrees/
 experiments/marks.json
