@@ -12,11 +12,14 @@ public final class PromotionGate {
     public GateResult evaluate(ValidationSummary summary) {
         Objects.requireNonNull(summary, "summary");
         List<String> failures = new ArrayList<>();
-        if (summary.totalNet() <= 0.0) {
+        if (!(summary.totalNet() > 0.0)) {
             failures.add("total net must be positive");
         }
-        if (summary.medianMonthlyNet() <= 0.0) {
+        if (!(summary.medianMonthlyNet() > 0.0)) {
             failures.add("median monthly net must be positive");
+        }
+        if (!Double.isFinite(summary.maximumDrawdown()) || summary.maximumDrawdown() < 0.0) {
+            failures.add("maximum drawdown must be finite and non-negative");
         }
         if (!(summary.profitableSampledMonthPercentage() >= 70.0)) {
             failures.add("at least 70% of sampled months must be profitable");
@@ -31,7 +34,7 @@ public final class PromotionGate {
             failures.add("net to maximum drawdown must be at least 1.0");
         }
         for (Direction direction : summary.enabledDirections()) {
-            if (summary.totalNetByDirection().get(direction) <= 0.0) {
+            if (!(summary.totalNetByDirection().get(direction) > 0.0)) {
                 failures.add("enabled " + direction + " direction must have positive total net");
             }
         }

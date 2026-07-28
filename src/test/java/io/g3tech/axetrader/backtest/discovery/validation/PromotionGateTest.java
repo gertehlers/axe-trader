@@ -39,6 +39,22 @@ class PromotionGateTest {
         assertThat(new PromotionGate().evaluate(summary).passed()).isFalse();
     }
 
+    @Test
+    void rejectsAnOtherwiseQualifyingSummaryWithNaNMedianNet() {
+        ValidationSummary summary = summary(30, 10, Double.NaN, 1, 100,
+                List.of(Direction.LONG), Map.of(Direction.LONG, 10.0));
+
+        assertThat(new PromotionGate().evaluate(summary).passed()).isFalse();
+    }
+
+    @Test
+    void rejectsAnOtherwiseQualifyingSummaryWithNaNEnabledDirectionNet() {
+        ValidationSummary summary = summary(30, 10, 1, 1, 100,
+                List.of(Direction.LONG), Map.of(Direction.LONG, Double.NaN));
+
+        assertThat(new PromotionGate().evaluate(summary).passed()).isFalse();
+    }
+
     private static ValidationSummary qualifyingSummary() {
         return summary(30, 10, 1, 100, List.of(Direction.LONG), Map.of(Direction.LONG, 10.0));
     }
@@ -58,10 +74,22 @@ class PromotionGateTest {
     private static ValidationSummary summary(
             int zones, double total, double ratio, double profitablePercentage,
             List<Direction> directions, Map<Direction, Double> directionNet, int months, int tradesPerMonth) {
+        return summary(zones, total, 1.0, ratio, profitablePercentage, directions, directionNet, months, tradesPerMonth);
+    }
+
+    private static ValidationSummary summary(
+            int zones, double total, double median, double ratio, double profitablePercentage,
+            List<Direction> directions, Map<Direction, Double> directionNet) {
+        return summary(zones, total, median, ratio, profitablePercentage, directions, directionNet, 6, 10);
+    }
+
+    private static ValidationSummary summary(
+            int zones, double total, double median, double ratio, double profitablePercentage,
+            List<Direction> directions, Map<Direction, Double> directionNet, int months, int tradesPerMonth) {
         List<MonthlyResult> monthly = java.util.stream.IntStream.range(0, months)
                 .mapToObj(index -> new MonthlyResult(YearMonth.of(2025, index + 1), tradesPerMonth, 1.0))
                 .toList();
-        return new ValidationSummary("candidate", zones, monthly, total, 1.0, -1.0, 10.0,
+        return new ValidationSummary("candidate", zones, monthly, total, median, -1.0, 10.0,
                 ratio, Map.copyOf(directionNet), Set.copyOf(directions), profitablePercentage);
     }
 }

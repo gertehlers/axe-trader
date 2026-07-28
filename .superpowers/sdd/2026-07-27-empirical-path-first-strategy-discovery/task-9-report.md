@@ -89,3 +89,47 @@ The task code, tests, and this report are committed together with message
 - Combined candidates are represented at the summary/gate level because a `FrozenCandidate` and its
   `ExitPolicy` are intentionally single-direction. Task 10 orchestration must build combined
   summaries from independently frozen long and short results rather than merging rules or policies.
+
+## Fix round 1: NaN promotion-gate bypass
+
+### Root cause
+
+`ValidationSummary` permits `NaN` aggregate values so empty statistics can be represented for a
+failed gate. Java comparisons such as `Double.NaN <= 0.0` are false, however, so the old
+`PromotionGate` checks for median net and enabled-direction net accidentally accepted those invalid
+values when all other conditions passed. The same issue left a non-finite drawdown unchecked.
+
+### TDD evidence
+
+Before changing production code, `PromotionGateTest` gained two otherwise-qualifying summaries:
+
+- a `NaN` median monthly net;
+- a `NaN` total for the enabled long direction.
+
+RED command:
+
+```text
+./mvnw test -Dtest=PromotionGateTest
+```
+
+RED result: 4 tests run, 2 failures. Both new assertions reported that `PromotionGate.evaluate(...).passed()`
+was `true`, proving the IEEE-754 comparison bypass.
+
+### Fix and verification
+
+`PromotionGate` now uses `!(value > 0.0)` for required positive totals and median/direction values,
+which rejects zero, negatives, and `NaN`. It also rejects a drawdown unless it is finite and
+non-negative. The summary remains able to express empty statistics; the gate is the strict
+promotion boundary.
+
+GREEN commands:
+
+```text
+./mvnw test -Dtest=ExecutableValidatorTest,PromotionGateTest,ValidationStatisticsTest
+./mvnw test
+```
+
+GREEN results: focused 7 tests run, 0 failures/errors; full Java suite 129 tests run, 0
+failures/errors, 1 skipped opt-in sweep. No final OOS validation was run.
+
+Commit: `fix(discovery): reject non-finite promotion metrics` (hash recorded in the handoff).
