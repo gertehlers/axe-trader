@@ -87,3 +87,57 @@ Result: `Tests run: 26, Failures: 0, Errors: 0, Skipped: 0`.
 ## Concern / downstream capability gap
 
 `CandidateRule` and `ObservableState` currently do not carry an explicit entry-time structural invalidation price or ATR distance. Per instruction, the generator therefore omits structural-stop candidates rather than misrepresenting a MAE proxy as structural; it generates only MAE-before-MFE P50/P75 stops. A downstream data-model task is needed before genuine structural-stop policies can be generated.
+
+## Fix round 1: MAE ordering and derivation drawdown ranking
+
+### Changed files
+
+- `src/main/java/io/g3tech/axetrader/backtest/discovery/exit/ExitPolicyGenerator.java`
+- `src/test/java/io/g3tech/axetrader/backtest/discovery/exit/ExitPolicyGeneratorTest.java`
+
+### Fixes
+
+- Stop percentile inputs now retain only eligible, rule-matching positive-MFE labels where `maeBeforeMfe` is true. The P50/P75 candidates therefore cannot be widened by a later, post-MFE adverse excursion.
+- Replaced the per-trade MFE/MAE proxy ranking with a chronological policy-path simulation. It applies conservative stop-before-tier handling, all tier fractions, the configured ratchet timing, long/short direction, and the observed `exitPath` order.
+- Ranking now uses total realised derivation net P&L divided by the peak-to-trough drawdown of cumulative equity (anchored at zero), followed by the existing deterministic policy key tie-break.
+
+### TDD and verification
+
+New regression tests:
+
+- `derivesMaeStopsOnlyFromPathsWhoseMaePrecedesMfe`: an MFE-before-MAE label with an extreme `-100 ATR` MAE cannot affect generated P50/P75 stop distances; only `1` and `2` ATR values from MAE-before-MFE paths remain.
+- `ranksByCumulativePeakToTroughDrawdownRatherThanWorstSingleLoss`: a `+10, -2, -2` policy equity path has net `6`, cumulative drawdown `4`, and MAR-style rank `1.5`; it cannot be treated as a 2-point worst-loss drawdown.
+
+RED command:
+
+```text
+./mvnw test -Dtest=ExitPolicyGeneratorTest
+```
+
+RED result: test compilation failed as intended because `ExitPolicyGenerator.RankingMetrics` and `metrics(...)` did not yet exist.
+
+GREEN commands/results:
+
+```text
+./mvnw test -Dtest=ExitPolicyGeneratorTest
+```
+
+Result: `Tests run: 3, Failures: 0, Errors: 0, Skipped: 0`.
+
+```text
+./mvnw test -Dtest=TieredExitEngineTest,ExitPolicyGeneratorTest,ExitPolicyEvaluatorTest
+```
+
+Result: `Tests run: 11, Failures: 0, Errors: 0, Skipped: 0`.
+
+```text
+./mvnw test -Dtest=BacktestRunnerIntrabarTest,BacktestRunnerTieredExitTest,TieredExitEngineTest,ExitPolicyGeneratorTest,ExitPolicyEvaluatorTest
+```
+
+Result: `Tests run: 28, Failures: 0, Errors: 0, Skipped: 0`.
+
+`git diff --check` completed successfully before commit. The unrelated `output/charts/runner-results.html` modification remained unstaged and unchanged.
+
+### Commit
+
+- `652f5c24e2ae3644069dc2932661548cb17f0524 fix(discovery): rank exits by path drawdown`
