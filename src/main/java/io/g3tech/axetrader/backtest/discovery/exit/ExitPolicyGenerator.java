@@ -3,6 +3,8 @@ package io.g3tech.axetrader.backtest.discovery.exit;
 import io.g3tech.axetrader.backtest.config.Ratchet;
 import io.g3tech.axetrader.backtest.discovery.analysis.CandidateRule;
 import io.g3tech.axetrader.backtest.discovery.model.LabelledObservation;
+import io.g3tech.axetrader.backtest.discovery.model.PathPoint;
+import io.g3tech.axetrader.backtest.runner.Direction;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -32,7 +34,12 @@ public final class ExitPolicyGenerator {
                 percentile(observations.stream().mapToDouble(o -> o.label().mfeAtr()).toArray(), .25),
                 percentile(observations.stream().mapToDouble(o -> o.label().mfeAtr()).toArray(), .50),
                 percentile(observations.stream().mapToDouble(o -> o.label().mfeAtr()).toArray(), .75)));
-        List<Double> mae = observations.stream().mapToDouble(o -> -o.label().maeAtr()).filter(value -> value > 0.0).boxed().toList();
+        List<Double> mae = observations.stream()
+                .filter(observation -> observation.label().maeBeforeMfe())
+                .mapToDouble(observation -> -observation.label().maeAtr())
+                .filter(value -> value > 0.0)
+                .boxed()
+                .toList();
         if (mae.isEmpty()) {
             return List.of();
         }
@@ -60,27 +67,99 @@ public final class ExitPolicyGenerator {
             }
         }
         return policies.stream().sorted(Comparator
-                        .comparingDouble((ExitPolicy policy) -> score(policy, observations)).reversed()
+                        .comparingDouble((ExitPolicy policy) -> metrics(policy, observations).netProfitOverMaxDrawdown())
+                        .reversed()
                         .thenComparing(ExitPolicyGenerator::key))
                 .limit(12)
                 .toList();
     }
 
-    private static double score(ExitPolicy policy, List<LabelledObservation> observations) {
+    /** Derivation profit and peak-to-trough risk for one frozen policy, in entry-time ATR units. */
+    static RankingMetrics metrics(ExitPolicy policy, List<LabelledObservation> observations) {
+        Objects.requireNonNull(policy, "policy");
+        List<LabelledObservation> ordered = List.copyOf(Objects.requireNonNull(observations, "observations")).stream()
+                .sorted(Comparator.comparing((LabelledObservation observation) -> observation.state().id().signalTime())
+                        .thenComparingInt(observation -> observation.state().signalIndex())
+                        .thenComparing(observation -> observation.state().id().instrument()))
+                .toList();
         double net = 0.0;
+        double equity = 0.0;
+        double peak = 0.0;
         double drawdown = 0.0;
-        for (LabelledObservation observation : observations) {
-            double realised = 0.0;
-            for (ExitPolicy.Tier tier : policy.tiers()) {
-                realised += tier.fraction() * Math.min(observation.label().mfeAtr(), tier.targetAtr());
-            }
-            if (-observation.label().maeAtr() >= policy.stop().distanceAtr()) {
-                realised = -policy.stop().distanceAtr();
-            }
+        for (LabelledObservation observation : ordered) {
+            double realised = policyPnlAtr(policy, observation);
             net += realised;
-            drawdown = Math.max(drawdown, -realised);
+            equity += realised;
+            peak = Math.max(peak, equity);
+            drawdown = Math.max(drawdown, peak - equity);
         }
-        return net / Math.max(drawdown, .01);
+        return new RankingMetrics(net, drawdown, ratio(net, drawdown));
+    }
+
+    private static double policyPnlAtr(ExitPolicy policy, LabelledObservation observation) {
+        double atr = observation.state().entryAtr();
+        double entry = observation.label().entryPrice();
+        Direction direction = policy.rule().direction();
+        boolean isLong = direction == Direction.LONG;
+        double stop = isLong ? entry - policy.stop().distanceAtr() * atr : entry + policy.stop().distanceAtr() * atr;
+        double realised = 0.0;
+        double remaining = 1.0;
+        int nextTier = 0;
+        List<PathPoint> path = observation.label().exitPath();
+        int lastPoint = Math.min(path.size(), policy.maxHoldingBars());
+
+        for (int offset = 0; offset < lastPoint && nextTier < policy.tiers().size(); offset++) {
+            PathPoint point = path.get(offset);
+            boolean stopHit = isLong ? point.lowPrice() <= stop : point.highPrice() >= stop;
+            if (stopHit) {
+                return realised + remaining * pnlAtr(direction, entry, stop, atr);
+            }
+            while (nextTier < policy.tiers().size()) {
+                ExitPolicy.Tier tier = policy.tiers().get(nextTier);
+                double target = isLong ? entry + tier.targetAtr() * atr : entry - tier.targetAtr() * atr;
+                boolean targetHit = isLong ? point.highPrice() >= target : point.lowPrice() <= target;
+                if (!targetHit) {
+                    break;
+                }
+                realised += tier.fraction() * pnlAtr(direction, entry, target, atr);
+                remaining -= tier.fraction();
+                nextTier++;
+            }
+            if (nextTier >= policy.tiers().size()) {
+                return realised;
+            }
+            stop = ratchetedStop(policy, nextTier, direction, entry, stop, atr);
+        }
+        return lastPoint == 0 ? 0.0
+                : realised + remaining * pnlAtr(direction, entry, path.get(lastPoint - 1).closePrice(), atr);
+    }
+
+    private static double ratchetedStop(
+            ExitPolicy policy, int tiersFilled, Direction direction, double entry, double currentStop, double atr) {
+        boolean isLong = direction == Direction.LONG;
+        return switch (policy.ratchet()) {
+            case NONE -> currentStop;
+            case BREAKEVEN_AFTER_T1 -> {
+                if (tiersFilled >= 2) {
+                    double t1 = policy.tiers().getFirst().targetAtr() * atr;
+                    yield isLong ? entry + t1 : entry - t1;
+                }
+                yield tiersFilled >= 1 ? entry : currentStop;
+            }
+            case LAGGED -> tiersFilled >= 2 ? entry : currentStop;
+        };
+    }
+
+    private static double pnlAtr(Direction direction, double entry, double exit, double atr) {
+        return (direction == Direction.LONG ? exit - entry : entry - exit) / atr;
+    }
+
+    private static double ratio(double netProfit, double maxDrawdown) {
+        if (maxDrawdown == 0.0) {
+            return netProfit > 0.0 ? Double.POSITIVE_INFINITY
+                    : netProfit < 0.0 ? Double.NEGATIVE_INFINITY : 0.0;
+        }
+        return netProfit / maxDrawdown;
     }
 
     private static List<List<Double>> targetPlans(List<Double> values) {
@@ -110,5 +189,8 @@ public final class ExitPolicyGenerator {
 
     private static String key(ExitPolicy policy) {
         return policy.tiers() + "|" + policy.stop() + "|" + policy.ratchet();
+    }
+
+    record RankingMetrics(double netProfit, double maxDrawdown, double netProfitOverMaxDrawdown) {
     }
 }
