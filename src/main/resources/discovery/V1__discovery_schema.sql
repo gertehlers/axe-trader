@@ -101,6 +101,8 @@ CREATE TABLE IF NOT EXISTS candidate_rule (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     pattern_family_id INTEGER NOT NULL REFERENCES pattern_family(id),
     definition_json TEXT NOT NULL,
+    derivation_from TEXT NOT NULL,
+    derivation_to TEXT NOT NULL,
     registered_at TEXT NOT NULL
 );
 

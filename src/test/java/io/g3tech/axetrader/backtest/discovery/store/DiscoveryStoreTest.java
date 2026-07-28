@@ -1,5 +1,7 @@
 package io.g3tech.axetrader.backtest.discovery.store;
 
+import io.g3tech.axetrader.backtest.discovery.analysis.CandidateRule;
+import io.g3tech.axetrader.backtest.discovery.analysis.RuleClause;
 import io.g3tech.axetrader.backtest.discovery.model.FeatureVector;
 import io.g3tech.axetrader.backtest.discovery.model.ForwardPathLabel;
 import io.g3tech.axetrader.backtest.discovery.model.LabelStatus;
@@ -94,6 +96,30 @@ class DiscoveryStoreTest {
             assertThatThrownBy(() -> store.appendWindowSpent(secondRun, from, to, "candidate-2"))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("already spent");
+        }
+    }
+
+    @Test
+    void registersCanonicalCandidateDefinitionWithItsDerivationWindow() throws Exception {
+        Path database = tempDir.resolve("discovery.sqlite");
+        CandidateRule candidate = CandidateRule.create(Direction.LONG,
+                List.of(new RuleClause("trend.slope", RuleClause.Operator.GTE, 0.25)), 12, 1.2, 0.8);
+        Instant derivationFrom = Instant.parse("2025-01-01T00:00:00Z");
+        Instant derivationTo = Instant.parse("2025-02-01T00:00:00Z");
+
+        try (DiscoveryStore store = DiscoveryStore.open(database)) {
+            long runId = store.beginRun(run());
+            store.registerCandidate(runId, candidate, derivationFrom, derivationTo);
+        }
+
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database);
+             var candidateRow = connection.prepareStatement(
+                     "SELECT definition_json, derivation_from, derivation_to FROM candidate_rule");
+             var rows = candidateRow.executeQuery()) {
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getString("definition_json")).isEqualTo(candidate.canonicalJson());
+            assertThat(rows.getString("derivation_from")).isEqualTo(derivationFrom.toString());
+            assertThat(rows.getString("derivation_to")).isEqualTo(derivationTo.toString());
         }
     }
 

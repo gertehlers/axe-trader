@@ -3,6 +3,7 @@ package io.g3tech.axetrader.backtest.discovery.store;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import io.g3tech.axetrader.backtest.discovery.analysis.CandidateRule;
 import io.g3tech.axetrader.backtest.discovery.model.FeatureVector;
 import io.g3tech.axetrader.backtest.discovery.model.ForwardPathLabel;
 import io.g3tech.axetrader.backtest.discovery.model.LabelStatus;
@@ -27,6 +28,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
@@ -225,6 +227,47 @@ public final class DiscoveryStore implements AutoCloseable {
         }
     }
 
+    /**
+     * Persists a frozen rule and the complete derivation interval before any later monthly fold can
+     * read it. The candidate definition is its canonical JSON, so threshold-order variants share a
+     * reproducible content identity.
+     */
+    public long registerCandidate(long runId, CandidateRule candidate, Instant derivationFrom, Instant derivationTo) {
+        Objects.requireNonNull(candidate, "candidate");
+        Objects.requireNonNull(derivationFrom, "derivationFrom");
+        Objects.requireNonNull(derivationTo, "derivationTo");
+        if (!derivationFrom.isBefore(derivationTo)) {
+            throw new IllegalArgumentException("candidate derivation window must be half-open with from before to");
+        }
+        long[] candidateId = new long[1];
+        try {
+            inTransaction(() -> {
+                long familyId = insertPatternFamily(runId, candidate);
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        INSERT INTO candidate_rule (pattern_family_id, definition_json, derivation_from, derivation_to,
+                            registered_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        """, Statement.RETURN_GENERATED_KEYS)) {
+                    statement.setLong(1, familyId);
+                    statement.setString(2, candidate.canonicalJson());
+                    statement.setString(3, derivationFrom.toString());
+                    statement.setString(4, derivationTo.toString());
+                    statement.setString(5, Instant.now().toString());
+                    statement.executeUpdate();
+                    try (ResultSet keys = statement.getGeneratedKeys()) {
+                        if (!keys.next()) {
+                            throw new SQLException("No generated key for candidate rule");
+                        }
+                        candidateId[0] = keys.getLong(1);
+                    }
+                }
+            });
+            return candidateId[0];
+        } catch (SQLException exception) {
+            throw failed("register candidate rule", exception);
+        }
+    }
+
     /** Reads backward-only state without exposing a forward label. */
     public Optional<ObservableState> findObservableState(long runId, ObservationId id) {
         String sql = """
@@ -320,6 +363,48 @@ public final class DiscoveryStore implements AutoCloseable {
                         statement.execute(sql);
                     }
                 }
+            }
+            ensureCandidateDerivationColumns(connection);
+        }
+    }
+
+    private static void ensureCandidateDerivationColumns(Connection connection) throws SQLException {
+        java.util.Set<String> columns = new java.util.HashSet<>();
+        try (Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("PRAGMA table_info(candidate_rule)")) {
+            while (rows.next()) {
+                columns.add(rows.getString("name"));
+            }
+        }
+        try (Statement statement = connection.createStatement()) {
+            if (!columns.contains("derivation_from")) {
+                statement.execute("ALTER TABLE candidate_rule ADD COLUMN derivation_from TEXT");
+            }
+            if (!columns.contains("derivation_to")) {
+                statement.execute("ALTER TABLE candidate_rule ADD COLUMN derivation_to TEXT");
+            }
+        }
+    }
+
+    private long insertPatternFamily(long runId, CandidateRule candidate) throws SQLException {
+        String familyDefinition = candidate.direction().name() + "|" + candidate.clauses().stream()
+                .map(clause -> clause.feature() + "|" + clause.operator().name())
+                .reduce((left, right) -> left + "|" + right)
+                .orElseThrow();
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO pattern_family (run_id, direction, definition_json, created_at)
+                VALUES (?, ?, ?, ?)
+                """, Statement.RETURN_GENERATED_KEYS)) {
+            statement.setLong(1, runId);
+            statement.setString(2, candidate.direction().name());
+            statement.setString(3, familyDefinition);
+            statement.setString(4, Instant.now().toString());
+            statement.executeUpdate();
+            try (ResultSet keys = statement.getGeneratedKeys()) {
+                if (!keys.next()) {
+                    throw new SQLException("No generated key for pattern family");
+                }
+                return keys.getLong(1);
             }
         }
     }
