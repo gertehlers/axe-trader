@@ -9,7 +9,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -22,21 +22,24 @@ public final class OpportunityZoneBuilder {
 
     public List<OpportunityZone> build(List<OpportunityScore> scores) {
         Objects.requireNonNull(scores, "scores");
-        Map<Direction, List<OpportunityScore>> byDirection = new EnumMap<>(Direction.class);
+        Map<ZoneGroup, List<OpportunityScore>> byDirectionAndScoreVersion = new HashMap<>();
         for (OpportunityScore score : scores) {
             Objects.requireNonNull(score, "score");
-            byDirection.computeIfAbsent(score.labelledObservation().state().id().direction(), ignored -> new ArrayList<>())
+            byDirectionAndScoreVersion.computeIfAbsent(
+                            new ZoneGroup(score.labelledObservation().state().id().direction(), score.scoreVersion()),
+                            ignored -> new ArrayList<>())
                     .add(score);
         }
 
         List<OpportunityZone> zones = new ArrayList<>();
-        for (List<OpportunityScore> directionScores : byDirection.values()) {
+        for (List<OpportunityScore> directionScores : byDirectionAndScoreVersion.values()) {
             directionScores.sort(scoreOrder());
             zones.addAll(buildDirection(directionScores));
         }
         zones.sort(Comparator.comparing(OpportunityZone::firstSignalTime)
                 .thenComparing(OpportunityZone::direction)
-                .thenComparing(OpportunityZone::lastSignalTime));
+                .thenComparing(OpportunityZone::lastSignalTime)
+                .thenComparing(OpportunityZone::scoreVersion));
         return List.copyOf(zones);
     }
 
@@ -123,5 +126,8 @@ public final class OpportunityZoneBuilder {
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is required by the JVM", exception);
         }
+    }
+
+    private record ZoneGroup(Direction direction, String scoreVersion) {
     }
 }

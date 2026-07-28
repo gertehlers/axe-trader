@@ -40,7 +40,7 @@ public final class OpportunityScorerV1 {
         Map<LabelledObservation, Double> netMfe = percentileRanks(observations, observation -> observation.label().mfeAtr(), true);
         Map<LabelledObservation, Double> rewardToRisk = percentileRanks(observations,
                 observation -> observation.label().mfeAtr()
-                        / Math.max(0.1, Math.abs(observation.label().maeAtr())), true);
+                        / Math.max(0.1, Math.abs(maeBeforeMfeAtr(observation))), true);
         Map<LabelledObservation, Double> efficiency = percentileRanks(observations,
                 observation -> observation.label().directionalEfficiency(), true);
         Map<LabelledObservation, Double> timeToMfe = percentileRanks(observations,
@@ -105,6 +105,10 @@ public final class OpportunityScorerV1 {
             return OpportunityClass.CHOP;
         }
         return OpportunityClass.AMBIGUOUS;
+    }
+
+    private static double maeBeforeMfeAtr(LabelledObservation observation) {
+        return observation.label().maeBeforeMfe() ? observation.label().maeAtr() : 0.0;
     }
 
     private static ScoreGroup groupFor(LabelledObservation observation) {

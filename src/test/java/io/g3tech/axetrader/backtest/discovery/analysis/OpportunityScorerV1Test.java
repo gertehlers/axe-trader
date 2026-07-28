@@ -92,11 +92,40 @@ class OpportunityScorerV1Test {
         assertThat(scores).extracting(OpportunityScore::opportunityClass).containsOnly(OpportunityClass.RUN);
     }
 
+    @Test
+    void usesOnlyAdverseExcursionThatOccurredBeforeMfeForRewardToRisk() {
+        LabelledObservation adverseAfterMfe = observation(
+                "2026-02-01T00:05:00Z", 0, 2.0, -10.0, false);
+        LabelledObservation adverseBeforeMfe = observation(
+                "2026-02-01T00:10:00Z", 1, 2.0, -1.0, true);
+
+        List<OpportunityScore> scores = new OpportunityScorerV1().score(List.of(adverseAfterMfe, adverseBeforeMfe));
+
+        assertThat(scores).extracting(OpportunityScore::rewardToRiskPercentile).containsExactly(1.0, 0.0);
+    }
+
     private static LabelledObservation observation(String timestamp, int signalIndex, double quality) {
         return observation(timestamp, signalIndex, quality, Direction.LONG);
     }
 
     private static LabelledObservation observation(String timestamp, int signalIndex, double quality, Direction direction) {
+        return observation(timestamp, signalIndex, quality, -(21.0 - 2.0 * quality), true, direction, quality, 11 - (int) quality);
+    }
+
+    private static LabelledObservation observation(
+            String timestamp, int signalIndex, double mfeAtr, double maeAtr, boolean maeBeforeMfe) {
+        return observation(timestamp, signalIndex, mfeAtr, maeAtr, maeBeforeMfe, Direction.LONG, 0.5, 4);
+    }
+
+    private static LabelledObservation observation(
+            String timestamp,
+            int signalIndex,
+            double mfeAtr,
+            double maeAtr,
+            boolean maeBeforeMfe,
+            Direction direction,
+            double directionalEfficiency,
+            int timeToMfeBars) {
         ObservableState state = new ObservableState(
                 new ObservationId("US500", 5, Instant.parse(timestamp), direction),
                 signalIndex,
@@ -109,16 +138,16 @@ class OpportunityScorerV1Test {
                 100.0,
                 Instant.parse(timestamp).plusSeconds(300),
                 List.of(),
-                quality,
-                quality,
-                -(21.0 - 2.0 * quality),
-                -(21.0 - 2.0 * quality),
-                true,
-                ForwardPathLabel.ExcursionOrder.MAE_THEN_MFE,
+                mfeAtr,
+                mfeAtr,
+                maeAtr,
+                maeAtr,
+                maeBeforeMfe,
+                maeBeforeMfe ? ForwardPathLabel.ExcursionOrder.MAE_THEN_MFE : ForwardPathLabel.ExcursionOrder.MFE_THEN_MAE,
                 Map.of(),
                 Map.of(),
-                quality,
-                11 - (int) quality,
+                directionalEfficiency,
+                timeToMfeBars,
                 1);
         return new LabelledObservation(state, label);
     }

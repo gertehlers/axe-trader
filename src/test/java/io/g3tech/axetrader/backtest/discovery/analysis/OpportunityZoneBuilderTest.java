@@ -55,8 +55,31 @@ class OpportunityZoneBuilderTest {
         assertThat(zones).extracting(zone -> zone.scores().size()).containsExactly(1, 1, 1);
     }
 
+    @Test
+    void startsNewZoneWhenAdjacentRunsUseDifferentScoreVersions() {
+        OpportunityScore first = score("2026-02-01T00:05:00Z", 0, Direction.LONG, 3, OpportunityClass.RUN, "opportunity-v1");
+        OpportunityScore second = score("2026-02-01T00:10:00Z", 1, Direction.LONG, 4, OpportunityClass.RUN, "opportunity-v2");
+
+        List<OpportunityZone> zones = new OpportunityZoneBuilder().build(List.of(first, second));
+
+        assertThat(zones).hasSize(2);
+        assertThat(zones).extracting(OpportunityZone::scoreVersion)
+                .containsExactly("opportunity-v1", "opportunity-v2");
+        assertThat(zones).extracting(zone -> zone.scores().size()).containsExactly(1, 1);
+    }
+
     private static OpportunityScore score(
             String timestamp, int signalIndex, Direction direction, int timeToMfeBars, OpportunityClass opportunityClass) {
+        return score(timestamp, signalIndex, direction, timeToMfeBars, opportunityClass, "opportunity-v1");
+    }
+
+    private static OpportunityScore score(
+            String timestamp,
+            int signalIndex,
+            Direction direction,
+            int timeToMfeBars,
+            OpportunityClass opportunityClass,
+            String scoreVersion) {
         Instant signalTime = Instant.parse(timestamp);
         LabelledObservation observation = new LabelledObservation(
                 new ObservableState(
@@ -82,6 +105,6 @@ class OpportunityZoneBuilderTest {
                         0.8,
                         timeToMfeBars,
                         1));
-        return new OpportunityScore(observation, 0.9, 0.9, 0.9, 0.9, 0.9, opportunityClass, "opportunity-v1");
+        return new OpportunityScore(observation, 0.9, 0.9, 0.9, 0.9, 0.9, opportunityClass, scoreVersion);
     }
 }
