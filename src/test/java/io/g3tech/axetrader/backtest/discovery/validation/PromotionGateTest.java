@@ -55,6 +55,22 @@ class PromotionGateTest {
         assertThat(new PromotionGate().evaluate(summary).passed()).isFalse();
     }
 
+    @Test
+    void rejectsAnOtherwiseQualifyingSummaryWithInfiniteMedianNet() {
+        ValidationSummary summary = summary(30, 10, Double.POSITIVE_INFINITY, 1, 100,
+                List.of(Direction.LONG), Map.of(Direction.LONG, 10.0));
+
+        assertThat(new PromotionGate().evaluate(summary).passed()).isFalse();
+    }
+
+    @Test
+    void rejectsAnOtherwiseQualifyingSummaryWithInfiniteEnabledDirectionNet() {
+        ValidationSummary summary = summary(30, 10, 1, 1, 100,
+                List.of(Direction.LONG), Map.of(Direction.LONG, Double.POSITIVE_INFINITY));
+
+        assertThat(new PromotionGate().evaluate(summary).passed()).isFalse();
+    }
+
     private static ValidationSummary qualifyingSummary() {
         return summary(30, 10, 1, 100, List.of(Direction.LONG), Map.of(Direction.LONG, 10.0));
     }

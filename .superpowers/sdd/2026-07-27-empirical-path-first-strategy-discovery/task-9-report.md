@@ -133,3 +133,39 @@ GREEN results: focused 7 tests run, 0 failures/errors; full Java suite 129 tests
 failures/errors, 1 skipped opt-in sweep. No final OOS validation was run.
 
 Commit: `fix(discovery): reject non-finite promotion metrics` (hash recorded in the handoff).
+
+## Fix round 2: infinite promotion metrics
+
+### Root cause and TDD evidence
+
+The first NaN fix used `!(value > 0.0)`. That rejects `NaN`, but positive infinity is greater than
+zero and still passed. Two new otherwise-qualifying `PromotionGateTest` cases set the median and
+enabled-direction total respectively to `Double.POSITIVE_INFINITY`.
+
+RED command:
+
+```text
+./mvnw test -Dtest=PromotionGateTest
+```
+
+RED result: 6 tests run, 2 failures; both infinite summaries incorrectly returned `passed() == true`.
+
+### Fix and verification
+
+The gate now centralizes finite-positive and finite-non-negative checks. Total/median/direction
+totals must be finite and strictly positive; drawdown must be finite and non-negative; sampled-month
+percentage must be finite before it is compared to 70%. The net-to-drawdown ratio intentionally
+continues to accept positive infinity, as a positive net with zero drawdown is specified to produce
+that ratio.
+
+GREEN commands:
+
+```text
+./mvnw test -Dtest=ExecutableValidatorTest,PromotionGateTest,ValidationStatisticsTest
+./mvnw test
+```
+
+GREEN results: focused 9 tests run, 0 failures/errors; full Java suite 131 tests run, 0
+failures/errors, 1 skipped opt-in sweep. No final OOS validation was run.
+
+Commit: `fix(discovery): require finite positive promotion metrics` (hash recorded in the handoff).

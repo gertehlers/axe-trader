@@ -12,16 +12,17 @@ public final class PromotionGate {
     public GateResult evaluate(ValidationSummary summary) {
         Objects.requireNonNull(summary, "summary");
         List<String> failures = new ArrayList<>();
-        if (!(summary.totalNet() > 0.0)) {
+        if (!isFinitePositive(summary.totalNet())) {
             failures.add("total net must be positive");
         }
-        if (!(summary.medianMonthlyNet() > 0.0)) {
+        if (!isFinitePositive(summary.medianMonthlyNet())) {
             failures.add("median monthly net must be positive");
         }
-        if (!Double.isFinite(summary.maximumDrawdown()) || summary.maximumDrawdown() < 0.0) {
+        if (!isFiniteNonNegative(summary.maximumDrawdown())) {
             failures.add("maximum drawdown must be finite and non-negative");
         }
-        if (!(summary.profitableSampledMonthPercentage() >= 70.0)) {
+        if (!Double.isFinite(summary.profitableSampledMonthPercentage())
+                || summary.profitableSampledMonthPercentage() < 70.0) {
             failures.add("at least 70% of sampled months must be profitable");
         }
         if (summary.sampledMonths().size() < 6) {
@@ -34,11 +35,19 @@ public final class PromotionGate {
             failures.add("net to maximum drawdown must be at least 1.0");
         }
         for (Direction direction : summary.enabledDirections()) {
-            if (!(summary.totalNetByDirection().get(direction) > 0.0)) {
+            if (!isFinitePositive(summary.totalNetByDirection().get(direction))) {
                 failures.add("enabled " + direction + " direction must have positive total net");
             }
         }
         return new GateResult(failures.isEmpty(), List.copyOf(failures));
+    }
+
+    private static boolean isFinitePositive(double value) {
+        return Double.isFinite(value) && value > 0.0;
+    }
+
+    private static boolean isFiniteNonNegative(double value) {
+        return Double.isFinite(value) && value >= 0.0;
     }
 
     public record GateResult(boolean passed, List<String> failures) {
