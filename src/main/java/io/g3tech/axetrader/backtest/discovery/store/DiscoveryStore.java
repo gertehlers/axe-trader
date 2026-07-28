@@ -450,18 +450,30 @@ public final class DiscoveryStore implements AutoCloseable {
                 ORDER BY ep.id
                 """);
              ResultSet rows = statement.executeQuery()) {
+            FrozenCandidate matchedCandidate = null;
+            long matchedDatabaseCandidateId = 0;
+            long matchedRunId = 0;
             while (rows.next()) {
                 FrozenCandidate candidate = JSON.readValue(
                         rows.getString("definition_json"), FrozenCandidate.class);
                 if (candidate.id().equals(candidateId)) {
-                    long databaseCandidateId = rows.getLong("candidate_rule_id");
-                    List<ValidationTrade> trades = readValidationTrades(databaseCandidateId);
-                    ValidationSummary summary = summary(candidate, trades, readMonthlyResults(databaseCandidateId));
-                    return Optional.of(new StoredCandidate(
-                            rows.getLong("run_id"), databaseCandidateId, candidate, summary));
+                    if (matchedCandidate != null) {
+                        throw new IllegalStateException(
+                                "Ambiguous frozen candidate id across discovery runs: " + candidateId);
+                    }
+                    matchedCandidate = candidate;
+                    matchedDatabaseCandidateId = rows.getLong("candidate_rule_id");
+                    matchedRunId = rows.getLong("run_id");
                 }
             }
-            return Optional.empty();
+            if (matchedCandidate == null) {
+                return Optional.empty();
+            }
+            List<ValidationTrade> trades = readValidationTrades(matchedDatabaseCandidateId);
+            ValidationSummary summary = summary(
+                    matchedCandidate, trades, readMonthlyResults(matchedDatabaseCandidateId));
+            return Optional.of(new StoredCandidate(
+                    matchedRunId, matchedDatabaseCandidateId, matchedCandidate, summary));
         } catch (SQLException | IOException exception) {
             throw failed("read frozen candidate", exception);
         }

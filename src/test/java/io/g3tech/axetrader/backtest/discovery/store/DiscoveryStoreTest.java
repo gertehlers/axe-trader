@@ -181,6 +181,38 @@ class DiscoveryStoreTest {
         }
     }
 
+    @Test
+    void rejectsAmbiguousLegacyFrozenCandidateIdsAcrossRuns() {
+        Path database = tempDir.resolve("ambiguous.sqlite");
+        CandidateRule rule = CandidateRule.create(Direction.LONG,
+                List.of(new RuleClause("rsi", RuleClause.Operator.LT, 60)), 30, 2, 0.8);
+        FrozenCandidate candidate = new FrozenCandidate(
+                "legacy-content-only-id", rule,
+                new ExitPolicy(rule, List.of(new ExitPolicy.Tier(1, 1)),
+                        new ExitPolicy.Stop(ExitPolicy.StopSource.MAE_P50, 1),
+                        Ratchet.NONE, List.of(), 48),
+                run().windowFrom(), run().windowTo(), "features-v1", "score-v1");
+        DiscoveryRun secondRun = new DiscoveryRun(
+                "input-sha", "config-sha", "features-v1", "score-v1", "def456", false,
+                "US500", 5, Instant.parse("2025-01-01T00:00:00Z"),
+                Instant.parse("2025-02-01T00:00:00Z"));
+
+        try (DiscoveryStore store = DiscoveryStore.open(database)) {
+            long firstRunId = store.beginRun(run());
+            long secondRunId = store.beginRun(secondRun);
+            long firstCandidateId = store.registerCandidate(
+                    firstRunId, rule, candidate.derivationFrom(), candidate.derivationTo());
+            long secondCandidateId = store.registerCandidate(
+                    secondRunId, rule, candidate.derivationFrom(), candidate.derivationTo());
+            store.saveFrozenCandidate(firstCandidateId, candidate);
+            store.saveFrozenCandidate(secondCandidateId, candidate);
+
+            assertThatThrownBy(() -> store.findFrozenCandidate(candidate.id()))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Ambiguous frozen candidate");
+        }
+    }
+
     private static int rowCount(java.sql.Connection connection, String table) throws Exception {
         try (var statement = connection.createStatement();
              var rows = statement.executeQuery("SELECT COUNT(*) FROM " + table)) {

@@ -1,8 +1,10 @@
 package io.g3tech.axetrader.backtest.discovery;
 
 import io.g3tech.axetrader.backtest.config.BacktestProperties;
+import io.g3tech.axetrader.backtest.config.Ratchet;
 import io.g3tech.axetrader.backtest.discovery.analysis.CandidateRule;
 import io.g3tech.axetrader.backtest.discovery.analysis.RuleClause;
+import io.g3tech.axetrader.backtest.discovery.exit.ExitPolicy;
 import io.g3tech.axetrader.backtest.discovery.session.SessionBoundary;
 import io.g3tech.axetrader.backtest.discovery.session.TradingSessionCalendar;
 import io.g3tech.axetrader.backtest.runner.Direction;
@@ -18,6 +20,7 @@ import java.nio.file.Path;
 import java.sql.DriverManager;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
 
@@ -52,25 +55,92 @@ class DiscoveryPipelineTest {
         var report = new DiscoveryPipeline(
                 new ObservableStateExtractor(new EntryFeatureExtractor()),
                 new ForwardPathLabeller(), new StrategyFactory(),
-                (scores, zones) -> List.of(CandidateRule.create(
-                        Direction.LONG,
-                        List.of(new RuleClause("price.close", RuleClause.Operator.GT, 0)),
-                        Math.max(30, zones.size()), 1, 1))).run(request);
+                (scores, zones) -> List.of(
+                        CandidateRule.create(
+                                Direction.LONG,
+                                List.of(new RuleClause("price.close", RuleClause.Operator.GT, 0)),
+                                Math.max(30, zones.size()), 1, 1),
+                        CandidateRule.create(
+                                Direction.SHORT,
+                                List.of(new RuleClause("price.close", RuleClause.Operator.GT, 0)),
+                                Math.max(30, zones.size()), 1, 1))).run(request);
 
         assertThat(report.run().get("run_key")).isNotNull();
-        assertThat(report.examples()).hasSize(5)
+        assertThat(report.examples()).hasSize(4)
                 .allSatisfy(example -> assertThat(example.chartWindow()).hasSizeLessThanOrEqualTo(21));
+        assertThat(report.examples()).extracting(example -> example.kind())
+                .doesNotContain("missed-run");
         assertThat(reportPath).exists();
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database)) {
             assertThat(count(connection, "discovery_run")).isEqualTo(1);
             assertThat(count(connection, "observation")).isPositive().isEqualTo(count(connection, "forward_label"));
             assertThat(count(connection, "observation")).isEqualTo(348);
             assertThat(count(connection, "opportunity_zone")).isPositive();
-            assertThat(count(connection, "candidate_rule")).isEqualTo(1);
-            assertThat(count(connection, "exit_policy")).isEqualTo(1);
+            assertThat(count(connection, "candidate_rule")).isEqualTo(2);
+            assertThat(count(connection, "exit_policy")).isEqualTo(2);
             assertThat(count(connection, "exit_policy")).isEqualTo(count(connection, "candidate_rule"));
             assertThat(distinctRunKeys(connection)).isEqualTo(1);
         }
+    }
+
+    @Test
+    void candidateIdentityIncludesTheDiscoveryRun() {
+        CandidateRule rule = CandidateRule.create(
+                Direction.LONG,
+                List.of(new RuleClause("price.close", RuleClause.Operator.GT, 0)),
+                30, 1, 1);
+        ExitPolicy policy = new ExitPolicy(
+                rule,
+                List.of(new ExitPolicy.Tier(1, 1)),
+                new ExitPolicy.Stop(ExitPolicy.StopSource.MAE_P50, 1),
+                Ratchet.NONE,
+                List.of(),
+                48);
+
+        assertThat(DiscoveryPipeline.frozenId("run-one", rule, policy))
+                .isNotEqualTo(DiscoveryPipeline.frozenId("run-two", rule, policy));
+    }
+
+    @Test
+    void walksForwardFromThreeCompleteMonthsAndExpandsOneMonthAtATime() {
+        assertThat(DiscoveryPipeline.walkForwardFolds(
+                Instant.parse("2024-12-04T00:00:00Z"),
+                Instant.parse("2025-06-01T00:00:00Z")))
+                .containsExactly(
+                        new DiscoveryPipeline.WalkForwardFold(
+                                Instant.parse("2025-01-01T00:00:00Z"),
+                                Instant.parse("2025-04-01T00:00:00Z"),
+                                YearMonth.of(2025, 4)),
+                        new DiscoveryPipeline.WalkForwardFold(
+                                Instant.parse("2025-01-01T00:00:00Z"),
+                                Instant.parse("2025-05-01T00:00:00Z"),
+                                YearMonth.of(2025, 5)));
+    }
+
+    @Test
+    void omitsFalsePositiveExampleWhenNoCandidateMatches() {
+        MarketSeries market = market(300);
+        DiscoveryRequest request = new DiscoveryRequest(
+                "US500",
+                5,
+                market.mid().getFirstBar().getBeginTime(),
+                market.mid().getLastBar().getEndTime().plusNanos(1),
+                config(),
+                temporaryDirectory.resolve("no-candidates.sqlite"),
+                temporaryDirectory.resolve("no-candidates-report.json"),
+                "commit",
+                "input",
+                market,
+                calendar());
+
+        var report = new DiscoveryPipeline(
+                new ObservableStateExtractor(new EntryFeatureExtractor()),
+                new ForwardPathLabeller(),
+                new StrategyFactory(),
+                (scores, zones) -> List.of()).run(request);
+
+        assertThat(report.examples()).extracting(example -> example.kind())
+                .doesNotContain("false-positive");
     }
 
     private static int count(java.sql.Connection connection, String table) throws Exception {

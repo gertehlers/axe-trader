@@ -23,7 +23,12 @@ class FinalOosGateTest {
 
         assertThat(gate.evaluate(passing, 8.0).passed()).isTrue();
         assertThat(gate.evaluate(summary(-1.0, 4.0, 10.0, passing.monthlyResults()), 8.0).passed()).isFalse();
-        assertThat(gate.evaluate(summary(20.0, -1.0, 10.0, passing.monthlyResults()), 8.0).passed()).isFalse();
+        ValidationSummary negativeSampledMedian = summary(20.0, 100.0, 10.0, List.of(
+                new MonthlyResult(YearMonth.of(2026, 1), 10, -8.0),
+                new MonthlyResult(YearMonth.of(2026, 2), 10, -1.0),
+                new MonthlyResult(YearMonth.of(2026, 3), 10, 5.0),
+                new MonthlyResult(YearMonth.of(2026, 4), 2, 100.0)));
+        assertThat(gate.evaluate(negativeSampledMedian, 8.0).passed()).isFalse();
     }
 
     @Test

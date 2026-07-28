@@ -16,8 +16,17 @@ public final class FinalOosGate {
         if (!(oos.totalNet() > 0.0)) {
             failures.add("total net must be positive");
         }
-        if (!(oos.medianMonthlyNet() > 0.0)) {
-            failures.add("median monthly net must be positive");
+        List<Double> sampledMonthlyNets = oos.sampledMonths().stream()
+                .map(MonthlyResult::netPnl)
+                .sorted()
+                .toList();
+        int middle = sampledMonthlyNets.size() / 2;
+        double sampledMedian = sampledMonthlyNets.isEmpty() ? Double.NaN
+                : sampledMonthlyNets.size() % 2 == 0
+                ? (sampledMonthlyNets.get(middle - 1) + sampledMonthlyNets.get(middle)) / 2
+                : sampledMonthlyNets.get(middle);
+        if (!(sampledMedian > 0.0)) {
+            failures.add("median sampled monthly net must be positive");
         }
         if (!(oos.profitableSampledMonthPercentage() >= 50.0)) {
             failures.add("at least 50% of sampled OOS months must be profitable");

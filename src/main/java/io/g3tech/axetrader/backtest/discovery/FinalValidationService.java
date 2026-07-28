@@ -63,6 +63,15 @@ public final class FinalValidationService {
             if (store.windowSpent(DiscoveryWindowPolicy.OOS_FROM, DiscoveryWindowPolicy.OOS_TO)) {
                 throw new IllegalStateException("Protected OOS window has already been spent");
             }
+            try {
+                store.appendWindowSpent(
+                        stored.runId(), DiscoveryWindowPolicy.OOS_FROM, DiscoveryWindowPolicy.OOS_TO, candidateId);
+            } catch (IllegalStateException exception) {
+                if (store.windowSpent(DiscoveryWindowPolicy.OOS_FROM, DiscoveryWindowPolicy.OOS_TO)) {
+                    throw new IllegalStateException("Protected OOS window has already been spent", exception);
+                }
+                throw exception;
+            }
 
             ProtectedWindow data = loader.load(DiscoveryWindowPolicy.OOS_FROM, DiscoveryWindowPolicy.OOS_TO);
             List<io.g3tech.axetrader.backtest.discovery.validation.ValidationTrade> trades =
@@ -82,9 +91,6 @@ public final class FinalValidationService {
                     : stored.developmentSummary().maximumDrawdown() / developmentTrades;
             FinalOosGate.GateResult gate = finalGate.evaluate(summary, developmentDrawdownPerTrade);
 
-            // The OOS result is consumed regardless of pass/fail. Persist before exposing it.
-            store.appendWindowSpent(
-                    stored.runId(), DiscoveryWindowPolicy.OOS_FROM, DiscoveryWindowPolicy.OOS_TO, candidateId);
             store.appendExperimentEvent(stored.runId(), "final_oos_result",
                     java.util.Map.of("candidate_id", candidateId, "passed", gate.passed(),
                             "failures", gate.failures()));
@@ -92,7 +98,7 @@ public final class FinalValidationService {
         }
     }
 
-    private static ValidationSummary withProtectedMonths(ValidationSummary summary) {
+    static ValidationSummary withProtectedMonths(ValidationSummary summary) {
         TreeMap<YearMonth, MonthlyResult> byMonth = new TreeMap<>();
         summary.monthlyResults().forEach(result -> byMonth.put(result.month(), result));
         YearMonth first = YearMonth.from(DiscoveryWindowPolicy.OOS_FROM.atZone(ZoneOffset.UTC));
@@ -102,11 +108,13 @@ public final class FinalValidationService {
         }
         List<MonthlyResult> months = List.copyOf(byMonth.values());
         List<Double> nets = months.stream().map(MonthlyResult::netPnl).sorted().toList();
-        int middle = nets.size() / 2;
-        double median = nets.size() % 2 == 0
-                ? (nets.get(middle - 1) + nets.get(middle)) / 2
-                : nets.get(middle);
         List<MonthlyResult> sampled = months.stream().filter(MonthlyResult::sampled).toList();
+        List<Double> sampledNets = sampled.stream().map(MonthlyResult::netPnl).sorted().toList();
+        int middle = sampledNets.size() / 2;
+        double median = sampledNets.isEmpty() ? Double.NaN
+                : sampledNets.size() % 2 == 0
+                ? (sampledNets.get(middle - 1) + sampledNets.get(middle)) / 2
+                : sampledNets.get(middle);
         double profitablePercentage = sampled.isEmpty() ? Double.NaN
                 : sampled.stream().filter(month -> month.netPnl() > 0).count() * 100.0 / sampled.size();
         return new ValidationSummary(

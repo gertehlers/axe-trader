@@ -7,6 +7,8 @@ import io.g3tech.axetrader.backtest.discovery.exit.ExitPolicy;
 import io.g3tech.axetrader.backtest.discovery.store.DiscoveryRun;
 import io.g3tech.axetrader.backtest.discovery.store.DiscoveryStore;
 import io.g3tech.axetrader.backtest.discovery.validation.FrozenCandidate;
+import io.g3tech.axetrader.backtest.discovery.validation.MonthlyResult;
+import io.g3tech.axetrader.backtest.discovery.validation.ValidationSummary;
 import io.g3tech.axetrader.backtest.discovery.validation.ValidationTrade;
 import io.g3tech.axetrader.backtest.runner.Direction;
 import io.g3tech.axetrader.backtest.runner.ExitReason;
@@ -23,6 +25,8 @@ import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -65,9 +69,18 @@ class FinalValidationServiceTest {
         Path database = temporaryDirectory.resolve("passing.sqlite");
         persist(database, true, true);
         AtomicInteger reads = new AtomicInteger();
+        AtomicInteger competingReads = new AtomicInteger();
+        FinalValidationService competitor = new FinalValidationService(database, (from, to) -> {
+            competingReads.incrementAndGet();
+            return new FinalValidationService.ProtectedWindow(market(), List.of());
+        });
         FinalValidationService service = new FinalValidationService(database, (from, to) -> {
             assertThat(from).isEqualTo(DiscoveryWindowPolicy.OOS_FROM);
             assertThat(to).isEqualTo(DiscoveryWindowPolicy.OOS_TO);
+            assertThatThrownBy(() -> competitor.run(candidate().id()))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("already been spent");
+            assertThat(competingReads).hasValue(0);
             reads.incrementAndGet();
             return new FinalValidationService.ProtectedWindow(market(), List.of());
         });
@@ -84,6 +97,31 @@ class FinalValidationServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("already been spent");
         assertThat(reads).hasValue(1);
+    }
+
+    @Test
+    void calculatesFinalMedianAndProfitabilityFromSampledMonthsOnly() {
+        ValidationSummary calculated = new ValidationSummary(
+                candidate().id(),
+                30,
+                List.of(
+                        new MonthlyResult(YearMonth.of(2026, 1), 10, 4.0),
+                        new MonthlyResult(YearMonth.of(2026, 2), 10, 8.0)),
+                12.0,
+                6.0,
+                4.0,
+                2.0,
+                6.0,
+                Map.of(Direction.LONG, 12.0),
+                Set.of(Direction.LONG),
+                100.0);
+
+        ValidationSummary protectedSummary = FinalValidationService.withProtectedMonths(calculated);
+
+        assertThat(protectedSummary.monthlyResults()).hasSize(5);
+        assertThat(protectedSummary.monthlyResults().stream().filter(MonthlyResult::sampled)).hasSize(2);
+        assertThat(protectedSummary.medianMonthlyNet()).isEqualTo(6.0);
+        assertThat(protectedSummary.profitableSampledMonthPercentage()).isEqualTo(100.0);
     }
 
     private static void persist(Path database, boolean freeze, boolean passing) {

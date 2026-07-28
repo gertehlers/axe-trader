@@ -117,37 +117,40 @@ public final class DiscoveryPipeline {
             List<MonthlyResultRow> monthlyRows = new ArrayList<>();
             List<YearMonth> completeMonths = completeMonths(request.from(), request.to());
             if (completeMonths.size() < 4) {
-                registerCandidates(request, store, runId, labelled, scores, zones, request.to(), registered);
+                registerCandidates(
+                        request, store, runId, run.runKey(), labelled, scores, zones,
+                        request.from(), request.to(), registered);
             } else {
-                for (int monthIndex = 3; monthIndex < completeMonths.size(); monthIndex++) {
-                    YearMonth evaluationMonth = completeMonths.get(monthIndex);
-                    Instant foldStart = evaluationMonth.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+                for (WalkForwardFold fold : walkForwardFolds(request.from(), request.to())) {
                     List<OpportunityScore> derivationScores = scores.stream()
-                            .filter(score -> score.labelledObservation().state().id().signalTime().isBefore(foldStart))
+                            .filter(score -> !score.labelledObservation().state().id().signalTime()
+                                    .isBefore(fold.derivationFrom()))
+                            .filter(score -> score.labelledObservation().state().id().signalTime()
+                                    .isBefore(fold.derivationTo()))
                             .toList();
                     List<OpportunityZone> derivationZones = zoneBuilder.build(derivationScores);
                     List<LabelledObservation> derivation = derivationScores.stream()
                             .map(OpportunityScore::labelledObservation).toList();
                     registerCandidates(
-                            request, store, runId, derivation, derivationScores, derivationZones,
-                            foldStart, registered);
+                            request, store, runId, run.runKey(), derivation, derivationScores, derivationZones,
+                            fold.derivationFrom(), fold.derivationTo(), registered);
 
-                    Instant foldTo = evaluationMonth.plusMonths(1).atDay(1)
+                    Instant foldTo = fold.evaluationMonth().plusMonths(1).atDay(1)
                             .atStartOfDay(ZoneOffset.UTC).toInstant();
                     List<ObservableState> foldStates = labelled.stream()
                             .map(LabelledObservation::state)
-                            .filter(state -> !state.id().signalTime().isBefore(foldStart)
+                            .filter(state -> !state.id().signalTime().isBefore(fold.derivationTo())
                                     && state.id().signalTime().isBefore(foldTo))
                             .toList();
                     for (RegisteredCandidate candidate : registered.values()) {
-                        if (candidate.frozen().derivationTo().isAfter(foldStart)) {
+                        if (candidate.frozen().derivationTo().isAfter(fold.derivationTo())) {
                             continue;
                         }
                         List<ValidationTrade> trades = validator.run(
                                 candidate.frozen(), request.market(), foldStates);
                         store.saveValidation(candidate.databaseId(), trades);
                         MonthlyResult monthly = new MonthlyResult(
-                                evaluationMonth, trades.size(), ValidationStatistics.totalNet(trades));
+                                fold.evaluationMonth(), trades.size(), ValidationStatistics.totalNet(trades));
                         store.saveMonthlyResult(candidate.databaseId(), monthly);
                         allTrades.addAll(trades);
                         monthlyRows.add(new MonthlyResultRow(candidate.frozen().id(), monthly));
@@ -167,9 +170,11 @@ public final class DiscoveryPipeline {
             DiscoveryRequest request,
             DiscoveryStore store,
             long runId,
+            String runKey,
             List<LabelledObservation> derivation,
             List<OpportunityScore> scores,
             List<OpportunityZone> zones,
+            Instant derivationFrom,
             Instant derivationTo,
             Map<String, RegisteredCandidate> registered) {
         for (CandidateRule rule : ruleMining.mine(scores, zones)) {
@@ -181,14 +186,14 @@ public final class DiscoveryPipeline {
                 continue;
             }
             ExitPolicy policy = policies.getFirst();
-            String candidateId = frozenId(rule, policy);
+            String candidateId = frozenId(runKey, rule, policy);
             if (registered.containsKey(candidateId)) {
                 continue;
             }
             FrozenCandidate frozen = new FrozenCandidate(
-                    candidateId, rule, policy, request.from(), derivationTo,
+                    candidateId, rule, policy, derivationFrom, derivationTo,
                     FEATURE_SCHEMA_VERSION, OpportunityScorerV1.SCORE_VERSION);
-            long databaseId = store.registerCandidate(runId, rule, request.from(), derivationTo);
+            long databaseId = store.registerCandidate(runId, rule, derivationFrom, derivationTo);
             store.saveFrozenCandidate(databaseId, frozen);
             registered.put(candidateId, new RegisteredCandidate(databaseId, frozen));
         }
@@ -310,20 +315,22 @@ public final class DiscoveryPipeline {
                 .thenComparing(score -> score.labelledObservation().state().id().signalTime())
                 .thenComparing(score -> score.labelledObservation().state().id().direction());
         List<OpportunityScore> ordered = scores.stream().sorted(order).toList();
-        List<Selection> selected = List.of(
-                new Selection("best", ordered.getLast()),
-                new Selection("median", ordered.get((ordered.size() - 1) / 2)),
-                new Selection("worst", ordered.getFirst()),
-                new Selection("false-positive", ordered.stream()
-                        .filter(score -> score.opportunityClass() != OpportunityClass.RUN)
-                        .filter(score -> candidates.stream().anyMatch(
-                                candidate -> candidate.rule().matches(score.labelledObservation().state())))
-                        .findFirst().orElse(ordered.getFirst())),
-                new Selection("missed-run", ordered.stream()
-                        .filter(score -> score.opportunityClass() == OpportunityClass.RUN)
-                        .filter(score -> candidates.stream().noneMatch(
-                                candidate -> candidate.rule().matches(score.labelledObservation().state())))
-                        .findFirst().orElse(ordered.getLast())));
+        List<Selection> selected = new ArrayList<>();
+        selected.add(new Selection("best", ordered.getLast()));
+        selected.add(new Selection("median", ordered.get((ordered.size() - 1) / 2)));
+        selected.add(new Selection("worst", ordered.getFirst()));
+        ordered.stream()
+                .filter(score -> score.opportunityClass() != OpportunityClass.RUN)
+                .filter(score -> candidates.stream().anyMatch(
+                        candidate -> candidate.rule().matches(score.labelledObservation().state())))
+                .findFirst()
+                .ifPresent(score -> selected.add(new Selection("false-positive", score)));
+        ordered.stream()
+                .filter(score -> score.opportunityClass() == OpportunityClass.RUN)
+                .filter(score -> candidates.stream().noneMatch(
+                        candidate -> candidate.rule().matches(score.labelledObservation().state())))
+                .findFirst()
+                .ifPresent(score -> selected.add(new Selection("missed-run", score)));
         return selected.stream().map(selection -> example(request, selection, candidates, trades)).toList();
     }
 
@@ -399,10 +406,28 @@ public final class DiscoveryPipeline {
         return List.copyOf(result);
     }
 
-    private static String frozenId(CandidateRule rule, ExitPolicy policy) {
+    static List<WalkForwardFold> walkForwardFolds(Instant from, Instant to) {
+        List<YearMonth> months = completeMonths(from, to);
+        if (months.size() < 4) {
+            return List.of();
+        }
+        Instant derivationFrom = months.getFirst().atDay(1)
+                .atStartOfDay(ZoneOffset.UTC).toInstant();
+        List<WalkForwardFold> folds = new ArrayList<>();
+        for (int monthIndex = 3; monthIndex < months.size(); monthIndex++) {
+            YearMonth evaluationMonth = months.get(monthIndex);
+            folds.add(new WalkForwardFold(
+                    derivationFrom,
+                    evaluationMonth.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant(),
+                    evaluationMonth));
+        }
+        return List.copyOf(folds);
+    }
+
+    static String frozenId(String runKey, CandidateRule rule, ExitPolicy policy) {
         String definition = rule.canonicalJson() + "|" + policy.tiers() + "|" + policy.stop()
                 + "|" + policy.ratchet() + "|" + policy.invalidationClauses() + "|" + policy.maxHoldingBars();
-        return "candidate-" + sha256(definition);
+        return "candidate-" + sha256(runKey + "|" + definition);
     }
 
     private static String configHash(DiscoveryRequest request) {
@@ -426,6 +451,17 @@ public final class DiscoveryPipeline {
     }
 
     private record MonthlyResultRow(String candidateId, MonthlyResult result) {
+    }
+
+    record WalkForwardFold(Instant derivationFrom, Instant derivationTo, YearMonth evaluationMonth) {
+        WalkForwardFold {
+            Objects.requireNonNull(derivationFrom, "derivationFrom");
+            Objects.requireNonNull(derivationTo, "derivationTo");
+            Objects.requireNonNull(evaluationMonth, "evaluationMonth");
+            if (!derivationFrom.isBefore(derivationTo)) {
+                throw new IllegalArgumentException("walk-forward derivation window must be non-empty");
+            }
+        }
     }
 
     private record Selection(String kind, OpportunityScore score) {
