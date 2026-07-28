@@ -15,6 +15,10 @@ public enum ExitReason {
     STOP,
     /** Force-exit after {@code max-holding-bars} with neither stop nor target reached. */
     TIME,
+    /** A post-entry observable invalidation completed; the next bar filled the remaining position. */
+    INVALIDATION,
+    /** Capital.com's final executable bar closed the remaining position. */
+    TRADING_CLOSE,
     /** Position still open when the data ran out; closed on the final bar. */
     END
 }

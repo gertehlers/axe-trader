@@ -6,7 +6,6 @@ import io.g3tech.axetrader.backtest.indicators.IndicatorBundle;
 import io.g3tech.axetrader.backtest.strategy.ConfluenceStrategies;
 import io.g3tech.axetrader.backtest.strategy.PillarVote;
 import org.springframework.stereotype.Component;
-import org.ta4j.core.Bar;
 import org.ta4j.core.BarSeries;
 import org.ta4j.core.Position;
 import org.ta4j.core.Strategy;
@@ -198,87 +197,14 @@ public class BacktestRunner {
     static TieredExitOutcome tieredExit(
             BarSeries series, Direction direction, int entryIndex, double entryPrice,
             double stopDist, List<TierLevel> tiers, Ratchet ratchet, int maxHoldingBars) {
-        if (tiers.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "tieredExit requires at least one tier — an empty ladder would skip the "
-                            + "stop-loss check entirely and close at the series' last close");
-        }
-        boolean isLong = direction == Direction.LONG;
-        double stopLevel = isLong ? entryPrice - stopDist : entryPrice + stopDist;
-        int lastIndex = series.getEndIndex();
-
-        List<TierFill> fills = new ArrayList<>();
-        int nextTier = 0;
-        double remaining = 1.0;
-
-        for (int i = entryIndex + 1; i <= lastIndex && nextTier < tiers.size(); i++) {
-            Bar bar = series.getBar(i);
-            double high = bar.getHighPrice().doubleValue();
-            double low = bar.getLowPrice().doubleValue();
-
-            boolean stopHit = isLong ? low <= stopLevel : high >= stopLevel;
-            if (stopHit) {
-                fills.add(new TierFill(i, stopLevel, remaining, ExitReason.STOP));
-                return outcome(fills, nextTier);
-            }
-
-            // Bank every tier this bar reaches, in order.
-            while (nextTier < tiers.size()) {
-                TierLevel tier = tiers.get(nextTier);
-                double level = isLong ? entryPrice + tier.targetDist() : entryPrice - tier.targetDist();
-                boolean tierHit = isLong ? high >= level : low <= level;
-                if (!tierHit) {
-                    break;
-                }
-                fills.add(new TierFill(i, level, tier.fraction(), ExitReason.TARGET));
-                remaining -= tier.fraction();
-                nextTier++;
-            }
-            if (nextTier >= tiers.size()) {
-                return outcome(fills, nextTier);
-            }
-
-            // Ratchet applies from the NEXT bar (see javadoc).
-            stopLevel = ratchetedStop(
-                    ratchet, nextTier, isLong, entryPrice, stopLevel, tiers);
-
-            if (maxHoldingBars > 0 && (i - entryIndex) >= maxHoldingBars) {
-                fills.add(new TierFill(
-                        i, bar.getClosePrice().doubleValue(), remaining, ExitReason.TIME));
-                return outcome(fills, nextTier);
-            }
-        }
-
-        if (remaining > 0.0) {
-            fills.add(new TierFill(
-                    lastIndex, series.getBar(lastIndex).getClosePrice().doubleValue(),
-                    remaining, ExitReason.END));
-        }
-        return outcome(fills, nextTier);
-    }
-
-    /**
-     * The stop level to use from the next bar onward, given how many tiers have filled.
-     * {@code Ratchet.NONE} always returns the current level unchanged.
-     */
-    private static double ratchetedStop(
-            Ratchet ratchet, int tiersFilled, boolean isLong, double entryPrice,
-            double currentStop, List<TierLevel> tiers) {
-        return switch (ratchet) {
-            case NONE -> currentStop;
-            case BREAKEVEN_AFTER_T1 -> {
-                if (tiersFilled >= 2) {
-                    double t1 = tiers.get(0).targetDist();
-                    yield isLong ? entryPrice + t1 : entryPrice - t1;
-                }
-                yield tiersFilled >= 1 ? entryPrice : currentStop;
-            }
-            case LAGGED -> tiersFilled >= 2 ? entryPrice : currentStop;
-        };
-    }
-
-    private static TieredExitOutcome outcome(List<TierFill> fills, int tiersFilled) {
-        return new TieredExitOutcome(List.copyOf(fills), tiersFilled, tiersFilled >= 1);
+        TieredExitEngine.Outcome outcome = TieredExitEngine.tieredExit(
+                series, direction, entryIndex, entryPrice, stopDist,
+                tiers.stream().map(tier -> new TieredExitEngine.TierLevel(tier.fraction(), tier.targetDist())).toList(),
+                ratchet, maxHoldingBars);
+        return new TieredExitOutcome(
+                outcome.fills().stream().map(fill -> new TierFill(
+                        fill.index(), fill.price(), fill.fraction(), fill.reason())).toList(),
+                outcome.tiersFilled(), outcome.hitT1());
     }
 
     /** One resolved exit: the bar it happened on, the fill price, and why. */
