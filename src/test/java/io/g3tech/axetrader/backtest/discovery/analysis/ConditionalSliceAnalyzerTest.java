@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.assertj.core.data.Offset.offset;
 
 class ConditionalSliceAnalyzerTest {
@@ -55,6 +56,23 @@ class ConditionalSliceAnalyzerTest {
                 .toList();
 
         assertThat(thresholds).containsExactly(0.0, 10.0, 20.0, 30.0);
+    }
+
+    @Test
+    void excludesLabelFieldsFromConditionalSlicesAndPublicRuleConstruction() {
+        OpportunityScore first = score("2025-04-01T00:00:00Z", 0, 1.0, 1.2,
+                Map.of("observable.trend", 1.0, "label.mfe_atr", 1.2));
+        OpportunityScore second = score("2025-04-01T00:00:00Z", 1, 0.0, -0.4,
+                Map.of("observable.trend", 0.0, "label.mfe_atr", -0.4));
+
+        assertThat(new ConditionalSliceAnalyzer().analyze(List.of(first, second), List.of()))
+                .extracting(ConditionalSlice::feature)
+                .containsOnly("observable.trend");
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> new RuleClause("label.mfe_atr", RuleClause.Operator.GTE, 0.0));
+        assertThatIllegalArgumentException()
+                .isThrownBy(() -> CandidateRule.create(Direction.LONG,
+                        List.of(new RuleClause("forward.path_score", RuleClause.Operator.GTE, 0.0)), 10, 1.0, 0.5));
     }
 
     private static OpportunityScore numericScore(int index, double slope) {

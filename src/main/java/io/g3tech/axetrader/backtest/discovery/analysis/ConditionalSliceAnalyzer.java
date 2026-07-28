@@ -34,6 +34,9 @@ public final class ConditionalSliceAnalyzer {
             }
             Direction direction = score.labelledObservation().state().id().direction();
             for (String feature : score.labelledObservation().state().features().values().keySet()) {
+                if (!RuleClause.isObservableFeature(feature)) {
+                    continue;
+                }
                 byDirectionAndFeature.computeIfAbsent(direction, ignored -> new TreeMap<>())
                         .computeIfAbsent(feature, ignored -> new ArrayList<>())
                         .add(score);

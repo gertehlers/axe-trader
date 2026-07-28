@@ -75,8 +75,12 @@ public final class ShallowRuleMiner {
         if (features.isEmpty()) {
             return List.of();
         }
+        Map<String, List<Double>> derivationThresholds = new HashMap<>();
+        for (String feature : features) {
+            derivationThresholds.put(feature, ConditionalSliceAnalyzer.thresholds(scores, feature));
+        }
         List<CandidateRule> leaves = new ArrayList<>();
-        explore(new Node(scores, List.of()), features, zoneMembership, leaves);
+        explore(new Node(scores, List.of()), features, derivationThresholds, zoneMembership, leaves);
         return mergeFamilies(leaves).stream()
                 .sorted(Comparator.comparingDouble(CandidateRule::meanScore).reversed()
                         .thenComparing(Comparator.comparingDouble(CandidateRule::meanNetMfeAtr).reversed())
@@ -88,8 +92,24 @@ public final class ShallowRuleMiner {
     private static void explore(
             Node node,
             Set<String> features,
+            Map<String, List<Double>> derivationThresholds,
             Map<ObservationId, Set<String>> zoneMembership,
             List<CandidateRule> leaves) {
+        if (node.clauses().size() == MAX_TREE_DEPTH || node.clauses().size() == MAX_RULE_CLAUSES) {
+            addPositiveLeaf(node, zoneMembership, leaves);
+            return;
+        }
+        java.util.Optional<Split> split = bestSplit(node, features, derivationThresholds, zoneMembership);
+        if (split.isEmpty()) {
+            addPositiveLeaf(node, zoneMembership, leaves);
+            return;
+        }
+        explore(split.get().matching(), features, derivationThresholds, zoneMembership, leaves);
+        explore(split.get().nonMatching(), features, derivationThresholds, zoneMembership, leaves);
+    }
+
+    private static void addPositiveLeaf(
+            Node node, Map<ObservationId, Set<String>> zoneMembership, List<CandidateRule> leaves) {
         if (!node.clauses().isEmpty() && isPositiveLeaf(node, zoneMembership)) {
             leaves.add(CandidateRule.create(
                     node.samples().getFirst().labelledObservation().state().id().direction(),
@@ -98,15 +118,12 @@ public final class ShallowRuleMiner {
                     ConditionalSliceAnalyzer.meanNetMfeAtr(node.samples()),
                     zoneWeightedMeanScore(node.samples(), zoneMembership)));
         }
-        if (node.clauses().size() == MAX_TREE_DEPTH || node.clauses().size() == MAX_RULE_CLAUSES) {
-            return;
-        }
-        bestSplit(node, features, zoneMembership).ifPresent(split -> explore(split, features, zoneMembership, leaves));
     }
 
-    private static java.util.Optional<Node> bestSplit(
+    private static java.util.Optional<Split> bestSplit(
             Node parent,
             Set<String> features,
+            Map<String, List<Double>> derivationThresholds,
             Map<ObservationId, Set<String>> zoneMembership) {
         double parentScore = zoneWeightedMeanScore(parent.samples(), zoneMembership);
         SplitCandidate best = null;
@@ -114,19 +131,26 @@ public final class ShallowRuleMiner {
             if (alreadyConstrained(parent.clauses(), feature)) {
                 continue;
             }
-            for (double threshold : ConditionalSliceAnalyzer.thresholds(parent.samples(), feature)) {
+            for (double threshold : derivationThresholds.get(feature)) {
                 for (RuleClause.Operator operator : RuleClause.Operator.values()) {
                     RuleClause clause = new RuleClause(feature, operator, threshold);
-                    List<OpportunityScore> childSamples = parent.samples().stream()
+                    List<OpportunityScore> matchingSamples = parent.samples().stream()
                             .filter(score -> clause.matches(score.labelledObservation().state().features()))
                             .toList();
-                    if (childSamples.isEmpty() || childSamples.size() == parent.samples().size()
-                            || independentZones(childSamples, zoneMembership) < MINIMUM_ZONES_PER_LEAF) {
+                    if (matchingSamples.isEmpty() || matchingSamples.size() == parent.samples().size()) {
                         continue;
                     }
+                    List<OpportunityScore> nonMatchingSamples = parent.samples().stream()
+                            .filter(score -> !clause.matches(score.labelledObservation().state().features()))
+                            .toList();
                     SplitCandidate candidate = new SplitCandidate(
-                            new Node(childSamples, append(parent.clauses(), clause)),
-                            zoneWeightedMeanScore(childSamples, zoneMembership) - parentScore,
+                            new Split(
+                                    new Node(matchingSamples, append(parent.clauses(), clause)),
+                                    new Node(nonMatchingSamples, append(parent.clauses(), inverse(clause))),
+                                    clause),
+                            Math.max(
+                                    zoneWeightedMeanScore(matchingSamples, zoneMembership),
+                                    zoneWeightedMeanScore(nonMatchingSamples, zoneMembership)) - parentScore,
                             clause);
                     if (best == null || SPLIT_ORDER.compare(candidate, best) < 0) {
                         best = candidate;
@@ -134,7 +158,7 @@ public final class ShallowRuleMiner {
                 }
             }
         }
-        return best == null ? java.util.Optional.empty() : java.util.Optional.of(best.node());
+        return best == null ? java.util.Optional.empty() : java.util.Optional.of(best.split());
     }
 
     private static final Comparator<SplitCandidate> SPLIT_ORDER = Comparator
@@ -179,14 +203,8 @@ public final class ShallowRuleMiner {
         for (OpportunityScore score : scores) {
             features.retainAll(score.labelledObservation().state().features().values().keySet());
         }
-        features.removeIf(ShallowRuleMiner::isLabelField);
+        features.removeIf(feature -> !RuleClause.isObservableFeature(feature));
         return features;
-    }
-
-    private static boolean isLabelField(String feature) {
-        String lowerCase = feature.toLowerCase(java.util.Locale.ROOT);
-        return lowerCase.startsWith("label.") || lowerCase.startsWith("label_")
-                || lowerCase.startsWith("forward.") || lowerCase.startsWith("forward_");
     }
 
     private static boolean alreadyConstrained(List<RuleClause> clauses, String feature) {
@@ -198,6 +216,16 @@ public final class ShallowRuleMiner {
         result.add(clause);
         result.sort(CLAUSE_ORDER);
         return List.copyOf(result);
+    }
+
+    private static RuleClause inverse(RuleClause clause) {
+        RuleClause.Operator inverse = switch (clause.operator()) {
+            case LT -> RuleClause.Operator.GTE;
+            case LTE -> RuleClause.Operator.GT;
+            case GT -> RuleClause.Operator.LTE;
+            case GTE -> RuleClause.Operator.LT;
+        };
+        return new RuleClause(clause.feature(), inverse, clause.threshold());
     }
 
     private static List<CandidateRule> mergeFamilies(List<CandidateRule> candidates) {
@@ -223,6 +251,9 @@ public final class ShallowRuleMiner {
     private record Node(List<OpportunityScore> samples, List<RuleClause> clauses) {
     }
 
-    private record SplitCandidate(Node node, double improvement, RuleClause clause) {
+    private record Split(Node matching, Node nonMatching, RuleClause clause) {
+    }
+
+    private record SplitCandidate(Split split, double improvement, RuleClause clause) {
     }
 }

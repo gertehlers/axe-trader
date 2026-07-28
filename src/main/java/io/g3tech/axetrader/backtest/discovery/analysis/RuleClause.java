@@ -10,9 +10,18 @@ public record RuleClause(String feature, Operator operator, double threshold) {
     public RuleClause {
         Objects.requireNonNull(feature, "feature");
         Objects.requireNonNull(operator, "operator");
-        if (feature.isBlank() || !Double.isFinite(threshold)) {
-            throw new IllegalArgumentException("rule clauses need a non-blank feature and finite threshold");
+        if (!isObservableFeature(feature) || !Double.isFinite(threshold)) {
+            throw new IllegalArgumentException("rule clauses need an observable feature and finite threshold");
         }
+    }
+
+    /** Rejects future-label namespaces at the public predicate boundary. */
+    public static boolean isObservableFeature(String feature) {
+        if (feature == null || feature.isBlank()) {
+            return false;
+        }
+        String normalized = feature.toLowerCase(java.util.Locale.ROOT);
+        return !(normalized.startsWith("label") || normalized.startsWith("forward"));
     }
 
     public boolean matches(FeatureVector vector) {

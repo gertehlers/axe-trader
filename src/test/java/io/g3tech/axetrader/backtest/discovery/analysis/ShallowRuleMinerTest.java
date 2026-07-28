@@ -59,6 +59,50 @@ class ShallowRuleMinerTest {
                 .containsExactly("support.strengthening", "trend.slope_rising");
     }
 
+    @Test
+    void usesOnlyOriginalDerivationPercentilesAtNestedTreeNodes() {
+        List<OpportunityScore> scores = new ArrayList<>();
+        List<OpportunityZone> zones = new ArrayList<>();
+        for (int index = 0; index < 40; index++) {
+            double nested = 30 + (index / 10) * 10;
+            double score = nested == 60 ? .9 : .1;
+            double mfeAtr = nested == 60 ? 1.2 : -.1;
+            OpportunityScore observation = score(index, 1, nested, mfeAtr, score, OpportunityClass.RUN);
+            scores.add(observation);
+            zones.add(zone("nested-" + index, observation));
+        }
+        for (int index = 0; index < 40; index++) {
+            scores.add(score(100 + index, 0, 0, -8.0, .1, OpportunityClass.CHOP));
+        }
+
+        List<CandidateRule> rules = new ShallowRuleMiner().mine(scores, zones);
+
+        assertThat(rules).isNotEmpty();
+        assertThat(rules).allSatisfy(rule -> assertThat(rule.clauses()).allSatisfy(clause ->
+                assertThat(ConditionalSliceAnalyzer.thresholds(scores, clause.feature())).contains(clause.threshold())));
+    }
+
+    @Test
+    void retainsPositiveLeavesFromBothSidesOfTheBestSplit() {
+        List<OpportunityScore> scores = new ArrayList<>();
+        List<OpportunityZone> zones = new ArrayList<>();
+        for (int index = 0; index < 20; index++) {
+            double regime = index < 10 ? 0 : 1;
+            double composite = regime == 0 ? .8 : .9;
+            OpportunityScore observation = score(index, regime, 0, 1.2, composite, OpportunityClass.RUN);
+            scores.add(observation);
+            zones.add(zone("regime-" + index, observation));
+        }
+
+        List<CandidateRule> rules = new ShallowRuleMiner().mine(scores, zones);
+
+        assertThat(rules).hasSize(2);
+        assertThat(rules).allSatisfy(rule -> assertThat(rule.clauses()).extracting(RuleClause::feature)
+                .containsExactly("support.strengthening"));
+        assertThat(rules).anySatisfy(rule -> assertThat(rule.matches(state(90, 0, 0, 0))).isTrue());
+        assertThat(rules).anySatisfy(rule -> assertThat(rule.matches(state(91, 1, 0, 0))).isTrue());
+    }
+
     private static Fixture fixture() {
         List<OpportunityScore> scores = new ArrayList<>();
         List<OpportunityZone> zones = new ArrayList<>();
@@ -99,6 +143,11 @@ class ShallowRuleMinerTest {
         return new LabelledObservation(state, new ForwardPathLabel(LabelStatus.COMPLETE_48_BARS, 100,
                 state.id().signalTime().plusSeconds(300), List.of(), mfeAtr, mfeAtr, -.5, -.5, true,
                 ForwardPathLabel.ExcursionOrder.MAE_THEN_MFE, Map.of(), Map.of(), .5, 4, 1));
+    }
+
+    private static OpportunityZone zone(String zoneId, OpportunityScore score) {
+        Instant time = score.labelledObservation().state().id().signalTime();
+        return new OpportunityZone(zoneId, Direction.LONG, time, time, OpportunityScorerV1.SCORE_VERSION, List.of(score));
     }
 
     private record Fixture(List<OpportunityScore> scores, List<OpportunityZone> zones) {
