@@ -114,6 +114,13 @@ select {
   padding: 14px;
 }
 
+.discovery-select { display: flex; gap: 8px; align-items: center; padding: 8px 14px; font: 600 10px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); }
+.discovery-list { display: grid; gap: 6px; }
+.discovery-list p, .discovery-examples p { margin: 0; font: 500 12px/1.4 var(--mono); font-variant-numeric: tabular-nums; }
+.discovery-examples { display: grid; gap: 8px; }
+.discovery-examples article { padding: 10px 12px; }
+.discovery-examples h4 { margin: 0 0 8px; font: 600 13px/1 var(--mono); text-transform: capitalize; }
+
 /* ---------- tab bar ---------- */
 
 .tabbar {
@@ -125,7 +132,7 @@ select {
   bottom: 0;
   z-index: 30;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   height: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
   background: color-mix(in srgb, var(--bg) 92%, transparent);

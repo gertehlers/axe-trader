@@ -4,6 +4,7 @@ import { tradesRoutes } from "./routes/trades";
 import { slicesRoutes } from "./routes/slices";
 import { feedbackRoutes } from "./routes/feedback";
 import { marksRoutes } from "./routes/marks";
+import { discoveryRoutes } from "./routes/discovery";
 
 export type Env = { DB: D1Database };
 
@@ -15,5 +16,6 @@ app.route("/api", tradesRoutes);
 app.route("/api", slicesRoutes);
 app.route("/api", feedbackRoutes);
 app.route("/api", marksRoutes);
+app.route("/api", discoveryRoutes);
 
 export default app;

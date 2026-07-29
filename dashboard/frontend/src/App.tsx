@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import * as api from "./api";
-import type { Run } from "./types";
+import type { DiscoveryReport, DiscoveryRun, Run } from "./types";
 import { useAnnotations } from "./useAnnotations";
 import Overview from "./components/Overview";
 import TradeDeck from "./components/TradeDeck";
+import DiscoveryOverview from "./components/DiscoveryOverview";
 
-export type Tab = "trades" | "overview";
+export type Tab = "trades" | "overview" | "discovery";
 
 const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
@@ -15,6 +16,9 @@ export default function App() {
   const [runId, setRunId] = useState<string>("");
   const [runsError, setRunsError] = useState<string | null>(null);
   const [runsLoaded, setRunsLoaded] = useState(false);
+  const [discoveryRuns, setDiscoveryRuns] = useState<DiscoveryRun[]>([]);
+  const [discoveryId, setDiscoveryId] = useState("");
+  const [discovery, setDiscovery] = useState<DiscoveryReport | null>(null);
   const { flags, marks, setFlag, toggleMark, error } = useAnnotations();
 
   useEffect(() => {
@@ -36,6 +40,14 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    api.getDiscoveryRuns().then((rows) => { setDiscoveryRuns(rows); if (rows[0]) setDiscoveryId(rows[0].id); }).catch(() => setDiscoveryRuns([]));
+  }, []);
+  useEffect(() => {
+    if (!discoveryId) return;
+    api.getDiscoveryRun(discoveryId).then(setDiscovery).catch(() => setDiscovery(null));
+  }, [discoveryId]);
+
   const run = runs.find((r) => r.id === runId);
 
   return (
@@ -52,6 +64,9 @@ export default function App() {
           </select>
         </label>
       </header>
+      {tab === "discovery" && discoveryRuns.length > 0 && <label className="discovery-select">Discovery run
+        <select value={discoveryId} onChange={(e) => setDiscoveryId(e.target.value)}>{discoveryRuns.map((r) => <option key={r.id} value={r.id}>{r.instrument} · {r.window_to}</option>)}</select>
+      </label>}
 
       {error && <p className="error">{error}</p>}
 
@@ -59,7 +74,9 @@ export default function App() {
           must be stable: templating it off `tab` left the INACTIVE tab's aria-controls pointing
           at an id no longer in the DOM. Both tabs reference this single id. */}
       <main className="panel" role="tabpanel" id="panel" aria-labelledby={`tab-${tab}`}>
-        {runsError ? (
+        {tab === "discovery" ? (
+          discovery ? <DiscoveryOverview report={discovery} /> : <p className="empty">No discovery reports yet.</p>
+        ) : runsError ? (
           <p className="error">Couldn't load runs: {runsError}</p>
         ) : runsLoaded && runs.length === 0 ? (
           <p className="empty">No runs yet. Export one with the dashboard exporter, then push it.</p>
@@ -97,6 +114,7 @@ export default function App() {
         >
           Trades
         </button>
+        <button role="tab" id="tab-discovery" aria-controls="panel" aria-selected={tab === "discovery"} onClick={() => setTab("discovery")}>Discovery</button>
       </nav>
     </div>
   );

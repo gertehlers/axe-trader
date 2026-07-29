@@ -5,3 +5,4 @@ dist/
 .dev.vars
 run.json
 .push.generated.sql
+.push.discovery.generated.sql

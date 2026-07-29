@@ -16,6 +16,8 @@ beforeEach(() => {
   vi.spyOn(api, "getFeedback").mockResolvedValue([]);
   vi.spyOn(api, "getMarks").mockResolvedValue([]);
   vi.spyOn(api, "getSlices").mockResolvedValue({ baseline_win: 0, trades: 0, buckets: [] });
+  vi.spyOn(api, "getDiscoveryRuns").mockResolvedValue([]);
+  vi.spyOn(api, "getDiscoveryRun").mockRejectedValue(new Error("no discovery report"));
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -58,5 +60,21 @@ describe("App shell", () => {
     render(<App />);
     await userEvent.click(screen.getByRole("tab", { name: /overview/i }));
     expect(screen.getByRole("tab", { name: /overview/i })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("shows a selected discovery report even when there are no trade-review runs", async () => {
+    vi.spyOn(api, "getRuns").mockResolvedValue([]);
+    vi.spyOn(api, "getDiscoveryRuns").mockResolvedValue([{
+      id: "d-1", instrument: "US500", timeframe_minutes: 5, window_from: "a", window_to: "b",
+      promoted_candidate: "candidate", total_net: 1, maximum_drawdown: 1,
+      net_to_maximum_drawdown: 1, profitable_sampled_month_percentage: 100,
+    }]);
+    vi.spyOn(api, "getDiscoveryRun").mockResolvedValue({
+      run: { id: "d-1", instrument: "US500", timeframe_minutes: 5, window_from: "a", window_to: "b", promoted_candidate: "candidate", total_net: 1, maximum_drawdown: 1, net_to_maximum_drawdown: 1, profitable_sampled_month_percentage: 100 },
+      directions: {}, patterns: [], monthly_results: [], examples: [],
+    });
+    render(<App />);
+    await userEvent.click(screen.getByRole("tab", { name: /discovery/i }));
+    expect(await screen.findByText("+1.00")).toBeInTheDocument();
   });
 });

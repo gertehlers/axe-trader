@@ -76,3 +76,16 @@ export interface Slices {
 }
 
 export type TradeFilter = "all" | "losers" | "winners";
+
+export interface DiscoveryRun {
+  id: string; instrument: string; timeframe_minutes: number; window_from: string; window_to: string;
+  promoted_candidate: string; total_net: number; maximum_drawdown: number; net_to_maximum_drawdown: number | "Infinity";
+  profitable_sampled_month_percentage: number;
+}
+export interface DiscoveryReport {
+  run: DiscoveryRun;
+  directions: Record<string, { total_net: number; trade_count: number }>;
+  patterns: { id: string; direction: string; clauses: { feature: string; operator: string; threshold: number }[]; independent_zones: number }[];
+  monthly_results: { candidate_id: string; month: string; trade_count: number; sampled: boolean; net_pnl: number }[];
+  examples: { kind: string; observable_features: Record<string, unknown>; pillar_transitions: Record<string, unknown>; rule_clauses: unknown[]; oracle_result: Record<string, unknown>; executable_result: Record<string, unknown>; chart_window: unknown[] }[];
+}

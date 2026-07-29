@@ -159,8 +159,10 @@ public final class DiscoveryPipeline {
             }
 
             String promotedCandidate = selectPromotionCandidate(store, runId, registered);
+            ValidationSummary promotedSummary = promotedCandidate == null ? null
+                    : store.findFrozenCandidate(promotedCandidate).orElseThrow().developmentSummary();
             DiscoveryReport report = report(
-                    request, run, registered, scores, zones, allTrades, monthlyRows, promotedCandidate);
+                    request, run, registered, scores, zones, allTrades, monthlyRows, promotedCandidate, promotedSummary);
             exporter.export(request.reportPath(), report);
             return report;
         }
@@ -252,7 +254,8 @@ public final class DiscoveryPipeline {
             List<OpportunityZone> zones,
             List<ValidationTrade> trades,
             List<MonthlyResultRow> monthlyRows,
-            String promotedCandidate) {
+            String promotedCandidate,
+            ValidationSummary promotedSummary) {
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("run_key", run.runKey());
         metadata.put("instrument", run.instrument());
@@ -261,6 +264,13 @@ public final class DiscoveryPipeline {
         metadata.put("window_to", run.windowTo().toString());
         metadata.put("score_version", run.scoreVersion());
         metadata.put("promoted_candidate", promotedCandidate == null ? "" : promotedCandidate);
+        metadata.put("total_net", promotedSummary == null ? 0.0 : promotedSummary.totalNet());
+        metadata.put("maximum_drawdown", promotedSummary == null ? 0.0 : promotedSummary.maximumDrawdown());
+        metadata.put("net_to_maximum_drawdown", promotedSummary == null ? 0.0
+                : Double.isInfinite(promotedSummary.netToMaximumDrawdown()) ? "Infinity"
+                : promotedSummary.netToMaximumDrawdown());
+        metadata.put("profitable_sampled_month_percentage", promotedSummary == null ? 0.0
+                : promotedSummary.profitableSampledMonthPercentage());
 
         List<Map<String, Object>> patterns = registered.values().stream()
                 .sorted(Comparator.comparing(candidate -> candidate.frozen().id()))
@@ -276,13 +286,16 @@ public final class DiscoveryPipeline {
                         "net_pnl", row.result().netPnl()))
                 .toList();
         Map<String, Map<String, Object>> directions = new LinkedHashMap<>();
-        for (Direction direction : Direction.values()) {
-            double net = trades.stream().filter(trade -> trade.direction() == direction)
-                    .mapToDouble(ValidationTrade::netPnl).sum();
-            long count = trades.stream().filter(trade -> trade.direction() == direction).count();
-            long zoneCount = zones.stream().filter(zone -> zone.direction() == direction).count();
-            directions.put(direction.name(), Map.of(
-                    "trade_count", count, "total_net", net, "independent_zones", zoneCount));
+        if (promotedSummary != null) {
+            for (Direction direction : promotedSummary.enabledDirections()) {
+                long count = trades.stream()
+                        .filter(trade -> trade.candidateId().equals(promotedCandidate))
+                        .filter(trade -> trade.direction() == direction)
+                        .count();
+                directions.put(direction.name(), Map.of("trade_count", count,
+                        "total_net", promotedSummary.totalNetByDirection().get(direction),
+                        "independent_zones", promotedSummary.independentZones()));
+            }
         }
         return new DiscoveryReport(
                 metadata, patterns, months, directions,
