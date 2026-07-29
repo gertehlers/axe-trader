@@ -35,6 +35,9 @@ brokers:
 
 axe-trader:
   mode: backtest
+  history-import:
+    # This runner is inert unless deliberately enabled with a complete explicit command.
+    enabled: false
   market:
     epics: US500
     resolutions: MINUTE
