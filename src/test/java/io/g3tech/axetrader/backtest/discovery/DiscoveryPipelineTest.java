@@ -66,6 +66,9 @@ class DiscoveryPipelineTest {
                                 Math.max(30, zones.size()), 1, 1))).run(request);
 
         assertThat(report.run().get("run_key")).isNotNull();
+        assertThat(report.run()).containsKeys(
+                "total_net", "maximum_drawdown", "net_to_maximum_drawdown",
+                "profitable_sampled_month_percentage");
         assertThat(report.examples()).hasSize(4)
                 .allSatisfy(example -> assertThat(example.chartWindow()).hasSizeLessThanOrEqualTo(21));
         assertThat(report.examples()).extracting(example -> example.kind())

@@ -1,5 +1,5 @@
 import type { Flag, MarkKind } from "../../shared/vocab";
-import type { Bar, Feedback, Mark, Run, Slices, Trade, TradeFilter, TradeSummary } from "./types";
+import type { Bar, DiscoveryReport, DiscoveryRun, Feedback, Mark, Run, Slices, Trade, TradeFilter, TradeSummary } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -59,6 +59,8 @@ function assertTradeFields<T extends { id: string }>(trade: T, fields: readonly 
 }
 
 export const getRuns = () => request<Run[]>("/api/runs");
+export const getDiscoveryRuns = () => request<DiscoveryRun[]>("/api/discovery/runs");
+export const getDiscoveryRun = (id: string) => request<DiscoveryReport>(`/api/discovery/runs/${encodeURIComponent(id)}`);
 
 export const getTrades = async (runId: string, filter: TradeFilter) => {
   const rows = await request<TradeSummary[]>(
