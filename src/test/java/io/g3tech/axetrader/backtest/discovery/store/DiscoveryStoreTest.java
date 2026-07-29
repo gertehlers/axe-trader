@@ -1,0 +1,252 @@
+package io.g3tech.axetrader.backtest.discovery.store;
+
+import io.g3tech.axetrader.backtest.discovery.analysis.CandidateRule;
+import io.g3tech.axetrader.backtest.discovery.analysis.OpportunityClass;
+import io.g3tech.axetrader.backtest.discovery.analysis.OpportunityScore;
+import io.g3tech.axetrader.backtest.discovery.analysis.OpportunityZone;
+import io.g3tech.axetrader.backtest.discovery.analysis.RuleClause;
+import io.g3tech.axetrader.backtest.discovery.exit.ExitPolicy;
+import io.g3tech.axetrader.backtest.discovery.model.FeatureVector;
+import io.g3tech.axetrader.backtest.discovery.model.ForwardPathLabel;
+import io.g3tech.axetrader.backtest.discovery.model.LabelStatus;
+import io.g3tech.axetrader.backtest.discovery.model.LabelledObservation;
+import io.g3tech.axetrader.backtest.discovery.model.ObservableState;
+import io.g3tech.axetrader.backtest.discovery.model.ObservationId;
+import io.g3tech.axetrader.backtest.discovery.model.PathPoint;
+import io.g3tech.axetrader.backtest.discovery.validation.FrozenCandidate;
+import io.g3tech.axetrader.backtest.discovery.validation.ValidationStatistics;
+import io.g3tech.axetrader.backtest.discovery.validation.ValidationTrade;
+import io.g3tech.axetrader.backtest.config.Ratchet;
+import io.g3tech.axetrader.backtest.runner.Direction;
+import io.g3tech.axetrader.backtest.runner.ExitReason;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Path;
+import java.sql.DriverManager;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class DiscoveryStoreTest {
+
+    @TempDir
+    Path tempDir;
+
+    @Test
+    void persistsObservableFeaturesAndForwardLabelsInSeparateTables() throws Exception {
+        Path database = tempDir.resolve("discovery.sqlite");
+        ObservableState state = state();
+        ForwardPathLabel label = label();
+
+        try (DiscoveryStore store = DiscoveryStore.open(database)) {
+            long runId = store.beginRun(run());
+            store.saveObservation(runId, state);
+            store.saveLabel(runId, state.id(), label);
+
+            assertThat(store.findObservableState(runId, state.id())).contains(state);
+            assertThat(store.findForwardPathLabel(runId, state.id())).contains(label);
+        }
+
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database)) {
+            try (var observation = connection.prepareStatement(
+                    "SELECT features_json FROM observation");
+                 var rows = observation.executeQuery()) {
+                assertThat(rows.next()).isTrue();
+                assertThat(rows.getString("features_json")).contains("atr").contains("rsi");
+            }
+            try (var columns = connection.createStatement().executeQuery("PRAGMA table_info(observation)")) {
+                assertThat(columnNames(columns)).contains("features_json").doesNotContain("mfe_points");
+            }
+            try (var columns = connection.createStatement().executeQuery("PRAGMA table_info(forward_label)")) {
+                assertThat(columnNames(columns)).contains("mfe_points").doesNotContain("features_json");
+            }
+        }
+    }
+
+    @Test
+    void rejectsDuplicateObservationIdentityWithinOneRun() {
+        try (DiscoveryStore store = DiscoveryStore.open(tempDir.resolve("discovery.sqlite"))) {
+            long runId = store.beginRun(run());
+            store.saveObservation(runId, state());
+
+            assertThatThrownBy(() -> store.saveObservation(runId, state()))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Duplicate observation");
+        }
+    }
+
+    @Test
+    void derivesRunKeyFromAllCanonicalRunIdentityFields() {
+        DiscoveryRun first = run();
+        DiscoveryRun sameInputs = run();
+        DiscoveryRun changedScoreVersion = new DiscoveryRun(
+                "input-sha", "config-sha", "features-v1", "score-v2", "abc123", false,
+                "US500", 5, Instant.parse("2025-01-01T00:00:00Z"), Instant.parse("2025-02-01T00:00:00Z"));
+
+        assertThat(first.runKey()).isEqualTo(sameInputs.runKey());
+        assertThat(changedScoreVersion.runKey()).isNotEqualTo(first.runKey());
+    }
+
+    @Test
+    void recordsEachSpentWindowOnlyOnce() {
+        try (DiscoveryStore store = DiscoveryStore.open(tempDir.resolve("discovery.sqlite"))) {
+            long firstRun = store.beginRun(run());
+            long secondRun = store.beginRun(new DiscoveryRun(
+                    "input-sha", "config-sha", "features-v1", "score-v1", "def456", false,
+                    "US500", 5, Instant.parse("2025-02-01T00:00:00Z"), Instant.parse("2025-03-01T00:00:00Z")));
+            Instant from = Instant.parse("2026-01-01T00:00:00Z");
+            Instant to = Instant.parse("2026-05-02T00:00:00Z");
+
+            store.appendWindowSpent(firstRun, from, to, "candidate-1");
+
+            assertThatThrownBy(() -> store.appendWindowSpent(secondRun, from, to, "candidate-2"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("already spent");
+        }
+    }
+
+    @Test
+    void registersCanonicalCandidateDefinitionWithItsDerivationWindow() throws Exception {
+        Path database = tempDir.resolve("discovery.sqlite");
+        CandidateRule candidate = CandidateRule.create(Direction.LONG,
+                List.of(new RuleClause("trend.slope", RuleClause.Operator.GTE, 0.25)), 12, 1.2, 0.8);
+        Instant derivationFrom = Instant.parse("2025-01-01T00:00:00Z");
+        Instant derivationTo = Instant.parse("2025-02-01T00:00:00Z");
+
+        try (DiscoveryStore store = DiscoveryStore.open(database)) {
+            long runId = store.beginRun(run());
+            store.registerCandidate(runId, candidate, derivationFrom, derivationTo);
+        }
+
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database);
+             var candidateRow = connection.prepareStatement(
+                     "SELECT definition_json, derivation_from, derivation_to FROM candidate_rule");
+             var rows = candidateRow.executeQuery()) {
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getString("definition_json")).isEqualTo(candidate.canonicalJson());
+            assertThat(rows.getString("derivation_from")).isEqualTo(derivationFrom.toString());
+            assertThat(rows.getString("derivation_to")).isEqualTo(derivationTo.toString());
+        }
+    }
+
+    @Test
+    void persistsAndReloadsAllFrozenValidationEntitiesUnderOneRun() throws Exception {
+        Path database = tempDir.resolve("discovery.sqlite");
+        ObservableState state = state();
+        LabelledObservation labelled = new LabelledObservation(state, label());
+        OpportunityScore score = new OpportunityScore(
+                labelled, 1, 1, 1, 1, 0, 0.8, OpportunityClass.RUN, "score-v1");
+        OpportunityZone zone = new OpportunityZone(
+                "zone-1", Direction.LONG, state.id().signalTime(), state.id().signalTime(),
+                "score-v1", List.of(score));
+        CandidateRule rule = CandidateRule.create(Direction.LONG,
+                List.of(new RuleClause("rsi", RuleClause.Operator.LT, 60)), 30, 2, 0.8);
+        FrozenCandidate candidate = new FrozenCandidate(
+                "frozen-1", rule,
+                new ExitPolicy(rule, List.of(new ExitPolicy.Tier(1, 1)),
+                        new ExitPolicy.Stop(ExitPolicy.StopSource.MAE_P50, 1),
+                        Ratchet.NONE, List.of(), 48),
+                run().windowFrom(), run().windowTo(), "features-v1", "score-v1");
+        ValidationTrade trade = new ValidationTrade(
+                candidate.id(), Direction.LONG, 11, 12,
+                Instant.parse("2025-01-05T00:10:00Z"), Instant.parse("2025-01-05T00:15:00Z"),
+                5000, 5002, 2, ExitReason.TARGET, List.of(), 0.5);
+
+        try (DiscoveryStore store = DiscoveryStore.open(database)) {
+            long runId = store.beginRun(run());
+            store.saveObservation(runId, state);
+            store.saveLabel(runId, state.id(), labelled.label());
+            store.saveZone(runId, zone);
+            long databaseCandidateId = store.registerCandidate(
+                    runId, rule, candidate.derivationFrom(), candidate.derivationTo());
+            store.saveFrozenCandidate(databaseCandidateId, candidate);
+            store.saveValidation(databaseCandidateId, List.of(trade));
+
+            DiscoveryStore.StoredCandidate stored = store.findFrozenCandidate(candidate.id()).orElseThrow();
+            assertThat(stored.runId()).isEqualTo(runId);
+            assertThat(stored.candidate()).isEqualTo(candidate);
+            assertThat(stored.developmentSummary().totalNet()).isEqualTo(2);
+        }
+
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database)) {
+            assertThat(rowCount(connection, "opportunity_zone")).isEqualTo(1);
+            assertThat(rowCount(connection, "zone_member")).isEqualTo(1);
+            assertThat(rowCount(connection, "exit_policy")).isEqualTo(1);
+            assertThat(rowCount(connection, "monthly_result")).isEqualTo(1);
+            assertThat(rowCount(connection, "validation_trade")).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void rejectsAmbiguousLegacyFrozenCandidateIdsAcrossRuns() {
+        Path database = tempDir.resolve("ambiguous.sqlite");
+        CandidateRule rule = CandidateRule.create(Direction.LONG,
+                List.of(new RuleClause("rsi", RuleClause.Operator.LT, 60)), 30, 2, 0.8);
+        FrozenCandidate candidate = new FrozenCandidate(
+                "legacy-content-only-id", rule,
+                new ExitPolicy(rule, List.of(new ExitPolicy.Tier(1, 1)),
+                        new ExitPolicy.Stop(ExitPolicy.StopSource.MAE_P50, 1),
+                        Ratchet.NONE, List.of(), 48),
+                run().windowFrom(), run().windowTo(), "features-v1", "score-v1");
+        DiscoveryRun secondRun = new DiscoveryRun(
+                "input-sha", "config-sha", "features-v1", "score-v1", "def456", false,
+                "US500", 5, Instant.parse("2025-01-01T00:00:00Z"),
+                Instant.parse("2025-02-01T00:00:00Z"));
+
+        try (DiscoveryStore store = DiscoveryStore.open(database)) {
+            long firstRunId = store.beginRun(run());
+            long secondRunId = store.beginRun(secondRun);
+            long firstCandidateId = store.registerCandidate(
+                    firstRunId, rule, candidate.derivationFrom(), candidate.derivationTo());
+            long secondCandidateId = store.registerCandidate(
+                    secondRunId, rule, candidate.derivationFrom(), candidate.derivationTo());
+            store.saveFrozenCandidate(firstCandidateId, candidate);
+            store.saveFrozenCandidate(secondCandidateId, candidate);
+
+            assertThatThrownBy(() -> store.findFrozenCandidate(candidate.id()))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Ambiguous frozen candidate");
+        }
+    }
+
+    private static int rowCount(java.sql.Connection connection, String table) throws Exception {
+        try (var statement = connection.createStatement();
+             var rows = statement.executeQuery("SELECT COUNT(*) FROM " + table)) {
+            return rows.getInt(1);
+        }
+    }
+
+    private static List<String> columnNames(java.sql.ResultSet columns) throws Exception {
+        java.util.ArrayList<String> names = new java.util.ArrayList<>();
+        while (columns.next()) {
+            names.add(columns.getString("name"));
+        }
+        return names;
+    }
+
+    private static DiscoveryRun run() {
+        return new DiscoveryRun(
+                "input-sha", "config-sha", "features-v1", "score-v1", "abc123", false,
+                "US500", 5, Instant.parse("2025-01-01T00:00:00Z"), Instant.parse("2025-02-01T00:00:00Z"));
+    }
+
+    private static ObservableState state() {
+        return new ObservableState(
+                new ObservationId("US500", 5, Instant.parse("2025-01-05T00:05:00Z"), Direction.LONG),
+                10, 11, 2.5, 30, new FeatureVector(Map.of("atr", 2.5, "rsi", 55.0)));
+    }
+
+    private static ForwardPathLabel label() {
+        return new ForwardPathLabel(
+                LabelStatus.COMPLETE_48_BARS,
+                5000.5,
+                Instant.parse("2025-01-05T00:10:00Z"),
+                List.of(new PathPoint(11, Instant.parse("2025-01-05T00:10:00Z"), 5000, 5003, 4999, 5002)),
+                5.0, 2.0, -1.0, -0.4, false, ForwardPathLabel.ExcursionOrder.MFE_THEN_MAE,
+                Map.of(5, 2.0), Map.of(5, 0.8), 0.75, 1, 1);
+    }
+}

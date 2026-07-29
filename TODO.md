@@ -9,7 +9,38 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
 
 ---
 
-## ⭐ ACTIVE WORK — tiered scale-out exits (started 2026-07-21)
+## ⭐ ACTIVE WORK — empirical path-first strategy discovery (started 2026-07-27)
+
+**Branch/worktree:** `feature/empirical-path-first-discovery` at
+`.worktrees/empirical-path-first-discovery`.
+**Spec:** `docs/superpowers/specs/2026-07-27-empirical-path-first-strategy-discovery-design.md`.
+**Plan:** `docs/superpowers/plans/2026-07-27-empirical-path-first-strategy-discovery.md`.
+
+This replaces pillar-led prediction with an empirical, leak-safe workflow: inspect every completed
+five-minute bar in both directions, label its executable forward path separately, then look for
+compact backward-only entry rules and pattern-specific exits. It is the scaled-up analogue of
+reviewing marked better entries/exits, not a model trained on those marks.
+
+**Execution mode:** SDD in the isolated worktree above. The recovery ledger is
+`.superpowers/sdd/2026-07-27-empirical-path-first-strategy-discovery/progress.md`; this table is
+the durable summary. Jan–May 2026 remains protected and must not be read by normal discovery runs.
+
+| Task | State |
+|---|---|
+| 1 side-aware bid/ask market series | ✅ complete — `32af0bd`, review clean |
+| 2 session boundaries + protected OOS guard | ✅ complete — `f36d416` + `a7fc728`, review clean |
+| 3 backward-only every-bar observable state | 🔄 review/fix in progress — committed at `1a6f7ee`; four uncommitted boundary-regression tests intentionally remain in `ObservableStateExtractorTest`. Focused test run on 2026-07-28: 14 run, 4 failures. Do not start Task 4 until Task 3 is fixed, reviewed, committed, and ledger-approved. |
+| 4 forward path labels + leakage barrier | ⏳ not started; brief exists only |
+| 5–12 store, opportunity map, rule/exit discovery, validation, harness, dashboard, development run | ⏳ not started |
+
+**Current recovery point:** preserve the dirty Task 3 test changes. They expose insufficient
+warm-up handling for lagged ATR-percentile/acceleration features; the test fixture also needs
+review where it presently produces `NON_FINITE_FEATURE`. Resume the Task 3 SDD review/fix loop,
+then continue sequentially through the plan.
+
+---
+
+## Completed research — tiered scale-out exits (2026-07-21)
 
 **Branch:** `claude/tiered-scale-out-exits`.
 **Spec:** `docs/superpowers/specs/2026-07-21-tiered-scale-out-exits-design.md`
@@ -195,8 +226,8 @@ the new `TradeStatisticsTest` adds 8.
           Export a run with `./mvnw test -Dtest=ConfluenceSweepTest -Dsweep=true
           -Dsweep.exportDashboard=true` (last grid config wins the single `dashboard/run.json`),
           then `npm run push -- --remote`.
-        - **Plan 2 (phone UI): IN PROGRESS 2026-07-20 — 8.5 of 12 tasks done.** See the
-          "Plan 2 execution checkpoint" section below before touching anything.
+        - **Plan 2 (phone UI): COMPLETE and deployed 2026-07-21.** The historical execution
+          checkpoint below is retained for audit only; it is not active work.
           Plan: `docs/superpowers/plans/2026-07-20-trade-review-phone-ui.md` (12 TDD tasks).
           `docs/superpowers/specs/2026-07-20-trade-review-phone-ui-design.md` — swipe deck (one
           trade per screen) + Overview tab; Focus/Full zoom toggle instead of pinch; fixed 6-flag
@@ -205,11 +236,8 @@ the new `TradeStatisticsTest` adds 8.
           ground truth it lacks. Supersedes the single-scrolling-page UI sketch in the 07-19 spec.
         - Frontend hosting = Cloudflare Worker with static-assets binding (not legacy Pages); all
           Cloudflare code lives under `dashboard/`.
-      - [ ] (4) **3-tier scale-out exit experiment ← NOW THE PRIORITY.** Item 2 proved the tight
-        single-target geometry is net-negative, so this is the fix, not a nice-to-have. Extend
-        `intrabarExit` to bank ⅓ at each of T1/T2/T3 with a ratcheting stop (defaults T1 0.75 /
-        T2 1.5 / T3 3.0 ATR — **confirm exact levels + ratchet rule with user before coding**).
-        See design spec §4.
+      - [x] (4) **3-tier scale-out exit experiment — falsified in-sample; OOS deliberately kept
+        clean.** Historical results and the pivot decision are recorded above; it is not active work.
 - [x] Execution realism in the backtest: intrabar stop/target triggers modeled (2026-07-04, item 2
       above). Remaining realism gap: fills are still mid-price + a modeled spread rather than true
       per-bar bid/ask; acceptable for now.
