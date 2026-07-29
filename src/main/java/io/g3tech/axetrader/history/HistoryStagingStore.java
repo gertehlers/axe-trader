@@ -320,17 +320,7 @@ public final class HistoryStagingStore {
     }
 
     private static Duration resolutionDuration(String resolution) {
-        return switch (resolution) {
-            case "MINUTE" -> Duration.ofMinutes(1);
-            case "MINUTE_5" -> Duration.ofMinutes(5);
-            case "MINUTE_15" -> Duration.ofMinutes(15);
-            case "MINUTE_30" -> Duration.ofMinutes(30);
-            case "HOUR" -> Duration.ofHours(1);
-            case "HOUR_4" -> Duration.ofHours(4);
-            case "DAY" -> Duration.ofDays(1);
-            case "WEEK" -> Duration.ofDays(7);
-            default -> throw new IllegalArgumentException("unsupported history resolution for audit: " + resolution);
-        };
+        return CapitalHistoryResolution.requireSupported(resolution).duration();
     }
 
     private static void rollback(Connection connection, Exception original) {

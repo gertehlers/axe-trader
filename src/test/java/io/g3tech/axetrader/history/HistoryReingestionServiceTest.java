@@ -80,6 +80,21 @@ class HistoryReingestionServiceTest {
     }
 
     @Test
+    void stageRejectsAShortPageThatCannotAdvanceToTheRequestedBoundary(@TempDir Path directory) {
+        Path stagingDatabase = directory.resolve("staging.sqlite");
+        Instant to = FROM.plusSeconds(120);
+        HistoryImportRequest request = request(stagingDatabase, to);
+        RecordingSource source = new RecordingSource(List.of(page(FROM, to, price(FROM))));
+        HistoryReingestionService service = new HistoryReingestionService(source, mock(HistoryDatabasePromoter.class));
+
+        assertThatThrownBy(() -> service.stage(request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("short page");
+
+        assertThat(source.calls).containsExactly(new PageCall(FROM, to, 1_000));
+    }
+
+    @Test
     void promoteRecomputesTheStagingAuditBeforeDelegating(@TempDir Path directory) {
         Path stagingDatabase = directory.resolve("staging.sqlite");
         Path activeDatabase = directory.resolve("active.sqlite");

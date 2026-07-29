@@ -33,6 +33,7 @@ public record HistoryImportRequest(
         if (resolution == null || resolution.isBlank()) {
             throw new IllegalArgumentException("resolution must be configured");
         }
+        CapitalHistoryResolution.requireSupported(resolution);
         Objects.requireNonNull(from, "from");
         Objects.requireNonNull(to, "to");
         if (stagingDatabase == null) {

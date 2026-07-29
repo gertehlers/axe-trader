@@ -34,6 +34,13 @@ class HistoryImportRequestTest {
         assertThat(request.source()).isEqualTo("capital");
     }
 
+    @Test
+    void requestRejectsUnsupportedCapitalResolutionBeforeAnyImportModeCanRun() {
+        assertThatIllegalArgumentException().isThrownBy(() -> new HistoryImportRequest(
+                "US500", "MONTH", Instant.parse("2025-01-01T00:00:00Z"),
+                Instant.parse("2025-01-02T00:00:00Z"), Path.of("target/never-created.sqlite"), false));
+    }
+
     private static HistoryImportRequest request(
             String epic, String resolution, String from, String to, boolean discoveryWindow) {
         return new HistoryImportRequest(epic, resolution, Instant.parse(from), Instant.parse(to),
