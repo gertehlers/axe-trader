@@ -52,6 +52,10 @@ public final class HistoryStagingStore {
     public void write(HistoryImportRequest request, ImportedPage page) {
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(page, "page");
+        if (boundRequest == null || !boundRequest.equals(request)) {
+            throw new IllegalStateException("staging writes require the store's original history import request");
+        }
+        validatePageWindow(request, page);
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
             try {
@@ -73,28 +77,22 @@ public final class HistoryStagingStore {
     public HistoryImportAudit audit(HistoryImportRequest request) {
         Objects.requireNonNull(request, "request");
         try (Connection connection = connection()) {
-            long rowCount = scalar(connection, """
-                    SELECT COUNT(*) FROM historical_price
-                    WHERE source = ? AND epic = ? AND resolution = ?
-                      AND snapshot_time_utc >= ? AND snapshot_time_utc < ?
-                    """, request);
-            long distinctTimestampCount = scalar(connection, """
-                    SELECT COUNT(DISTINCT snapshot_time_utc) FROM historical_price
-                    WHERE source = ? AND epic = ? AND resolution = ?
-                      AND snapshot_time_utc >= ? AND snapshot_time_utc < ?
-                    """, request);
-            PriceAuditCounts priceCounts = priceAuditCounts(connection, request);
+            long rowCount = scalar(connection, "SELECT COUNT(*) FROM historical_price");
+            long distinctTimestampCount = scalar(connection, "SELECT COUNT(DISTINCT snapshot_time_utc) FROM historical_price");
+            PriceAuditCounts priceCounts = priceAuditCounts(connection);
             long coverageGapCount = coverageGapCount(connection, request);
+            long outOfWindowRowCount = outOfWindowRowCount(connection, request);
             return new HistoryImportAudit(
                     rowCount,
                     distinctTimestampCount,
-                    rowCount - distinctTimestampCount,
+                    duplicateCount(connection),
                     priceCounts.invalidFieldCount(),
                     coverageGapCount,
                     priceCounts.crossedOpenCount(),
                     priceCounts.crossedHighCount(),
                     priceCounts.crossedLowCount(),
-                    priceCounts.crossedCloseCount());
+                    priceCounts.crossedCloseCount(),
+                    outOfWindowRowCount);
         } catch (SQLException exception) {
             throw new IllegalStateException("could not audit staged historical prices", exception);
         }
@@ -207,13 +205,12 @@ public final class HistoryStagingStore {
         if (Double.isFinite(value)) {
             statement.setDouble(index, value);
         } else {
-            statement.setNull(index, java.sql.Types.REAL);
+            statement.setString(index, Double.toString(value));
         }
     }
 
-    private static long scalar(Connection connection, String sql, HistoryImportRequest request) throws SQLException {
+    private static long scalar(Connection connection, String sql) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            bindRequestWindow(statement, request);
             try (ResultSet result = statement.executeQuery()) {
                 result.next();
                 return result.getLong(1);
@@ -221,7 +218,7 @@ public final class HistoryStagingStore {
         }
     }
 
-    private static PriceAuditCounts priceAuditCounts(Connection connection, HistoryImportRequest request) throws SQLException {
+    private static PriceAuditCounts priceAuditCounts(Connection connection) throws SQLException {
         String invalidExpression = invalidExpression(PRICE_FIELDS);
         String sql = """
                 SELECT %s AS invalid_fields,
@@ -230,15 +227,46 @@ public final class HistoryStagingStore {
                        SUM(CASE WHEN low_bid > low_ask THEN 1 ELSE 0 END) AS crossed_low,
                        SUM(CASE WHEN close_bid > close_ask THEN 1 ELSE 0 END) AS crossed_close
                 FROM historical_price
-                WHERE source = ? AND epic = ? AND resolution = ?
-                  AND snapshot_time_utc >= ? AND snapshot_time_utc < ?
                 """.formatted(invalidExpression);
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            bindRequestWindow(statement, request);
             try (ResultSet result = statement.executeQuery()) {
                 result.next();
                 return new PriceAuditCounts(result.getLong("invalid_fields"), result.getLong("crossed_open"),
                         result.getLong("crossed_high"), result.getLong("crossed_low"), result.getLong("crossed_close"));
+            }
+        }
+    }
+
+    private static long duplicateCount(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT COALESCE(SUM(rows_with_key - 1), 0)
+                FROM (
+                    SELECT COUNT(*) AS rows_with_key
+                    FROM historical_price
+                    GROUP BY source, epic, resolution, snapshot_time_utc
+                    HAVING COUNT(*) > 1
+                )
+                """);
+             ResultSet result = statement.executeQuery()) {
+            result.next();
+            return result.getLong(1);
+        }
+    }
+
+    private static long outOfWindowRowCount(Connection connection, HistoryImportRequest request) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT COUNT(*) FROM historical_price
+                WHERE source != ? OR epic != ? OR resolution != ?
+                   OR snapshot_time_utc < ? OR snapshot_time_utc >= ?
+                """)) {
+            statement.setString(1, request.source());
+            statement.setString(2, request.epic());
+            statement.setString(3, request.resolution());
+            statement.setString(4, request.from().toString());
+            statement.setString(5, request.to().toString());
+            try (ResultSet result = statement.executeQuery()) {
+                result.next();
+                return result.getLong(1);
             }
         }
     }
@@ -291,14 +319,6 @@ public final class HistoryStagingStore {
         }
     }
 
-    private static void bindRequestWindow(PreparedStatement statement, HistoryImportRequest request) throws SQLException {
-        statement.setString(1, request.source());
-        statement.setString(2, request.epic());
-        statement.setString(3, request.resolution());
-        statement.setString(4, request.from().toString());
-        statement.setString(5, request.to().toString());
-    }
-
     private static Duration resolutionDuration(String resolution) {
         return switch (resolution) {
             case "MINUTE" -> Duration.ofMinutes(1);
@@ -318,6 +338,20 @@ public final class HistoryStagingStore {
             connection.rollback();
         } catch (SQLException rollbackFailure) {
             original.addSuppressed(rollbackFailure);
+        }
+    }
+
+    private static void validatePageWindow(HistoryImportRequest request, ImportedPage page) {
+        if (!page.requestedFrom().isBefore(page.requestedTo())
+                || page.requestedFrom().isBefore(request.from())
+                || page.requestedTo().isAfter(request.to())) {
+            throw new IllegalArgumentException("staged page must be contained by the history import window");
+        }
+        for (HistoricalPrice price : page.prices()) {
+            Instant snapshotTime = Objects.requireNonNull(price, "page price").getSnapshotTimeUtc();
+            if (snapshotTime == null || snapshotTime.isBefore(request.from()) || !snapshotTime.isBefore(request.to())) {
+                throw new IllegalArgumentException("staged price must be contained by the history import window");
+            }
         }
     }
 

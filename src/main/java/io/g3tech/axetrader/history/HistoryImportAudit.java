@@ -10,7 +10,22 @@ public record HistoryImportAudit(
         long crossedOpenCount,
         long crossedHighCount,
         long crossedLowCount,
-        long crossedCloseCount) {
+        long crossedCloseCount,
+        long outOfWindowRowCount) {
+
+    public HistoryImportAudit(
+            long rowCount,
+            long distinctTimestampCount,
+            long duplicateCount,
+            long invalidFieldCount,
+            long coverageGapCount,
+            long crossedOpenCount,
+            long crossedHighCount,
+            long crossedLowCount,
+            long crossedCloseCount) {
+        this(rowCount, distinctTimestampCount, duplicateCount, invalidFieldCount, coverageGapCount,
+                crossedOpenCount, crossedHighCount, crossedLowCount, crossedCloseCount, 0);
+    }
 
     public boolean isPromotable() {
         return rowCount > 0
@@ -20,6 +35,7 @@ public record HistoryImportAudit(
                 && crossedOpenCount == 0
                 && crossedHighCount == 0
                 && crossedLowCount == 0
-                && crossedCloseCount == 0;
+                && crossedCloseCount == 0
+                && outOfWindowRowCount == 0;
     }
 }
