@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class CapitalHistoricalPricePageSourceTest {
@@ -74,10 +75,54 @@ class CapitalHistoricalPricePageSourceTest {
         verify(authenticationClient).createSession();
     }
 
+    @Test
+    void rejectsMoreThanOneThousandBarsBeforeAuthenticationOrNetworkAccess() {
+        AuthenticationClient authenticationClient = mock(AuthenticationClient.class);
+        ApiClient apiClient = mock(ApiClient.class);
+        Instant from = Instant.parse("2025-01-20T16:20:00Z");
+        Instant to = Instant.parse("2025-01-20T16:23:00Z");
+        HistoryImportRequest request = new HistoryImportRequest(
+                "US500", "MINUTE", from, to, Path.of("target/history.sqlite"), "capital", false);
+        CapitalHistoricalPricePageSource source = new CapitalHistoricalPricePageSource(authenticationClient, apiClient);
+
+        org.assertj.core.api.Assertions.assertThatIllegalArgumentException()
+                .isThrownBy(() -> source.fetch(request, from, to, 1_001));
+
+        verifyNoInteractions(authenticationClient, apiClient);
+    }
+
+    @Test
+    void hashesAreDeterministicAndChangeWhenReturnedPriceChanges() {
+        AuthenticationClient authenticationClient = mock(AuthenticationClient.class);
+        ApiClient apiClient = mock(ApiClient.class);
+        ConversationContext context = new ConversationContext("client", "account", "stream");
+        Instant from = Instant.parse("2025-01-20T16:20:00Z");
+        Instant to = Instant.parse("2025-01-20T16:23:00Z");
+        HistoryImportRequest request = new HistoryImportRequest(
+                "US500", "MINUTE", from, to, Path.of("target/history.sqlite"), "capital", false);
+        when(authenticationClient.createSession()).thenReturn(context);
+        when(apiClient.getPrices(any(), any())).thenReturn(
+                new GetPricesResponse(List.of(price()), null, null),
+                new GetPricesResponse(List.of(price()), null, null),
+                new GetPricesResponse(List.of(priceWithCloseBid("6023.5")), null, null));
+        CapitalHistoricalPricePageSource source = new CapitalHistoricalPricePageSource(authenticationClient, apiClient);
+
+        ImportedPage first = source.fetch(request, from, to, 1_000);
+        ImportedPage same = source.fetch(request, from, to, 1_000);
+        ImportedPage changed = source.fetch(request, from, to, 1_000);
+
+        assertThat(same.payloadHash()).isEqualTo(first.payloadHash());
+        assertThat(changed.payloadHash()).isNotEqualTo(first.payloadHash());
+    }
+
     private static PricesItem price() {
+        return priceWithCloseBid("6023.4");
+    }
+
+    private static PricesItem priceWithCloseBid(String closeBid) {
         return new PricesItem("20/01/2025 16:20:00", "2025-01-20T16:20:00Z",
                 new OpenPrice(decimal("6023.1"), decimal("6023.2"), null),
-                new ClosePrice(decimal("6023.4"), decimal("6023.3"), null),
+                new ClosePrice(decimal(closeBid), decimal("6023.3"), null),
                 new HighPrice(decimal("6024.1"), decimal("6024.2"), null),
                 new LowPrice(decimal("6022.1"), decimal("6022.2"), null), 42L);
     }

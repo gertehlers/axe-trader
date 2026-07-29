@@ -16,6 +16,16 @@ public record HistoryImportRequest(
         String source,
         boolean discoveryWindow) {
 
+    public HistoryImportRequest(
+            String epic,
+            String resolution,
+            Instant from,
+            Instant to,
+            Path stagingDatabase,
+            boolean discoveryWindow) {
+        this(epic, resolution, from, to, stagingDatabase, "capital", discoveryWindow);
+    }
+
     public HistoryImportRequest {
         if (epic == null || epic.isBlank()) {
             throw new IllegalArgumentException("epic must be configured");

@@ -23,6 +23,8 @@ import java.util.Objects;
 @Component
 public class CapitalHistoricalPricePageSource implements HistoricalPricePageSource {
 
+    private static final int CAPITAL_MAX_BARS = 1_000;
+
     private final AuthenticationClient authenticationClient;
     private final ApiClient apiClient;
     private volatile ConversationContext conversationContext;
@@ -50,8 +52,8 @@ public class CapitalHistoricalPricePageSource implements HistoricalPricePageSour
         if (!fromInclusive.isBefore(toExclusive)) {
             throw new IllegalArgumentException("page window must be a non-empty half-open interval");
         }
-        if (maxBars <= 0) {
-            throw new IllegalArgumentException("maxBars must be positive");
+        if (maxBars <= 0 || maxBars > CAPITAL_MAX_BARS) {
+            throw new IllegalArgumentException("maxBars must be between 1 and " + CAPITAL_MAX_BARS);
         }
         if (fromInclusive.isBefore(request.from()) || toExclusive.isAfter(request.to())) {
             throw new IllegalArgumentException("page window must be contained by the import window");

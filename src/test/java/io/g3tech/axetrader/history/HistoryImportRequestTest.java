@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThat;
 
 class HistoryImportRequestTest {
 
@@ -22,6 +23,15 @@ class HistoryImportRequestTest {
         assertThatIllegalArgumentException().isThrownBy(() -> new HistoryImportRequest(
                 "US500", "MINUTE", Instant.parse("2025-01-02T00:00:00Z"),
                 Instant.parse("2025-01-01T00:00:00Z"), null, "capital", false));
+    }
+
+    @Test
+    void omittedSourceDefaultsToCapital() {
+        HistoryImportRequest request = new HistoryImportRequest(
+                "US500", "MINUTE", Instant.parse("2025-01-01T00:00:00Z"),
+                Instant.parse("2025-01-02T00:00:00Z"), Path.of("target/history.sqlite"), false);
+
+        assertThat(request.source()).isEqualTo("capital");
     }
 
     private static HistoryImportRequest request(
