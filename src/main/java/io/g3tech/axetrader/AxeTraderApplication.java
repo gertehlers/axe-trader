@@ -14,7 +14,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @ConfigurationPropertiesScan
 public class AxeTraderApplication {
 
-	static void main(String[] args) throws IOException {
+	public static void main(String[] args) throws IOException {
 		if (historyImportEnabled(args)) {
 			SpringApplication.run(HistoryReingestionApplication.class, args);
 			return;
