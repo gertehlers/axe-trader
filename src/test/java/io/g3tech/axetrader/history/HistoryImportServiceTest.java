@@ -117,6 +117,30 @@ class HistoryImportServiceTest {
     }
 
     @Test
+    void stageRejectsOffMinutePricesWithoutConsumingThePendingInterval() throws Exception {
+        RecordingSource source = new RecordingSource(List.of(page(FROM, TO,
+                price("2024-01-01T00:00:30Z"))));
+        HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
+
+        assertThatThrownBy(() -> service.stage(request(), activeDatabase(), archive()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("whole UTC minute");
+
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + request().stagingDatabase());
+             var rows = connection.createStatement().executeQuery("""
+                     SELECT requested_from_utc, requested_to_utc, state
+                     FROM history_import_work
+                     """)) {
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getString(1)).isEqualTo(FROM.toString());
+            assertThat(rows.getString(2)).isEqualTo(TO.toString());
+            assertThat(rows.getString(3)).isEqualTo("PENDING");
+            assertThat(rows.next()).isFalse();
+        }
+        assertThat(completionRows(request().stagingDatabase())).isZero();
+    }
+
+    @Test
     void stageSplitsLongImportsIntoCapitalSupportedBoundedWindows() {
         Instant firstWindowEnd = FROM.plusSeconds(999 * 60L);
         Instant longImportEnd = FROM.plusSeconds(1_000 * 60L);
@@ -294,6 +318,39 @@ class HistoryImportServiceTest {
     }
 
     @Test
+    void resumeRefusesForgedRunIdAndForeignWorkBeforeProviderAccess() throws Exception {
+        HistoricalPricePageSource interrupted = (ignored, from, to, maxBars) -> {
+            throw new IllegalStateException("simulated interruption");
+        };
+        HistoryImportRequest request = request();
+        assertThatThrownBy(() -> new HistoryImportService(interrupted, new HistoryDatabasePromoter())
+                .stage(request, activeDatabase(), archive())).hasMessageContaining("simulated interruption");
+
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + request.stagingDatabase())) {
+            connection.createStatement().executeUpdate("UPDATE history_import_run SET import_run_id='forged'");
+        }
+        HistoricalPricePageSource mustNotFetch = (ignored, from, to, maxBars) -> {
+            throw new AssertionError("provider must not be called");
+        };
+        assertThatThrownBy(() -> new HistoryImportService(mustNotFetch, new HistoryDatabasePromoter())
+                .stage(request, activeDatabase(), archive()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("run identity");
+
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + request.stagingDatabase())) {
+            connection.createStatement().executeUpdate("UPDATE history_import_run SET import_run_id=(SELECT import_run_id FROM history_import_work LIMIT 1)");
+            connection.createStatement().executeUpdate("""
+                    INSERT INTO history_import_work(import_run_id, requested_from_utc, requested_to_utc, state)
+                    VALUES ('foreign-run','2024-01-01T00:00:00Z','2024-01-01T00:01:00Z','PENDING')
+                    """);
+        }
+        assertThatThrownBy(() -> new HistoryImportService(mustNotFetch, new HistoryDatabasePromoter())
+                .stage(request, activeDatabase(), archive()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("foreign run");
+    }
+
+    @Test
     void completedStageCannotBeReusedEvenWithTheSameIdentity() {
         HistoryImportRequest request = request();
         new HistoryImportService(new RecordingSource(List.of(completePage(FROM, TO))), new HistoryDatabasePromoter())
@@ -461,6 +518,47 @@ class HistoryImportServiceTest {
     }
 
     @Test
+    void promoteRejectsTamperedClosurePayloadHashBeforeChangingActiveFiles() throws Exception {
+        assertPromotionRejectsClosureTamper(
+                "UPDATE history_import_closure SET payload_hash='forged'",
+                "matching exact empty provider observation");
+    }
+
+    @Test
+    void promoteRejectsTamperedClosureProvenanceBeforeChangingActiveFiles() throws Exception {
+        assertPromotionRejectsClosureTamper(
+                "UPDATE history_import_closure SET provenance='SYNTHESIZED'",
+                "closure provenance");
+    }
+
+    @Test
+    void diagnosticRawPageCountersDoNotInvalidateCompletedEvidence() throws Exception {
+        HistoryImportRequest request = request();
+        new HistoryImportService(new RecordingSource(List.of(completePage(FROM, TO))), new HistoryDatabasePromoter())
+                .stage(request, activeDatabase(), archive());
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + request.stagingDatabase())) {
+            connection.createStatement().executeUpdate("""
+                    UPDATE history_import_page
+                    SET received_count=received_count+10, accepted_count=accepted_count+10
+                    """);
+        }
+        Path active = tempDir.resolve("raw-active.sqlite");
+        Path archive = tempDir.resolve("raw-active.sqlite.gz");
+        Files.writeString(active, "legacy-active");
+        Files.writeString(archive, "legacy-archive");
+
+        new HistoryImportService(
+                (ignoredRequest, ignoredFrom, ignoredTo, ignoredMaxBars) -> {
+                    throw new AssertionError("promotion must not fetch provider data");
+                },
+                new HistoryDatabasePromoter()).promote(request, active, archive);
+
+        assertThat(request.stagingDatabase()).doesNotExist();
+        assertThat(active).exists();
+        assertThat(archive).exists();
+    }
+
+    @Test
     void promoteDiscoversTheStoredRequestWithoutCommandLineRangeProperties() throws Exception {
         HistoryImportRequest request = request();
         new HistoryImportService(new RecordingSource(List.of(completePage(FROM, TO))), new HistoryDatabasePromoter())
@@ -608,6 +706,37 @@ class HistoryImportServiceTest {
     private HistoryImportRequest request() {
         return new HistoryImportRequest("US500", "MINUTE", FROM, TO,
                 tempDir.resolve("stage.sqlite"), "capital");
+    }
+
+    private void assertPromotionRejectsClosureTamper(String tamperSql, String expectedMessage) throws Exception {
+        HistoryImportRequest request = request();
+        ScriptedSource source = new ScriptedSource(Map.of(
+                new Interval(FROM, TO), page(FROM, TO,
+                        price("2024-01-01T00:00:00Z"), price("2024-01-01T00:02:00Z"),
+                        price("2024-01-01T00:03:00Z")),
+                new Interval(FROM.plusSeconds(60), FROM.plusSeconds(120)),
+                page(FROM.plusSeconds(60), FROM.plusSeconds(120))));
+        new HistoryImportService(source, new HistoryDatabasePromoter())
+                .stage(request, activeDatabase(), archive());
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + request.stagingDatabase())) {
+            connection.createStatement().executeUpdate(tamperSql);
+        }
+        Path active = tempDir.resolve("closure-active.sqlite");
+        Path archive = tempDir.resolve("closure-active.sqlite.gz");
+        Files.writeString(active, "legacy-active");
+        Files.writeString(archive, "legacy-archive");
+        HistoryImportService service = new HistoryImportService(
+                (ignoredRequest, ignoredFrom, ignoredTo, ignoredMaxBars) -> {
+                    throw new AssertionError("promotion must not fetch provider data");
+                },
+                new HistoryDatabasePromoter());
+
+        assertThatThrownBy(() -> service.promote(request, active, archive))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(expectedMessage);
+        assertThat(Files.readString(active)).isEqualTo("legacy-active");
+        assertThat(Files.readString(archive)).isEqualTo("legacy-archive");
+        assertThat(request.stagingDatabase()).exists();
     }
 
     private Path activeDatabase() {

@@ -2,10 +2,14 @@ package io.g3tech.axetrader.history;
 
 import java.time.Instant;
 
-public record HistoryCoverageGap(Instant fromInclusive, Instant toExclusive, String provenance) {
+public record HistoryCoverageGap(Instant fromInclusive, Instant toExclusive, String provenance, String payloadHash) {
 
     public HistoryCoverageGap(Instant fromInclusive, Instant toExclusive) {
-        this(fromInclusive, toExclusive, null);
+        this(fromInclusive, toExclusive, null, null);
+    }
+
+    public HistoryCoverageGap(Instant fromInclusive, Instant toExclusive, String provenance) {
+        this(fromInclusive, toExclusive, provenance, null);
     }
 
     public HistoryCoverageGap {

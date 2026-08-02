@@ -5,6 +5,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.sql.DriverManager;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -167,6 +169,41 @@ class HistoryStagingStoreTest {
             assertThat(audit.acceptedMinuteCount()).isEqualTo(3);
             assertThat(audit.excludedMinuteCount()).isEqualTo(1);
             assertThat(audit.isConsistent()).isFalse();
+        }
+    }
+
+    @Test
+    void auditRejectsClosureWithoutExactPersistedProviderObservation() throws Exception {
+        HistoryImportRequest request = request();
+        try (HistoryStagingStore store = HistoryStagingStore.openForStage(
+                request.stagingDatabase(), request, Duration.ofMinutes(999))) {
+            HistoryStagingStore.WorkItem work = store.nextPending();
+            store.process(work, new ImportedPage(FROM, TO, List.of(), "empty-hash"), request);
+        }
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + request.stagingDatabase())) {
+            connection.createStatement().executeUpdate(
+                    "UPDATE history_import_closure SET provenance='SYNTHESIZED'");
+        }
+
+        try (HistoryStagingStore store = HistoryStagingStore.open(request.stagingDatabase())) {
+            assertThatThrownBy(() -> store.audit(request))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("closure provenance");
+        }
+    }
+
+    @Test
+    void secondStageOwnerIsRefusedBeforeWorkCanBeFetched() {
+        HistoryImportRequest request = request();
+        try (HistoryStagingStore first = HistoryStagingStore.openForStage(
+                request.stagingDatabase(), request, Duration.ofMinutes(999))) {
+            assertThatThrownBy(() -> {
+                try (HistoryStagingStore ignored = HistoryStagingStore.openForStage(
+                        request.stagingDatabase(), request, Duration.ofMinutes(999))) {
+                    // A second owner must never reach provider work.
+                }
+            }).isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("already active");
         }
     }
 

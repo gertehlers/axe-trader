@@ -128,6 +128,11 @@ public class HistoryImportService {
                 if (price.timestamp().isBefore(fromInclusive) || !price.timestamp().isBefore(toExclusive)) {
                     throw new IllegalStateException("Historical price source returned a timestamp outside its half-open page bounds");
                 }
+                if (price.timestamp().getNano() != 0
+                        || Math.floorMod(price.timestamp().getEpochSecond(), 60) != 0) {
+                    throw new IllegalStateException(
+                            "Historical price source returned a timestamp that is not on a whole UTC minute");
+                }
             }
             normalized.add(price);
         }
@@ -265,12 +270,7 @@ public class HistoryImportService {
         audit.exclusionsByReason().entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .forEach(entry -> canonical.append(entry.getKey()).append('=').append(entry.getValue()).append('\n'));
-        canonical.append(audit.observationCount()).append('\n')
-                .append(audit.rawReceivedCount()).append('\n')
-                .append(audit.rawAcceptedCount()).append('\n')
-                .append(audit.rawRejectedCount()).append('\n')
-                .append(audit.pendingWorkCount()).append('\n')
-                .append(audit.isConsistent());
+        canonical.append(audit.isConsistent());
         try {
             byte[] bytes = MessageDigest.getInstance("SHA-256")
                     .digest(canonical.toString().getBytes(StandardCharsets.UTF_8));

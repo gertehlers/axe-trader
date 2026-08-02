@@ -17,6 +17,9 @@ import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.ResourceAccessException;
 
 import java.math.BigDecimal;
+import java.net.ConnectException;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -38,31 +41,43 @@ public class CapitalHistoricalPricePageSource implements HistoricalPricePageSour
     private final AuthenticationClient authenticationClient;
     private final ApiClient apiClient;
     private final CapitalRequestPacer pacer;
+    private final CapitalSessionPacer sessionPacer;
     private final CapitalRequestPacer.Sleeper sleeper;
     private final Supplier<Duration> jitter;
+    private final Supplier<Instant> wallClock;
     private final int maxAttempts;
     private volatile ConversationContext conversationContext;
 
     public CapitalHistoricalPricePageSource(AuthenticationClient authenticationClient, ApiClient apiClient) {
-        this(authenticationClient, apiClient, new CapitalRequestPacer(5), systemSleeper(),
-                () -> Duration.ofMillis(ThreadLocalRandom.current().nextLong(101)), 4);
+        this(authenticationClient, apiClient, new CapitalRequestPacer(5), new CapitalSessionPacer(), systemSleeper(),
+                () -> Duration.ofMillis(ThreadLocalRandom.current().nextLong(101)), 4, Instant::now);
     }
 
     @Autowired
     public CapitalHistoricalPricePageSource(AuthenticationClient authenticationClient, ApiClient apiClient,
-                                            CapitalRequestPacer pacer) {
-        this(authenticationClient, apiClient, pacer, systemSleeper(),
-                () -> Duration.ofMillis(ThreadLocalRandom.current().nextLong(101)), 4);
+                                            CapitalRequestPacer pacer, CapitalSessionPacer sessionPacer) {
+        this(authenticationClient, apiClient, pacer, sessionPacer, systemSleeper(),
+                () -> Duration.ofMillis(ThreadLocalRandom.current().nextLong(101)), 4, Instant::now);
     }
 
     CapitalHistoricalPricePageSource(AuthenticationClient authenticationClient, ApiClient apiClient,
                                      CapitalRequestPacer pacer, CapitalRequestPacer.Sleeper sleeper,
                                      Supplier<Duration> jitter, int maxAttempts) {
+        this(authenticationClient, apiClient, pacer, new CapitalSessionPacer(), sleeper, jitter, maxAttempts,
+                Instant::now);
+    }
+
+    CapitalHistoricalPricePageSource(AuthenticationClient authenticationClient, ApiClient apiClient,
+                                     CapitalRequestPacer pacer, CapitalSessionPacer sessionPacer,
+                                     CapitalRequestPacer.Sleeper sleeper, Supplier<Duration> jitter,
+                                     int maxAttempts, Supplier<Instant> wallClock) {
         this.authenticationClient = Objects.requireNonNull(authenticationClient, "authenticationClient");
         this.apiClient = Objects.requireNonNull(apiClient, "apiClient");
         this.pacer = Objects.requireNonNull(pacer, "pacer");
+        this.sessionPacer = Objects.requireNonNull(sessionPacer, "sessionPacer");
         this.sleeper = Objects.requireNonNull(sleeper, "sleeper");
         this.jitter = Objects.requireNonNull(jitter, "jitter");
+        this.wallClock = Objects.requireNonNull(wallClock, "wallClock");
         if (maxAttempts < 1) {
             throw new IllegalArgumentException("maxAttempts must be positive");
         }
@@ -97,10 +112,11 @@ public class CapitalHistoricalPricePageSource implements HistoricalPricePageSour
             HistoryImportRequest request, Instant fromInclusive, Instant toExclusive, int maxBars) {
         RuntimeException lastFailure = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            ConversationContext context = authenticatedContext();
             pacer.acquire();
             try {
                 return Objects.requireNonNull(apiClient.getPrices(
-                                authenticatedContext(), new GetPricesRequest(request.epic(), request.resolution(),
+                                context, new GetPricesRequest(request.epic(), request.resolution(),
                                         fromInclusive, toExclusive, maxBars)),
                         "Capital prices response was empty");
             } catch (HttpClientErrorException.NotFound ignored) {
@@ -124,7 +140,7 @@ public class CapitalHistoricalPricePageSource implements HistoricalPricePageSour
         if (failure instanceof HttpClientErrorException.TooManyRequests rateLimited) {
             Duration retryAfter = retryAfter(rateLimited.getResponseHeaders());
             if (retryAfter != null) {
-                return min(retryAfter, Duration.ofMinutes(10));
+                return retryAfter;
             }
         }
         long exponentialMillis = Math.min(5_000L, 250L << Math.min(failedAttempt - 1, 4));
@@ -133,14 +149,24 @@ public class CapitalHistoricalPricePageSource implements HistoricalPricePageSour
     }
 
     private static boolean retryable(RuntimeException failure) {
-        if (failure instanceof ResourceAccessException) {
-            return true;
+        if (failure instanceof ResourceAccessException transport) {
+            return hasTransientTransportCause(transport);
         }
         return failure instanceof HttpStatusCodeException http
                 && (http.getStatusCode().value() == 429 || http.getStatusCode().is5xxServerError());
     }
 
-    private static Duration retryAfter(HttpHeaders headers) {
+    private static boolean hasTransientTransportCause(Throwable failure) {
+        for (Throwable cause = failure.getCause(); cause != null; cause = cause.getCause()) {
+            if (cause instanceof SocketTimeoutException || cause instanceof ConnectException
+                    || cause instanceof SocketException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Duration retryAfter(HttpHeaders headers) {
         if (headers == null) {
             return null;
         }
@@ -153,7 +179,7 @@ public class CapitalHistoricalPricePageSource implements HistoricalPricePageSour
         } catch (NumberFormatException ignored) {
             try {
                 Instant retryAt = ZonedDateTime.parse(value.trim(), DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();
-                return nonNegative(Duration.between(Instant.now(), retryAt));
+                return nonNegative(Duration.between(wallClock.get(), retryAt));
             } catch (DateTimeParseException malformed) {
                 return null;
             }
@@ -196,10 +222,28 @@ public class CapitalHistoricalPricePageSource implements HistoricalPricePageSour
 
         synchronized (this) {
             if (conversationContext == null) {
-                conversationContext = authenticationClient.createSession();
+                conversationContext = createSessionWithRetry();
             }
             return conversationContext;
         }
+    }
+
+    private ConversationContext createSessionWithRetry() {
+        RuntimeException lastFailure = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            sessionPacer.acquire();
+            try {
+                return Objects.requireNonNull(authenticationClient.createSession(),
+                        "Capital authentication returned no conversation context");
+            } catch (RuntimeException failure) {
+                if (!retryable(failure) || attempt == maxAttempts) {
+                    throw failure;
+                }
+                lastFailure = failure;
+                sleeper.sleep(retryDelay(failure, attempt));
+            }
+        }
+        throw lastFailure == null ? new IllegalStateException("Capital session retry loop made no attempt") : lastFailure;
     }
 
     private static void validatePage(HistoryImportRequest request, Instant fromInclusive, Instant toExclusive, int maxBars) {
