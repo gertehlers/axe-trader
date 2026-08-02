@@ -111,6 +111,22 @@ class HistoryStagingStoreTest {
         }
     }
 
+    @Test
+    void validatesEachPriceAgainstItsOwnHalfOpenPageBounds() {
+        HistoryImportRequest request = request();
+        ImportedPage laterPage = new ImportedPage(
+                Instant.parse("2024-01-01T00:01:00Z"), TO,
+                List.of(price("2024-01-01T00:00:00Z", "4800.1", "4800.3")), "later-page");
+        try (HistoryStagingStore store = HistoryStagingStore.open(request.stagingDatabase())) {
+            store.writePage(laterPage, request);
+
+            assertThat(store.countAccepted(request)).isZero();
+            assertThat(store.exclusions(request))
+                    .extracting(HistoryStagingStore.PriceExclusion::reason)
+                    .containsExactly("TIMESTAMP_OUT_OF_RANGE");
+        }
+    }
+
     private HistoryImportRequest request() {
         return new HistoryImportRequest("US500", "MINUTE", FROM, TO,
                 tempDir.resolve("staging.sqlite"), "capital");

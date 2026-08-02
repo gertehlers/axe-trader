@@ -10,6 +10,7 @@ import io.g3tech.axetrader.brokers.capital.dto.prices.LowPrice;
 import io.g3tech.axetrader.brokers.capital.dto.prices.OpenPrice;
 import io.g3tech.axetrader.brokers.capital.dto.prices.PricesItem;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -39,14 +40,26 @@ public class CapitalHistoricalPricePageSource implements HistoricalPricePageSour
         Objects.requireNonNull(request, "request");
         validatePage(request, fromInclusive, toExclusive, maxBars);
 
-        var response = Objects.requireNonNull(apiClient.getPrices(
-                authenticatedContext(),
-                new GetPricesRequest(request.epic(), request.resolution(), fromInclusive, toExclusive, maxBars)),
-                "Capital prices response was empty");
+        final io.g3tech.axetrader.brokers.capital.dto.prices.GetPricesResponse response;
+        try {
+            response = Objects.requireNonNull(apiClient.getPrices(
+                    authenticatedContext(),
+                    new GetPricesRequest(request.epic(), request.resolution(), fromInclusive, toExclusive, maxBars)),
+                    "Capital prices response was empty");
+        } catch (HttpClientErrorException.NotFound ignored) {
+            return new ImportedPage(fromInclusive, toExclusive, List.of(), hashPage(fromInclusive, toExclusive, List.of()));
+        }
         var returnedPrices = response.prices() == null ? List.<PricesItem>of() : response.prices();
-        var importedPrices = returnedPrices.stream().map(CapitalHistoricalPricePageSource::map).toList();
+        var inPagePrices = returnedPrices.stream().filter(price -> {
+            Instant timestamp = parseUtcTimestamp(price.snapshotTimeUTC());
+            if (timestamp.isAfter(toExclusive)) {
+                throw new IllegalStateException("Capital returned a timestamp after the requested page");
+            }
+            return timestamp.isBefore(toExclusive);
+        }).toList();
+        var importedPrices = inPagePrices.stream().map(CapitalHistoricalPricePageSource::map).toList();
 
-        return new ImportedPage(fromInclusive, toExclusive, importedPrices, hashPage(fromInclusive, toExclusive, returnedPrices));
+        return new ImportedPage(fromInclusive, toExclusive, importedPrices, hashPage(fromInclusive, toExclusive, inPagePrices));
     }
 
     private ConversationContext authenticatedContext() {

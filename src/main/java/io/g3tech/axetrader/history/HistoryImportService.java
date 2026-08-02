@@ -28,7 +28,7 @@ import java.util.Set;
 public class HistoryImportService {
 
     private static final int MAX_BARS_PER_PAGE = 1_000;
-    private static final Duration MINUTE = Duration.ofMinutes(1);
+    private static final Duration CAPITAL_PAGE_WINDOW = Duration.ofMinutes(MAX_BARS_PER_PAGE - 1L);
 
     private final HistoricalPricePageSource pageSource;
     private final HistoryDatabasePromoter promoter;
@@ -42,7 +42,7 @@ public class HistoryImportService {
     public HistoryImportAudit probe(HistoryImportRequest request, Path activeDatabase, Path archive) {
         Objects.requireNonNull(request, "request");
         validatePaths(request.stagingDatabase(), activeDatabase, archive);
-        ImportedPage page = fetch(request, request.from());
+        ImportedPage page = fetch(request, request.from(), boundedTo(request.from(), request.to()));
         return auditProbe(page, request);
     }
 
@@ -63,10 +63,10 @@ public class HistoryImportService {
         HistoryImportAudit audit;
         try (HistoryStagingStore store = HistoryStagingStore.open(staging)) {
             while (cursor.isBefore(request.to())) {
-                ImportedPage page = fetch(request, cursor);
-                Instant next = nextCursor(page, cursor, request.to());
+                Instant pageTo = boundedTo(cursor, request.to());
+                ImportedPage page = fetch(request, cursor, pageTo);
                 store.writePage(page, request);
-                cursor = next;
+                cursor = pageTo;
             }
             audit = store.audit(request);
         }
@@ -112,34 +112,31 @@ public class HistoryImportService {
         rejectSamePath(active, gzArchive);
     }
 
-    private ImportedPage fetch(HistoryImportRequest request, Instant cursor) {
+    private ImportedPage fetch(HistoryImportRequest request, Instant fromInclusive, Instant toExclusive) {
         ImportedPage page = Objects.requireNonNull(
-                pageSource.fetch(request, cursor, request.to(), MAX_BARS_PER_PAGE),
+                pageSource.fetch(request, fromInclusive, toExclusive, MAX_BARS_PER_PAGE),
                 "Historical price source returned no page");
-        if (!page.requestedFrom().equals(cursor) || !page.requestedTo().equals(request.to())) {
+        if (!page.requestedFrom().equals(fromInclusive) || !page.requestedTo().equals(toExclusive)) {
             throw new IllegalStateException("Historical price source returned unexpected page bounds");
         }
-        return page;
+        List<ImportedPrice> normalized = new ArrayList<>();
+        for (ImportedPrice price : page.prices()) {
+            if (price != null && price.timestamp() != null) {
+                if (price.timestamp().equals(toExclusive)) {
+                    continue;
+                }
+                if (price.timestamp().isBefore(fromInclusive) || !price.timestamp().isBefore(toExclusive)) {
+                    throw new IllegalStateException("Historical price source returned a timestamp outside its half-open page bounds");
+                }
+            }
+            normalized.add(price);
+        }
+        return new ImportedPage(fromInclusive, toExclusive, normalized, page.payloadHash());
     }
 
-    private static Instant nextCursor(ImportedPage page, Instant cursor, Instant requestedTo) {
-        if (page.prices().isEmpty()) {
-            throw new IllegalStateException("Historical price source returned an empty page before the import completed");
-        }
-        Instant greatestTimestamp = page.prices().stream()
-                .filter(Objects::nonNull)
-                .map(ImportedPrice::timestamp)
-                .filter(Objects::nonNull)
-                .max(Instant::compareTo)
-                .orElseThrow(() -> new IllegalStateException("Historical price page cannot advance without a timestamp"));
-        if (greatestTimestamp.isBefore(cursor) || !greatestTimestamp.isBefore(requestedTo)) {
-            throw new IllegalStateException("Historical price page did not advance within its half-open bounds");
-        }
-        Instant next = greatestTimestamp.plus(MINUTE);
-        if (!next.isAfter(cursor)) {
-            throw new IllegalStateException("Historical price page did not advance the import cursor");
-        }
-        return next;
+    private static Instant boundedTo(Instant fromInclusive, Instant requestedTo) {
+        Instant pageLimit = fromInclusive.plus(CAPITAL_PAGE_WINDOW);
+        return pageLimit.isBefore(requestedTo) ? pageLimit : requestedTo;
     }
 
     private HistoryImportAudit auditProbe(ImportedPage page, HistoryImportRequest request) {
@@ -165,10 +162,14 @@ public class HistoryImportService {
         long duplicateCount = timestamps.size() - distinctTimestamps.size();
         Instant actualFrom = distinctTimestamps.stream().min(Instant::compareTo).orElse(null);
         Instant actualTo = distinctTimestamps.stream().max(Instant::compareTo).orElse(null);
+        HistoryCoverage.Assessment coverage = HistoryCoverage.assess(request.from(), request.to(), List.of(
+                new HistoryCoverage.Page(page.requestedFrom(), page.requestedTo(), timestamps)));
         return new HistoryImportAudit(
                 request.from(), request.to(), actualFrom, actualTo,
                 page.prices().size(), accepted.size(), rejected,
-                distinctTimestamps.size(), rejected, duplicateCount, exclusions, duplicateCount == 0);
+                distinctTimestamps.size(), rejected, duplicateCount, exclusions,
+                coverage.recognizedSessionClosures(), coverage.continuityGaps(),
+                duplicateCount == 0 && coverage.continuityGaps().isEmpty());
     }
 
     private static CompletedImport discoverCompletedImport(Path stagingDatabase) {
@@ -250,7 +251,9 @@ public class HistoryImportService {
                 .append(audit.rejectedCount()).append('\n')
                 .append(audit.acceptedMinuteCount()).append('\n')
                 .append(audit.excludedMinuteCount()).append('\n')
-                .append(audit.duplicateCount()).append('\n');
+                .append(audit.duplicateCount()).append('\n')
+                .append(audit.recognizedSessionClosures()).append('\n')
+                .append(audit.continuityGaps()).append('\n');
         audit.exclusionsByReason().entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .forEach(entry -> canonical.append(entry.getKey()).append('=').append(entry.getValue()).append('\n'));

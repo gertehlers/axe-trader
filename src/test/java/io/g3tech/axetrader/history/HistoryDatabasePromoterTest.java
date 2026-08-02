@@ -14,6 +14,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Map;
+import java.util.List;
 import java.util.zip.GZIPInputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -54,7 +55,7 @@ class HistoryDatabasePromoterTest {
         Path archive = write("axe-trader.sqlite.gz", "legacy-archive");
         HistoryImportAudit failedAudit = new HistoryImportAudit(
                 Instant.parse("2024-01-01T00:00:00Z"), Instant.parse("2024-01-01T00:01:00Z"),
-                null, null, 1, 1, 0, 1, 0, 0, Map.of(), false);
+                null, null, 1, 1, 0, 1, 0, 0, Map.of(), List.of(), List.of(), false);
         HistoryDatabasePromoter promoter = new HistoryDatabasePromoter(Clock.fixed(NOW, ZoneOffset.UTC));
 
         assertThatThrownBy(() -> promoter.promote(staging, active, archive, failedAudit))
@@ -84,6 +85,20 @@ class HistoryDatabasePromoterTest {
         assertThat(Files.readString(staging)).isEqualTo("clean-database");
         assertThat(Files.readString(active)).isEqualTo("legacy-database");
         assertThat(archive).doesNotExist();
+    }
+
+    @Test
+    void refusesAnOtherwiseConsistentAuditWithAnUnexplainedContinuityGap() {
+        Instant from = Instant.parse("2024-01-01T00:00:00Z");
+        HistoryImportAudit audit = new HistoryImportAudit(
+                from, Instant.parse("2024-01-01T00:02:00Z"), from, from,
+                1, 1, 0, 1, 0, 0, Map.of(), List.of(),
+                List.of(new HistoryCoverageGap(Instant.parse("2024-01-01T00:01:00Z"),
+                        Instant.parse("2024-01-01T00:02:00Z"))), true);
+
+        assertThatThrownBy(() -> HistoryDatabasePromoter.requirePromotableAudit(audit))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("failed history import audit");
     }
 
     @Test
@@ -182,7 +197,7 @@ class HistoryDatabasePromoterTest {
         Instant from = Instant.parse("2024-01-01T00:00:00Z");
         Instant actual = Instant.parse("2024-01-01T00:00:00Z");
         return new HistoryImportAudit(from, Instant.parse("2024-01-01T00:01:00Z"),
-                actual, actual, 1, 1, 0, 1, 0, 0, Map.of(), true);
+                actual, actual, 1, 1, 0, 1, 0, 0, Map.of(), List.of(), List.of(), true);
     }
 
     private static HistoryDatabasePromoter.FileMover failFirstMoveTo(Path failedTarget) {

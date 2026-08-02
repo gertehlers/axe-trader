@@ -70,52 +70,84 @@ class HistoryImportServiceTest {
     }
 
     @Test
-    void stageAdvancesToOneMinuteAfterGreatestReturnedTimestamp() {
+    void stageUsesTheFullBoundedWindowInsteadOfTheGreatestReturnedTimestamp() {
         RecordingSource source = new RecordingSource(List.of(
-                page(FROM, TO, price("2024-01-01T00:01:00Z"), price("2024-01-01T00:00:00Z")),
-                page(Instant.parse("2024-01-01T00:02:00Z"), TO,
-                        price("2024-01-01T00:03:00Z"))));
+                page(FROM, TO, price("2024-01-01T00:01:00Z"), price("2024-01-01T00:00:00Z"))));
         HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
 
         service.stage(request(), activeDatabase(), archive());
 
-        assertThat(source.calls).containsExactly(
-                new FetchCall(FROM, TO, 1_000),
-                new FetchCall(Instant.parse("2024-01-01T00:02:00Z"), TO, 1_000));
+        assertThat(source.calls).containsExactly(new FetchCall(FROM, TO, 1_000));
     }
 
     @Test
-    void stageFailsClosedOnAnEmptyPage() {
-        RecordingSource source = new RecordingSource(List.of(page(FROM, TO)));
-        HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
-
-        assertThatThrownBy(() -> service.stage(request(), activeDatabase(), archive()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("empty");
-    }
-
-    @Test
-    void stageFailsClosedWhenAPageCannotAdvancePastItsCursor() {
+    void stageRecordsAnEmptyBoundedWindowAsARecognizedClosure() {
+        Instant firstWindowEnd = FROM.plusSeconds(999 * 60L);
+        Instant longImportEnd = FROM.plusSeconds(1_000 * 60L);
+        HistoryImportRequest request = new HistoryImportRequest("US500", "MINUTE", FROM, longImportEnd,
+                tempDir.resolve("closure-stage.sqlite"), "capital");
         RecordingSource source = new RecordingSource(List.of(
-                page(FROM, TO, price("2024-01-01T00:01:00Z")),
-                page(Instant.parse("2024-01-01T00:02:00Z"), TO,
-                        price("2024-01-01T00:01:00Z"))));
+                page(FROM, firstWindowEnd, price("2024-01-01T00:00:00Z")),
+                page(firstWindowEnd, longImportEnd)));
         HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
 
-        assertThatThrownBy(() -> service.stage(request(), activeDatabase(), archive()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("did not advance");
+        HistoryImportAudit audit = service.stage(request, activeDatabase(), archive());
+
+        assertThat(audit.recognizedSessionClosures()).isNotEmpty();
+        assertThat(audit.continuityGaps()).isEmpty();
+        assertThat(audit.isConsistent()).isTrue();
     }
 
     @Test
-    void stageFailsClosedWhenAPageReturnsTheExclusiveUpperBound() {
+    void stageDiscardsTheProvidersNominalInclusiveUpperBound() {
         RecordingSource source = new RecordingSource(List.of(page(FROM, TO,
-                price("2024-01-01T00:04:00Z"))));
+                price("2024-01-01T00:03:00Z"), price("2024-01-01T00:04:00Z"))));
+        HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
+
+        HistoryImportAudit audit = service.stage(request(), activeDatabase(), archive());
+
+        assertThat(audit.receivedCount()).isEqualTo(1);
+        assertThat(audit.acceptedCount()).isEqualTo(1);
+        assertThat(audit.rejectedCount()).isZero();
+        assertThat(audit.exclusionsByReason()).doesNotContainKey("TIMESTAMP_OUT_OF_RANGE");
+    }
+
+    @Test
+    void stageSplitsLongImportsIntoCapitalSupportedBoundedWindows() {
+        Instant firstWindowEnd = FROM.plusSeconds(999 * 60L);
+        Instant longImportEnd = FROM.plusSeconds(1_000 * 60L);
+        HistoryImportRequest request = new HistoryImportRequest("US500", "MINUTE", FROM, longImportEnd,
+                tempDir.resolve("long-stage.sqlite"), "capital");
+        RecordingSource source = new RecordingSource(List.of(
+                page(FROM, firstWindowEnd, price("2024-01-01T00:00:00Z")),
+                page(firstWindowEnd, longImportEnd, price("2024-01-01T16:39:00Z"))));
+        HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
+
+        service.stage(request, activeDatabase(), archive());
+
+        assertThat(source.calls).containsExactly(
+                new FetchCall(FROM, firstWindowEnd, 1_000),
+                new FetchCall(firstWindowEnd, longImportEnd, 1_000));
+    }
+
+    @Test
+    void stageRefusesToCertifyAnUnexplainedMissingMinute() {
+        RecordingSource source = new RecordingSource(List.of(page(FROM, TO,
+                price("2024-01-01T00:00:00Z"), price("2024-01-01T00:02:00Z"))));
         HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
 
         assertThatThrownBy(() -> service.stage(request(), activeDatabase(), archive()))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("half-open");
+                .hasMessageContaining("failed history import audit");
+
+        try (HistoryStagingStore store = HistoryStagingStore.open(request().stagingDatabase())) {
+            HistoryImportAudit audit = store.audit(request());
+            assertThat(audit.continuityGaps()).singleElement().satisfies(gap -> {
+                assertThat(gap.fromInclusive()).isEqualTo(Instant.parse("2024-01-01T00:01:00Z"));
+                assertThat(gap.toExclusive()).isEqualTo(Instant.parse("2024-01-01T00:02:00Z"));
+            });
+            assertThat(audit.isConsistent()).isFalse();
+        }
     }
 
     @Test
@@ -244,25 +276,29 @@ class HistoryImportServiceTest {
 
     @Test
     void promoteRefusesAPartialStageLeftByAPagingFailure() throws Exception {
+        Instant firstWindowEnd = FROM.plusSeconds(999 * 60L);
+        Instant longImportEnd = FROM.plusSeconds(1_000 * 60L);
+        HistoryImportRequest request = new HistoryImportRequest("US500", "MINUTE", FROM, longImportEnd,
+                tempDir.resolve("partial-stage.sqlite"), "capital");
         RecordingSource source = new RecordingSource(List.of(
-                page(FROM, TO, price("2024-01-01T00:01:00Z")),
-                page(Instant.parse("2024-01-01T00:02:00Z"), TO)));
+                page(FROM, firstWindowEnd, price("2024-01-01T00:01:00Z")),
+                page(FROM, longImportEnd, price("2024-01-01T16:39:00Z"))));
         HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
-        assertThatThrownBy(() -> service.stage(request(), activeDatabase(), archive()))
+        assertThatThrownBy(() -> service.stage(request, activeDatabase(), archive()))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("empty");
+                .hasMessageContaining("unexpected page bounds");
         Path active = tempDir.resolve("active.sqlite");
         Path archive = tempDir.resolve("active.sqlite.gz");
         Files.writeString(active, "legacy-active");
         Files.writeString(archive, "legacy-archive");
 
-        assertThatThrownBy(() -> service.promote(request().stagingDatabase(), active, archive))
+        assertThatThrownBy(() -> service.promote(request.stagingDatabase(), active, archive))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("completed");
 
         assertThat(Files.readString(active)).isEqualTo("legacy-active");
         assertThat(Files.readString(archive)).isEqualTo("legacy-archive");
-        assertThat(request().stagingDatabase()).exists();
+        assertThat(request.stagingDatabase()).exists();
     }
 
     @Test

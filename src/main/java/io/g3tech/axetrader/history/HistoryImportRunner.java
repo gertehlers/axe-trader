@@ -40,9 +40,12 @@ public final class HistoryImportRunner implements ApplicationRunner {
 
     private static void logAudit(String operation, HistoryImportAudit audit) {
         logger.info("{} audit: requested=[{}, {}), actual=[{}, {}], received={}, accepted={}, rejected={}, "
-                        + "acceptedMinutes={}, excludedMinutes={}, duplicates={}, exclusions={}, consistent={}",
+                        + "acceptedMinutes={}, excludedMinutes={}, duplicates={}, closures={} ({} minutes), "
+                        + "continuityGaps={} ({} minutes), exclusions={}, consistent={}",
                 operation, audit.requestedFrom(), audit.requestedTo(), audit.actualFrom(), audit.actualTo(),
                 audit.receivedCount(), audit.acceptedCount(), audit.rejectedCount(), audit.acceptedMinuteCount(),
-                audit.excludedMinuteCount(), audit.duplicateCount(), audit.exclusionsByReason(), audit.isConsistent());
+                audit.excludedMinuteCount(), audit.duplicateCount(), audit.recognizedSessionClosures().size(),
+                audit.recognizedClosureMinuteCount(), audit.continuityGaps().size(), audit.continuityGapMinuteCount(),
+                audit.exclusionsByReason(), audit.isConsistent());
     }
 }

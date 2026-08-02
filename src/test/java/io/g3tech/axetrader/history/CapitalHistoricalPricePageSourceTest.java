@@ -12,6 +12,9 @@ import io.g3tech.axetrader.brokers.capital.dto.prices.LowPrice;
 import io.g3tech.axetrader.brokers.capital.dto.prices.OpenPrice;
 import io.g3tech.axetrader.brokers.capital.dto.prices.PricesItem;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.HttpClientErrorException;
 
 import java.math.BigDecimal;
 import java.nio.file.Path;
@@ -66,6 +69,19 @@ class CapitalHistoricalPricePageSourceTest {
     }
 
     @Test
+    void translatesCapitalsInclusiveToTimestampToTheInternalHalfOpenPage() {
+        CapitalHistoricalPricePageSource source = new CapitalHistoricalPricePageSource(
+                new StubAuthenticationClient(), new StubApiClient(response(
+                priceAt("2024-01-01T00:01:00Z", "4800.1", "4800.3"),
+                priceAt("2024-01-01T00:02:00Z", "4800.2", "4800.4"))));
+
+        ImportedPage page = source.fetch(REQUEST, FROM, TO, 1_000);
+
+        assertThat(page.prices()).extracting(ImportedPrice::timestamp)
+                .containsExactly(Instant.parse("2024-01-01T00:01:00Z"));
+    }
+
+    @Test
     void authenticatesOnlyWhenTheFirstPageIsFetched() {
         StubAuthenticationClient authentication = new StubAuthenticationClient();
         CapitalHistoricalPricePageSource source = new CapitalHistoricalPricePageSource(
@@ -79,8 +95,19 @@ class CapitalHistoricalPricePageSourceTest {
         assertThat(authentication.createSessionCalls).isEqualTo(1);
     }
 
-    private static GetPricesResponse response(PricesItem price) {
-        return new GetPricesResponse(List.of(price), null, null);
+    @Test
+    void translatesCapitalNotFoundForAClosedWindowToAnEmptyPage() {
+        CapitalHistoricalPricePageSource source = new CapitalHistoricalPricePageSource(
+                new StubAuthenticationClient(), new StubApiClient(HttpClientErrorException.create(
+                HttpStatus.NOT_FOUND, "closed", HttpHeaders.EMPTY, new byte[0], null)));
+
+        ImportedPage page = source.fetch(REQUEST, FROM, TO, 1_000);
+
+        assertThat(page.prices()).isEmpty();
+    }
+
+    private static GetPricesResponse response(PricesItem... prices) {
+        return new GetPricesResponse(List.of(prices), null, null);
     }
 
     private static OpenPrice openValues(String bid, String ask) {
@@ -100,8 +127,12 @@ class CapitalHistoricalPricePageSourceTest {
     }
 
     private static PricesItem priceWithTypedValues(String closeBid, String closeAsk) {
+        return priceAt("2024-01-01T00:01:00Z", closeBid, closeAsk);
+    }
+
+    private static PricesItem priceAt(String timestamp, String closeBid, String closeAsk) {
         return new PricesItem(
-                "2024-01-01 00:01:00", "2024-01-01T00:01:00Z",
+                timestamp.replace('T', ' ').replace("Z", ""), timestamp,
                 openValues("4799.1", "4799.3"), closeValues(closeBid, closeAsk),
                 highValues("4801.1", "4801.3"), lowValues("4798.1", "4798.3"), 123L);
     }
@@ -122,16 +153,27 @@ class CapitalHistoricalPricePageSourceTest {
 
     private static final class StubApiClient extends ApiClient {
         private final GetPricesResponse response;
+        private final RuntimeException failure;
         private GetPricesRequest request;
 
         private StubApiClient(GetPricesResponse response) {
             super("http://localhost");
             this.response = response;
+            this.failure = null;
+        }
+
+        private StubApiClient(RuntimeException failure) {
+            super("http://localhost");
+            this.response = null;
+            this.failure = failure;
         }
 
         @Override
         public GetPricesResponse getPrices(ConversationContext context, GetPricesRequest request) {
             this.request = request;
+            if (failure != null) {
+                throw failure;
+            }
             return response;
         }
     }

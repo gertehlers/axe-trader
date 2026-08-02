@@ -10,6 +10,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -136,11 +137,14 @@ public final class HistoryStagingStore implements AutoCloseable {
         Instant[] actualBounds = actualBounds(request);
         long malformedAcceptedCount = malformedAcceptedCount(request);
         long rejectedWithoutExclusionCount = Math.max(0, pageCounts.rejectedCount() - excludedMinutes);
+        HistoryCoverage.Assessment coverage = coverage(request);
         return new HistoryImportAudit(
                 request.from(), request.to(), actualBounds[0], actualBounds[1],
                 pageCounts.receivedCount(), pageCounts.acceptedCount(), pageCounts.rejectedCount(),
                 acceptedMinutes, excludedMinutes, Math.max(0, pageCounts.acceptedCount() - acceptedMinutes),
-                exclusionsByReason, malformedAcceptedCount == 0 && rejectedWithoutExclusionCount == 0);
+                exclusionsByReason, coverage.recognizedSessionClosures(), coverage.continuityGaps(),
+                malformedAcceptedCount == 0 && rejectedWithoutExclusionCount == 0
+                        && coverage.continuityGaps().isEmpty());
     }
 
     @Override
@@ -160,7 +164,7 @@ public final class HistoryStagingStore implements AutoCloseable {
             ImportedPrice price = page.prices().get(index);
             Set<PriceValidationFailure> failures = validator.validate(price);
             if (price != null && price.timestamp() != null
-                    && (price.timestamp().isBefore(request.from()) || !price.timestamp().isBefore(request.to()))) {
+                    && (price.timestamp().isBefore(page.requestedFrom()) || !price.timestamp().isBefore(page.requestedTo()))) {
                 failures.add(PriceValidationFailure.TIMESTAMP_OUT_OF_RANGE);
             }
             String exclusionTimestamp = price == null || price.timestamp() == null
@@ -222,8 +226,71 @@ public final class HistoryStagingStore implements AutoCloseable {
     }
 
     private static void validatePageBounds(ImportedPage page, HistoryImportRequest request) {
-        if (page.requestedFrom().isBefore(request.from()) || page.requestedTo().isAfter(request.to())) {
+        if (page.requestedFrom().isBefore(request.from()) || page.requestedTo().isAfter(request.to())
+                || !page.requestedFrom().isBefore(page.requestedTo())) {
             throw new IllegalArgumentException("Page bounds must be within the import range");
+        }
+    }
+
+    private HistoryCoverage.Assessment coverage(HistoryImportRequest request) {
+        String sql = """
+                SELECT requested_from_utc, requested_to_utc FROM history_import_page
+                WHERE import_run_id = ? ORDER BY requested_from_utc
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, importRunId(request));
+            try (var rows = statement.executeQuery()) {
+                List<HistoryCoverage.Page> pages = new ArrayList<>();
+                while (rows.next()) {
+                    Instant from = Instant.parse(rows.getString(1));
+                    Instant to = Instant.parse(rows.getString(2));
+                    pages.add(new HistoryCoverage.Page(from, to, observedTimestamps(request, from, to)));
+                }
+                return HistoryCoverage.assess(request.from(), request.to(), pages);
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Could not audit import coverage", exception);
+        }
+    }
+
+    private List<Instant> observedTimestamps(HistoryImportRequest request, Instant fromInclusive, Instant toExclusive)
+            throws SQLException {
+        Set<Instant> timestamps = new HashSet<>();
+        String prices = """
+                SELECT snapshot_time_utc FROM historical_price
+                WHERE source = ? AND epic = ? AND resolution = ?
+                  AND snapshot_time_utc >= ? AND snapshot_time_utc < ?
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(prices)) {
+            statement.setString(1, request.source());
+            statement.setString(2, request.epic());
+            statement.setString(3, request.resolution());
+            statement.setString(4, fromInclusive.toString());
+            statement.setString(5, toExclusive.toString());
+            collectTimestamps(statement, timestamps);
+        }
+        String exclusions = """
+                SELECT snapshot_time_utc FROM price_exclusion
+                WHERE import_run_id = ? AND snapshot_time_utc >= ? AND snapshot_time_utc < ?
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(exclusions)) {
+            statement.setString(1, importRunId(request));
+            statement.setString(2, fromInclusive.toString());
+            statement.setString(3, toExclusive.toString());
+            collectTimestamps(statement, timestamps);
+        }
+        return List.copyOf(timestamps);
+    }
+
+    private static void collectTimestamps(PreparedStatement statement, Set<Instant> timestamps) throws SQLException {
+        try (var rows = statement.executeQuery()) {
+            while (rows.next()) {
+                try {
+                    timestamps.add(Instant.parse(rows.getString(1)));
+                } catch (java.time.format.DateTimeParseException ignored) {
+                    // Missing timestamps are auditable exclusions but cannot establish minute coverage.
+                }
+            }
         }
     }
 

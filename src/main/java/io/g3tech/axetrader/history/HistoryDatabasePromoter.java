@@ -112,7 +112,7 @@ public class HistoryDatabasePromoter {
         boolean countsReconcile = audit.receivedCount() == audit.acceptedCount() + audit.rejectedCount();
         boolean acceptedRowsReconcile = audit.acceptedCount() == audit.acceptedMinuteCount() + audit.duplicateCount();
         if (!audit.isConsistent() || audit.duplicateCount() != 0 || !countsReconcile || !acceptedRowsReconcile
-                || audit.acceptedMinuteCount() == 0) {
+                || audit.acceptedMinuteCount() == 0 || !audit.continuityGaps().isEmpty()) {
             throw new IllegalStateException("Refusing to promote a failed history import audit");
         }
     }

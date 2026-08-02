@@ -14,11 +14,13 @@ The probe fetches and validates one short page without creating or changing the 
 archive files.
 
 ```bash
-./mvnw spring-boot:run -Dspring-boot.run.main-class=io.g3tech.axetrader.AxeTraderApplication -Dspring-boot.run.arguments="--spring.config.import=file:/Users/gertehlers/Development/projects/axe-trader/.env[.properties] --axe-trader.history-import.enabled=true --axe-trader.history-import.mode=probe --axe-trader.history-import.epic=US500 --axe-trader.history-import.resolution=MINUTE --axe-trader.history-import.from=2024-01-01T00:00:00Z --axe-trader.history-import.to=2024-01-01T01:00:00Z --axe-trader.history-import.staging-database=data/us500-clean-stage.sqlite"
+./mvnw spring-boot:run -Dspring-boot.run.main-class=io.g3tech.axetrader.AxeTraderApplication -Dspring-boot.run.arguments="--spring.config.import=file:/Users/gertehlers/Development/projects/axe-trader/.env[.properties] --axe-trader.history-import.enabled=true --axe-trader.history-import.mode=probe --axe-trader.history-import.epic=US500 --axe-trader.history-import.resolution=MINUTE --axe-trader.history-import.from=2024-01-02T15:00:00Z --axe-trader.history-import.to=2024-01-02T16:00:00Z --axe-trader.history-import.staging-database=data/us500-clean-stage.sqlite"
 ```
 
 Proceed only if the logged probe audit reconciles `received = accepted + rejected`, contains no
-duplicates, and reports `consistent=true`. Do not rely on Maven's exit status alone: DevTools can
+duplicates or continuity gaps, and reports `consistent=true`. Capital's `to` is inclusive, while the
+importer's interval is half-open; the audit therefore excludes the nominal `to` candle rather than
+recording it as an out-of-range rejection. Do not rely on Maven's exit status alone: DevTools can
 surface an application-thread failure while Maven still prints `BUILD SUCCESS`; the audit line is
 the required success signal.
 
@@ -34,8 +36,10 @@ printf 'IMPORT_END=%s\n' "$IMPORT_END"
 ```
 
 Do not promote unless the full staged audit is successful: counts reconcile, accepted rows equal
-accepted minutes plus duplicates, duplicates are zero, accepted minutes are non-zero, and
-`consistent=true`. Preserve the audit output with the fixed `IMPORT_END` in the operational record.
+accepted minutes plus duplicates, duplicates are zero, accepted minutes are non-zero, continuity gaps
+are zero, and `consistent=true`. Empty or 404 bounded provider windows are recorded as recognized
+session closures; any missing minute inside a nonempty page is an unexplained continuity gap and blocks
+promotion. Preserve the audit output with the fixed `IMPORT_END` in the operational record.
 
 ## Promote
 
@@ -53,11 +57,12 @@ legacy backups, and a local backtest before treating the local dataset as ready.
 
 ## 2026-08-02 execution record
 
-The required read-only probe for `[2024-01-01T00:00:00Z, 2024-01-01T01:00:00Z)` reached Capital
-but the provider returned HTTP 404 with error code `error.prices.not-found`. No probe audit was
-logged, so received, accepted, and rejected counts are unavailable. The fail-closed gate stopped
-the workflow before an `IMPORT_END` was captured: no stage, full audit, promotion, backup creation,
-or post-promotion backtest was attempted.
+The originally selected `[2024-01-01T00:00:00Z, 2024-01-01T01:00:00Z)` probe was a market-closure
+window, not a provider outage. A read-only diagnostic on the open `[2024-01-02T15:00:00Z,
+2024-01-02T16:00:00Z)` interval reached Capital; its 61st nominal upper-bound candle exposed the
+provider's inclusive `to` convention. The importer now translates that boundary to its internal
+half-open interval and records empty/404 bounded windows as recognized closures. No stage, full
+audit, promotion, backup creation, or post-promotion backtest has yet been attempted.
 
 Before and after the probe, the active database SHA-256 was
 `cb900eaf39050508ab51243faf5aa279971e1e5f1b8a2ad9795ed0ae777780df`, the archive SHA-256 was
