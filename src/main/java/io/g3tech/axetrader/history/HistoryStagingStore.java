@@ -3,12 +3,12 @@ package io.g3tech.axetrader.history;
 import java.nio.charset.StandardCharsets;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Path;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -79,8 +79,9 @@ public final class HistoryStagingStore implements AutoCloseable {
         Connection connection = null;
         StageLease lease = null;
         try {
-            connection = connect(database);
+            existing = prepareDatabaseFile(database, existing);
             lease = StageLease.acquire(database);
+            connection = connect(lease.databasePath());
             enableForeignKeys(connection);
             String runId = importRunId(request);
             HistoryStagingStore store = new HistoryStagingStore(connection, runId, lease);
@@ -96,11 +97,28 @@ public final class HistoryStagingStore implements AutoCloseable {
             closeLeaseAfterOpenFailure(lease, exception);
             String message = exception.getMessage() == null ? "" : exception.getMessage();
             if (message.contains("identity") || message.contains("version") || message.contains("completed")
-                    || message.contains("already active") || message.contains("foreign run")) {
+                    || message.contains("already active") || message.contains("foreign run")
+                    || message.contains("unsafe staging filesystem")
+                    || message.contains("hard-linked staging database")) {
                 throw exception instanceof IllegalStateException state ? state
                         : new IllegalStateException(message, exception);
             }
             throw new IllegalStateException("Existing staging database has no valid import-run metadata", exception);
+        }
+    }
+
+    private static boolean prepareDatabaseFile(Path database, boolean existing) throws IOException {
+        if (database.getParent() != null) {
+            Files.createDirectories(database.getParent());
+        }
+        if (existing) {
+            return true;
+        }
+        try {
+            Files.createFile(database);
+            return false;
+        } catch (FileAlreadyExistsException wonByAnotherProcess) {
+            return true;
         }
     }
 
@@ -956,33 +974,28 @@ public final class HistoryStagingStore implements AutoCloseable {
     private record PageCounts(long observationCount, long receivedCount, long acceptedCount, long rejectedCount) { }
 
     private static final class StageLease implements AutoCloseable {
+        private final Path databasePath;
         private final FileChannel channel;
         private final FileLock lock;
 
-        private StageLease(FileChannel channel, FileLock lock) {
+        private StageLease(Path databasePath, FileChannel channel, FileLock lock) {
+            this.databasePath = databasePath;
             this.channel = channel;
             this.lock = lock;
         }
 
         private static StageLease acquire(Path database) throws IOException {
             Path realPath = database.toRealPath();
-            Object fileKey = Files.readAttributes(realPath, BasicFileAttributes.class).fileKey();
-            if (fileKey == null) {
-                throw new IllegalStateException(
-                        "Filesystem does not expose a stable identity for history staging " + database);
-            }
-            String identity = Files.getFileStore(realPath) + "\n" + fileKey;
-            Path lockDirectory = Path.of(System.getProperty("java.io.tmpdir"), "axe-trader-stage-leases");
-            Files.createDirectories(lockDirectory);
-            Path lockPath = lockDirectory.resolve(
-                    UUID.nameUUIDFromBytes(identity.getBytes(StandardCharsets.UTF_8)) + ".lock");
+            requireSafeLinkIdentity(realPath, database);
+            Path lockPath = realPath.resolveSibling(realPath.getFileName() + ".stage.lock");
             FileChannel channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
             try {
                 FileLock lock = channel.tryLock();
                 if (lock == null) {
                     throw new IllegalStateException("History staging is already active for " + database);
                 }
-                return new StageLease(channel, lock);
+                requireSafeLinkIdentity(realPath, database);
+                return new StageLease(realPath, channel, lock);
             } catch (OverlappingFileLockException exception) {
                 closeAfterAcquireFailure(channel, exception);
                 throw new IllegalStateException("History staging is already active for " + database, exception);
@@ -990,6 +1003,33 @@ public final class HistoryStagingStore implements AutoCloseable {
                 closeAfterAcquireFailure(channel, exception);
                 throw exception;
             }
+        }
+
+        private static void requireSafeLinkIdentity(Path realPath, Path requestedPath) throws IOException {
+            if (!Files.getFileStore(realPath).supportsFileAttributeView("unix")) {
+                throw new IllegalStateException(
+                        "Refusing unsafe staging filesystem without Unix file attributes: " + requestedPath);
+            }
+            Object rawLinkCount;
+            try {
+                rawLinkCount = Files.getAttribute(realPath, "unix:nlink");
+            } catch (IllegalArgumentException | UnsupportedOperationException exception) {
+                throw new IllegalStateException(
+                        "Refusing unsafe staging filesystem without a reliable link count: " + requestedPath,
+                        exception);
+            }
+            if (!(rawLinkCount instanceof Number linkCount)) {
+                throw new IllegalStateException(
+                        "Refusing unsafe staging filesystem with a non-numeric link count: " + requestedPath);
+            }
+            if (linkCount.longValue() != 1L) {
+                throw new IllegalStateException(
+                        "Refusing hard-linked staging database before provider work: " + requestedPath);
+            }
+        }
+
+        private Path databasePath() {
+            return databasePath;
         }
 
         private static void closeAfterAcquireFailure(FileChannel channel, Exception failure) {

@@ -29,6 +29,14 @@ the required success signal.
 Capture one UTC upper bound once and reuse that exact value for the complete stage. Staging refuses
 to overwrite an existing file.
 
+The staging database must be on a local Unix filesystem that exposes Unix link attributes and
+supports process-shared file locks. Do not hard-link a staging database: SQLite derives journal and
+WAL names from the path, so multiple hard-link names can bypass its locking protocol and have
+undefined behavior. Symlink aliases are supported because staging resolves them to the canonical
+database path. A successful open also creates a stable sibling lease file named
+`<staging-database>.stage.lock`; leave this file in place between runs so ownership handoffs cannot
+split across different lock-file inodes.
+
 ```bash
 IMPORT_END="$(date -u +%Y-%m-%dT%H:%M:00Z)"
 printf 'IMPORT_END=%s\n' "$IMPORT_END"

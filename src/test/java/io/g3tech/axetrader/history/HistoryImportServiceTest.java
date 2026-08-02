@@ -47,7 +47,7 @@ class HistoryImportServiceTest {
     }
 
     @Test
-    void stageLeavesActiveFilesUnchangedAndCreatesOnlyNamedStagingDatabase() throws Exception {
+    void stageLeavesActiveFilesUnchangedAndCreatesOnlyNamedStagingArtifacts() throws Exception {
         Path active = tempDir.resolve("axe-trader.sqlite");
         Path archive = tempDir.resolve("axe-trader.sqlite.gz");
         Files.writeString(active, "legacy-active");
@@ -65,7 +65,9 @@ class HistoryImportServiceTest {
         assertThat(request().stagingDatabase()).exists();
         try (var files = Files.list(tempDir)) {
             assertThat(files.map(path -> path.getFileName().toString()))
-                    .containsExactlyInAnyOrder("axe-trader.sqlite", "axe-trader.sqlite.gz", "stage.sqlite");
+                    .containsExactlyInAnyOrder(
+                            "axe-trader.sqlite", "axe-trader.sqlite.gz", "stage.sqlite",
+                            "stage.sqlite.stage.lock");
         }
     }
 

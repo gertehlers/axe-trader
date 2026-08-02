@@ -4,13 +4,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.math.BigDecimal;
+import java.net.URI;
 import java.nio.file.Files;
+import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.sql.DriverManager;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -221,23 +224,60 @@ class HistoryStagingStoreTest {
     }
 
     @Test
-    void hardLinkAliasCannotOwnPendingWorkConcurrently() throws Exception {
+    void hardLinkCreatedDuringOwnershipIsRefusedBeforeWork() throws Exception {
         Path database = request().stagingDatabase();
         initializePendingStage(database);
         Path alias = tempDir.resolve("staging-hard-link.sqlite");
-        Files.createLink(alias, database);
+        LeaseProcess owner = startLeaseProcess(database, "hard-link-owner", false);
+        LeaseProcess contender = null;
+        try {
+            awaitAnySignal(owner, owner.work(), owner.error());
+            assertThat(owner.error()).doesNotExist();
+            assertThat(owner.work()).exists();
+            Files.createLink(alias, database);
 
-        assertAliasCannotOwnPendingWork(database, alias);
+            contender = startLeaseProcess(alias, "hard-link-contender", false);
+            awaitAnySignal(contender, contender.unsafe(), contender.work(), contender.error());
+            assertThat(contender.error()).doesNotExist();
+            assertThat(contender.unsafe()).exists();
+            assertThat(contender.work()).doesNotExist();
+        } finally {
+            release(contender);
+            release(owner);
+        }
+    }
+
+    @Test
+    void databaseWithExistingHardLinkIsRefusedBeforeWork() throws Exception {
+        Path database = request().stagingDatabase();
+        initializePendingStage(database);
+        Path alias = tempDir.resolve("existing-hard-link.sqlite");
+        Files.createLink(alias, database);
+        LeaseProcess original = startLeaseProcess(database, "hard-link-original", false);
+        LeaseProcess linked = startLeaseProcess(alias, "hard-link-alias", false);
+        try {
+            awaitAnySignal(original, original.unsafe(), original.work(), original.error());
+            awaitAnySignal(linked, linked.unsafe(), linked.work(), linked.error());
+            assertThat(original.error()).doesNotExist();
+            assertThat(linked.error()).doesNotExist();
+            assertThat(original.unsafe()).exists();
+            assertThat(linked.unsafe()).exists();
+            assertThat(original.work()).doesNotExist();
+            assertThat(linked.work()).doesNotExist();
+        } finally {
+            release(linked);
+            release(original);
+        }
     }
 
     @Test
     void leaseHandoffKeepsOneUnderlyingDatabaseOwner() throws Exception {
         Path database = request().stagingDatabase();
         initializePendingStage(database);
-        Path symlink = tempDir.resolve("handoff-symlink.sqlite");
-        Path hardLink = tempDir.resolve("handoff-hard-link.sqlite");
-        Files.createSymbolicLink(symlink, database);
-        Files.createLink(hardLink, database);
+        Path nextSymlink = tempDir.resolve("handoff-next-symlink.sqlite");
+        Path contenderSymlink = tempDir.resolve("handoff-contender-symlink.sqlite");
+        Files.createSymbolicLink(nextSymlink, database);
+        Files.createSymbolicLink(contenderSymlink, database);
         LeaseProcess owner = startLeaseProcess(database, "owner", false);
         LeaseProcess nextOwner = null;
         LeaseProcess contender = null;
@@ -248,7 +288,7 @@ class HistoryStagingStoreTest {
             Path stableLock = onlyLeaseFile();
             Object stableLockKey = Files.readAttributes(stableLock, BasicFileAttributes.class).fileKey();
 
-            nextOwner = startLeaseProcess(symlink, "next-owner", true);
+            nextOwner = startLeaseProcess(nextSymlink, "next-owner", true);
             awaitAnySignal(nextOwner, nextOwner.waiting(), nextOwner.work(), nextOwner.error());
             assertThat(nextOwner.error()).doesNotExist();
             assertThat(nextOwner.waiting()).exists();
@@ -262,7 +302,7 @@ class HistoryStagingStoreTest {
             assertThat(Files.readAttributes(stableLock, BasicFileAttributes.class).fileKey())
                     .isEqualTo(stableLockKey);
 
-            contender = startLeaseProcess(hardLink, "handoff-contender", false);
+            contender = startLeaseProcess(contenderSymlink, "handoff-contender", false);
             awaitAnySignal(contender, contender.blocked(), contender.work(), contender.error());
             assertThat(contender.error()).doesNotExist();
             assertThat(contender.blocked()).exists();
@@ -272,6 +312,28 @@ class HistoryStagingStoreTest {
             release(nextOwner);
             release(owner);
         }
+    }
+
+    @Test
+    void nonUnixIdentityIsRefusedBeforeJdbcOpen() throws Exception {
+        Path zip = tempDir.resolve("identity.zip");
+        Path jdbcShadow = tempDir.resolve("zip-entry.sqlite");
+        try (var fileSystem = FileSystems.newFileSystem(URI.create("jar:" + zip.toUri()),
+                Map.of("create", "true"))) {
+            Path database = fileSystem.getPath(jdbcShadow.toAbsolutePath().toString());
+            Files.createDirectories(database.getParent());
+            Files.createFile(database);
+            HistoryImportRequest request = request(database);
+
+            assertThatThrownBy(() -> {
+                try (HistoryStagingStore ignored = HistoryStagingStore.openForStage(
+                        database, request, Duration.ofMinutes(999))) {
+                    // Unsupported storage must be rejected before SQLite is opened.
+                }
+            }).isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("unsafe staging filesystem");
+        }
+        assertThat(jdbcShadow).doesNotExist();
     }
 
     private void assertAliasCannotOwnPendingWork(Path database, Path alias) throws Exception {
@@ -303,7 +365,7 @@ class HistoryStagingStoreTest {
 
     private LeaseProcess startLeaseProcess(Path database, String name, boolean retry) throws Exception {
         Path signalPrefix = tempDir.resolve("signals").resolve(name);
-        Path runtimeDirectory = tempDir.resolve("runtime");
+        Path runtimeDirectory = tempDir.resolve("runtime").resolve(name);
         Files.createDirectories(signalPrefix.getParent());
         Files.createDirectories(runtimeDirectory);
         Process process = new ProcessBuilder(
@@ -318,11 +380,9 @@ class HistoryStagingStoreTest {
     }
 
     private Path onlyLeaseFile() throws Exception {
-        try (var files = Files.list(tempDir.resolve("runtime/axe-trader-stage-leases"))) {
-            List<Path> leaseFiles = files.toList();
-            assertThat(leaseFiles).singleElement();
-            return leaseFiles.getFirst();
-        }
+        Path lease = request().stagingDatabase().resolveSibling("staging.sqlite.stage.lock");
+        assertThat(lease).exists();
+        return lease;
     }
 
     private static void awaitAnySignal(LeaseProcess process, Path... signals) throws Exception {
@@ -401,6 +461,10 @@ class HistoryStagingStoreTest {
             return Path.of(prefix + ".work");
         }
 
+        private Path unsafe() {
+            return Path.of(prefix + ".unsafe");
+        }
+
         private Path release() {
             return Path.of(prefix + ".release");
         }
@@ -428,6 +492,11 @@ class HistoryStagingStoreTest {
                     waitForRelease(Path.of(prefix + ".release"));
                     return;
                 } catch (IllegalStateException exception) {
+                    if (exception.getMessage() != null && (exception.getMessage().contains("hard-linked staging database")
+                            || exception.getMessage().contains("unsafe staging filesystem"))) {
+                        Files.writeString(Path.of(prefix + ".unsafe"), "unsafe");
+                        return;
+                    }
                     if (exception.getMessage() != null && exception.getMessage().contains("already active")) {
                         if (!retry) {
                             Files.writeString(Path.of(prefix + ".blocked"), "blocked");
