@@ -15,13 +15,20 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.ResourceAccessException;
 
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Queue;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CapitalHistoricalPricePageSourceTest {
 
@@ -106,6 +113,101 @@ class CapitalHistoricalPricePageSourceTest {
         assertThat(page.prices()).isEmpty();
     }
 
+    @Test
+    void sharedPacerAllowsNoBurstAcrossCapitalPageSources() {
+        FakeTime time = new FakeTime();
+        CapitalRequestPacer pacer = new CapitalRequestPacer(5, time, time);
+        SequenceApiClient firstApi = new SequenceApiClient(time, response(priceWithTypedValues("4800.1", "4800.3")));
+        SequenceApiClient secondApi = new SequenceApiClient(time,
+                response(priceWithTypedValues("4800.1", "4800.3")),
+                response(priceWithTypedValues("4800.1", "4800.3")));
+        CapitalHistoricalPricePageSource first = source(firstApi, pacer, time, 3, 0);
+        CapitalHistoricalPricePageSource second = source(secondApi, pacer, time, 3, 0);
+
+        first.fetch(REQUEST, FROM, TO, 1_000);
+        second.fetch(REQUEST, FROM, TO, 1_000);
+        second.fetch(REQUEST, FROM, TO, 1_000);
+
+        List<Long> attempts = new ArrayList<>();
+        attempts.addAll(firstApi.attemptNanos);
+        attempts.addAll(secondApi.attemptNanos);
+        attempts.sort(Long::compareTo);
+        assertThat(attempts).containsExactly(0L, 200_000_000L, 400_000_000L);
+    }
+
+    @Test
+    void configuredCapitalRateCannotExceedFiveRequestsPerSecond() {
+        FakeTime time = new FakeTime();
+
+        assertThatThrownBy(() -> new CapitalRequestPacer(6, time, time))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("between 1 and 5");
+    }
+
+    @Test
+    void rateLimitRetryHonorsRetryAfterAndReacquiresAPacerPermit() {
+        FakeTime time = new FakeTime();
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.RETRY_AFTER, "2");
+        RuntimeException rateLimited = HttpClientErrorException.create(
+                HttpStatus.TOO_MANY_REQUESTS, "limited", headers, new byte[0], null);
+        SequenceApiClient api = new SequenceApiClient(time, rateLimited,
+                response(priceWithTypedValues("4800.1", "4800.3")));
+        CapitalHistoricalPricePageSource source = source(api, new CapitalRequestPacer(5, time, time), time, 3, 0);
+
+        source.fetch(REQUEST, FROM, TO, 1_000);
+
+        assertThat(api.attemptNanos).containsExactly(0L, 2_000_000_000L);
+        assertThat(time.sleeps).contains(Duration.ofSeconds(2));
+    }
+
+    @Test
+    void transientFailureUsesBoundedExponentialBackoffWithJitter() {
+        FakeTime time = new FakeTime();
+        RuntimeException unavailable = HttpServerErrorException.create(
+                HttpStatus.SERVICE_UNAVAILABLE, "unavailable", HttpHeaders.EMPTY, new byte[0], null);
+        SequenceApiClient api = new SequenceApiClient(time, unavailable,
+                response(priceWithTypedValues("4800.1", "4800.3")));
+        CapitalHistoricalPricePageSource source = source(api, new CapitalRequestPacer(5, time, time), time, 3, 50);
+
+        source.fetch(REQUEST, FROM, TO, 1_000);
+
+        assertThat(api.attemptNanos).containsExactly(0L, 300_000_000L);
+        assertThat(time.sleeps).contains(Duration.ofMillis(300));
+    }
+
+    @Test
+    void retryBudgetIsFiniteAndNonRetryableFailuresAreNotRetried() {
+        FakeTime exhaustedTime = new FakeTime();
+        RuntimeException transport = new ResourceAccessException("connection reset");
+        SequenceApiClient exhaustedApi = new SequenceApiClient(exhaustedTime, transport, transport, transport,
+                response(priceWithTypedValues("4800.1", "4800.3")));
+        CapitalHistoricalPricePageSource exhausted = source(exhaustedApi,
+                new CapitalRequestPacer(5, exhaustedTime, exhaustedTime), exhaustedTime, 3, 0);
+
+        assertThatThrownBy(() -> exhausted.fetch(REQUEST, FROM, TO, 1_000))
+                .isSameAs(transport);
+        assertThat(exhaustedApi.attemptNanos).hasSize(3);
+
+        FakeTime badRequestTime = new FakeTime();
+        RuntimeException badRequest = HttpClientErrorException.create(
+                HttpStatus.BAD_REQUEST, "bad request", HttpHeaders.EMPTY, new byte[0], null);
+        SequenceApiClient badRequestApi = new SequenceApiClient(badRequestTime, badRequest,
+                response(priceWithTypedValues("4800.1", "4800.3")));
+        CapitalHistoricalPricePageSource nonRetrying = source(badRequestApi,
+                new CapitalRequestPacer(5, badRequestTime, badRequestTime), badRequestTime, 3, 0);
+
+        assertThatThrownBy(() -> nonRetrying.fetch(REQUEST, FROM, TO, 1_000))
+                .isSameAs(badRequest);
+        assertThat(badRequestApi.attemptNanos).hasSize(1);
+    }
+
+    private static CapitalHistoricalPricePageSource source(SequenceApiClient api, CapitalRequestPacer pacer,
+                                                            FakeTime time, int attempts, long jitterMillis) {
+        return new CapitalHistoricalPricePageSource(new StubAuthenticationClient(), api, pacer, time,
+                () -> Duration.ofMillis(jitterMillis), attempts);
+    }
+
     private static GetPricesResponse response(PricesItem... prices) {
         return new GetPricesResponse(List.of(prices), null, null);
     }
@@ -175,6 +277,44 @@ class CapitalHistoricalPricePageSourceTest {
                 throw failure;
             }
             return response;
+        }
+    }
+
+    private static final class SequenceApiClient extends ApiClient {
+        private final FakeTime time;
+        private final Queue<Object> outcomes = new ArrayDeque<>();
+        private final List<Long> attemptNanos = new ArrayList<>();
+
+        private SequenceApiClient(FakeTime time, Object... outcomes) {
+            super("http://localhost");
+            this.time = time;
+            this.outcomes.addAll(List.of(outcomes));
+        }
+
+        @Override
+        public GetPricesResponse getPrices(ConversationContext context, GetPricesRequest request) {
+            attemptNanos.add(time.nanoTime());
+            Object outcome = outcomes.remove();
+            if (outcome instanceof RuntimeException failure) {
+                throw failure;
+            }
+            return (GetPricesResponse) outcome;
+        }
+    }
+
+    private static final class FakeTime implements CapitalRequestPacer.NanoClock, CapitalRequestPacer.Sleeper {
+        private long nanos;
+        private final List<Duration> sleeps = new ArrayList<>();
+
+        @Override
+        public long nanoTime() {
+            return nanos;
+        }
+
+        @Override
+        public void sleep(Duration duration) {
+            sleeps.add(duration);
+            nanos += duration.toNanos();
         }
     }
 }

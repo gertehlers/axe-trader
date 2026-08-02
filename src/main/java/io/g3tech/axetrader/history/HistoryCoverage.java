@@ -42,7 +42,7 @@ final class HistoryCoverage {
             }
         }
         if (page.emptyProviderWindow()) {
-            closures.add(new HistoryCoverageGap(page.fromInclusive(), page.toExclusive()));
+            closures.add(new HistoryCoverageGap(page.fromInclusive(), page.toExclusive(), page.closureProvenance()));
             return;
         }
         Instant cursor = page.fromInclusive();
@@ -58,7 +58,7 @@ final class HistoryCoverage {
     }
 
     record Page(Instant fromInclusive, Instant toExclusive, List<Instant> observedTimestamps,
-                boolean emptyProviderWindow) {
+                boolean emptyProviderWindow, String closureProvenance) {
         Page {
             Objects.requireNonNull(fromInclusive, "fromInclusive");
             Objects.requireNonNull(toExclusive, "toExclusive");
@@ -66,7 +66,13 @@ final class HistoryCoverage {
         }
 
         Page(Instant fromInclusive, Instant toExclusive, List<Instant> observedTimestamps) {
-            this(fromInclusive, toExclusive, observedTimestamps, observedTimestamps.isEmpty());
+            this(fromInclusive, toExclusive, observedTimestamps, observedTimestamps.isEmpty(), null);
+        }
+
+        Page(Instant fromInclusive, Instant toExclusive, List<Instant> observedTimestamps,
+             boolean emptyProviderWindow) {
+            this(fromInclusive, toExclusive, observedTimestamps, emptyProviderWindow,
+                    emptyProviderWindow ? "PROVIDER_EMPTY" : null);
         }
     }
 

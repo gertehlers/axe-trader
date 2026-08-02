@@ -10,7 +10,11 @@ import io.g3tech.axetrader.brokers.capital.dto.prices.LowPrice;
 import io.g3tech.axetrader.brokers.capital.dto.prices.OpenPrice;
 import io.g3tech.axetrader.brokers.capital.dto.prices.PricesItem;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.ResourceAccessException;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -18,21 +22,51 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.Duration;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Supplier;
 
 @Service
 public class CapitalHistoricalPricePageSource implements HistoricalPricePageSource {
 
     private final AuthenticationClient authenticationClient;
     private final ApiClient apiClient;
+    private final CapitalRequestPacer pacer;
+    private final CapitalRequestPacer.Sleeper sleeper;
+    private final Supplier<Duration> jitter;
+    private final int maxAttempts;
     private volatile ConversationContext conversationContext;
 
     public CapitalHistoricalPricePageSource(AuthenticationClient authenticationClient, ApiClient apiClient) {
+        this(authenticationClient, apiClient, new CapitalRequestPacer(5), systemSleeper(),
+                () -> Duration.ofMillis(ThreadLocalRandom.current().nextLong(101)), 4);
+    }
+
+    @Autowired
+    public CapitalHistoricalPricePageSource(AuthenticationClient authenticationClient, ApiClient apiClient,
+                                            CapitalRequestPacer pacer) {
+        this(authenticationClient, apiClient, pacer, systemSleeper(),
+                () -> Duration.ofMillis(ThreadLocalRandom.current().nextLong(101)), 4);
+    }
+
+    CapitalHistoricalPricePageSource(AuthenticationClient authenticationClient, ApiClient apiClient,
+                                     CapitalRequestPacer pacer, CapitalRequestPacer.Sleeper sleeper,
+                                     Supplier<Duration> jitter, int maxAttempts) {
         this.authenticationClient = Objects.requireNonNull(authenticationClient, "authenticationClient");
         this.apiClient = Objects.requireNonNull(apiClient, "apiClient");
+        this.pacer = Objects.requireNonNull(pacer, "pacer");
+        this.sleeper = Objects.requireNonNull(sleeper, "sleeper");
+        this.jitter = Objects.requireNonNull(jitter, "jitter");
+        if (maxAttempts < 1) {
+            throw new IllegalArgumentException("maxAttempts must be positive");
+        }
+        this.maxAttempts = maxAttempts;
     }
 
     @Override
@@ -40,14 +74,11 @@ public class CapitalHistoricalPricePageSource implements HistoricalPricePageSour
         Objects.requireNonNull(request, "request");
         validatePage(request, fromInclusive, toExclusive, maxBars);
 
-        final io.g3tech.axetrader.brokers.capital.dto.prices.GetPricesResponse response;
-        try {
-            response = Objects.requireNonNull(apiClient.getPrices(
-                    authenticatedContext(),
-                    new GetPricesRequest(request.epic(), request.resolution(), fromInclusive, toExclusive, maxBars)),
-                    "Capital prices response was empty");
-        } catch (HttpClientErrorException.NotFound ignored) {
-            return new ImportedPage(fromInclusive, toExclusive, List.of(), hashPage(fromInclusive, toExclusive, List.of()));
+        final io.g3tech.axetrader.brokers.capital.dto.prices.GetPricesResponse response =
+                fetchWithRetry(request, fromInclusive, toExclusive, maxBars);
+        if (response == null) {
+            return new ImportedPage(fromInclusive, toExclusive, List.of(),
+                    hashPage(fromInclusive, toExclusive, List.of()));
         }
         var returnedPrices = response.prices() == null ? List.<PricesItem>of() : response.prices();
         var inPagePrices = returnedPrices.stream().filter(price -> {
@@ -60,6 +91,101 @@ public class CapitalHistoricalPricePageSource implements HistoricalPricePageSour
         var importedPrices = inPagePrices.stream().map(CapitalHistoricalPricePageSource::map).toList();
 
         return new ImportedPage(fromInclusive, toExclusive, importedPrices, hashPage(fromInclusive, toExclusive, inPagePrices));
+    }
+
+    private io.g3tech.axetrader.brokers.capital.dto.prices.GetPricesResponse fetchWithRetry(
+            HistoryImportRequest request, Instant fromInclusive, Instant toExclusive, int maxBars) {
+        RuntimeException lastFailure = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            pacer.acquire();
+            try {
+                return Objects.requireNonNull(apiClient.getPrices(
+                                authenticatedContext(), new GetPricesRequest(request.epic(), request.resolution(),
+                                        fromInclusive, toExclusive, maxBars)),
+                        "Capital prices response was empty");
+            } catch (HttpClientErrorException.NotFound ignored) {
+                return null;
+            } catch (RuntimeException failure) {
+                if (!retryable(failure) || attempt == maxAttempts) {
+                    throw failure;
+                }
+                lastFailure = failure;
+                Duration delay = retryDelay(failure, attempt);
+                if (delay.compareTo(Duration.ofMinutes(10)) >= 0) {
+                    invalidateConversationContext();
+                }
+                sleeper.sleep(delay);
+            }
+        }
+        throw lastFailure == null ? new IllegalStateException("Capital retry loop made no attempt") : lastFailure;
+    }
+
+    private Duration retryDelay(RuntimeException failure, int failedAttempt) {
+        if (failure instanceof HttpClientErrorException.TooManyRequests rateLimited) {
+            Duration retryAfter = retryAfter(rateLimited.getResponseHeaders());
+            if (retryAfter != null) {
+                return min(retryAfter, Duration.ofMinutes(10));
+            }
+        }
+        long exponentialMillis = Math.min(5_000L, 250L << Math.min(failedAttempt - 1, 4));
+        Duration boundedJitter = min(nonNegative(jitter.get()), Duration.ofMillis(100));
+        return Duration.ofMillis(exponentialMillis).plus(boundedJitter);
+    }
+
+    private static boolean retryable(RuntimeException failure) {
+        if (failure instanceof ResourceAccessException) {
+            return true;
+        }
+        return failure instanceof HttpStatusCodeException http
+                && (http.getStatusCode().value() == 429 || http.getStatusCode().is5xxServerError());
+    }
+
+    private static Duration retryAfter(HttpHeaders headers) {
+        if (headers == null) {
+            return null;
+        }
+        String value = headers.getFirst(HttpHeaders.RETRY_AFTER);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return nonNegative(Duration.ofSeconds(Long.parseLong(value.trim())));
+        } catch (NumberFormatException ignored) {
+            try {
+                Instant retryAt = ZonedDateTime.parse(value.trim(), DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();
+                return nonNegative(Duration.between(Instant.now(), retryAt));
+            } catch (DateTimeParseException malformed) {
+                return null;
+            }
+        }
+    }
+
+    private static Duration min(Duration first, Duration second) {
+        return first.compareTo(second) <= 0 ? first : second;
+    }
+
+    private static Duration nonNegative(Duration duration) {
+        if (duration == null || duration.isNegative()) {
+            return Duration.ZERO;
+        }
+        return duration;
+    }
+
+    private void invalidateConversationContext() {
+        synchronized (this) {
+            conversationContext = null;
+        }
+    }
+
+    private static CapitalRequestPacer.Sleeper systemSleeper() {
+        return duration -> {
+            try {
+                Thread.sleep(duration);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted during Capital retry backoff", exception);
+            }
+        };
     }
 
     private ConversationContext authenticatedContext() {

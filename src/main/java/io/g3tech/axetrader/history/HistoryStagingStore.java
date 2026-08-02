@@ -8,16 +8,20 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 public final class HistoryStagingStore implements AutoCloseable {
+
+    static final int ALGORITHM_VERSION = 2;
 
     private static final String INSERT_PAGE = """
             INSERT INTO history_import_page (
@@ -41,56 +45,148 @@ public final class HistoryStagingStore implements AutoCloseable {
     private final Connection connection;
     private final PriceValidator validator;
 
-    private HistoryStagingStore(Connection connection, PriceValidator validator) {
+    private HistoryStagingStore(Connection connection) {
         this.connection = connection;
-        this.validator = validator;
+        this.validator = new PriceValidator();
     }
 
     public static HistoryStagingStore open(Path database) {
         try {
-            if (database.getParent() != null) {
-                Files.createDirectories(database.getParent());
-            }
-            Connection connection = DriverManager.getConnection("jdbc:sqlite:" + database.toAbsolutePath());
+            Connection connection = connect(database);
             applySchema(connection);
-            return new HistoryStagingStore(connection, new PriceValidator());
+            return new HistoryStagingStore(connection);
         } catch (Exception exception) {
             throw new IllegalStateException("Could not open history staging store at " + database, exception);
         }
     }
 
+    static HistoryStagingStore openForStage(Path database, HistoryImportRequest request, Duration baseWindow) {
+        boolean existing = Files.exists(database);
+        Connection connection = null;
+        try {
+            connection = connect(database);
+            HistoryStagingStore store = new HistoryStagingStore(connection);
+            if (existing) {
+                store.requireResumableIdentity(request);
+            } else {
+                applySchema(connection);
+                store.initializeRun(request, baseWindow);
+            }
+            return store;
+        } catch (Exception exception) {
+            closeAfterOpenFailure(connection, exception);
+            String message = exception.getMessage() == null ? "" : exception.getMessage();
+            if (message.contains("identity") || message.contains("version") || message.contains("completed")) {
+                throw exception instanceof IllegalStateException state ? state
+                        : new IllegalStateException(message, exception);
+            }
+            throw new IllegalStateException("Existing staging database has no valid import-run metadata", exception);
+        }
+    }
+
+    private static void closeAfterOpenFailure(Connection connection, Exception failure) {
+        if (connection == null) {
+            return;
+        }
+        try {
+            connection.close();
+        } catch (SQLException closeFailure) {
+            failure.addSuppressed(closeFailure);
+        }
+    }
+
+    private static Connection connect(Path database) throws Exception {
+        if (database.getParent() != null) {
+            Files.createDirectories(database.getParent());
+        }
+        return DriverManager.getConnection("jdbc:sqlite:" + database.toAbsolutePath());
+    }
+
     public void writePage(ImportedPage page, HistoryImportRequest request) {
         validatePageBounds(page, request);
-        List<ValidatedPrice> prices = validate(page, request);
-        long acceptedCount = prices.stream().filter(ValidatedPrice::accepted).count();
-        long rejectedCount = prices.size() - acceptedCount;
-        String importRunId = importRunId(request);
-        Instant detectedAt = Instant.now();
         try {
             connection.setAutoCommit(false);
-            ExistingPage existing = existingPage(page, importRunId);
-            if (existing != null) {
-                if (!existing.matches(page.payloadHash(), page.prices().size(), acceptedCount, rejectedCount)) {
-                    rollback();
-                    throw new IllegalStateException("Page bounds already have a different payload or counts");
-                }
-                connection.commit();
-                return;
-            }
-            insertPage(page, importRunId, acceptedCount, rejectedCount);
-            for (ValidatedPrice price : prices) {
-                if (price.accepted()) {
-                    insertPrice(price.price(), request, detectedAt);
-                } else {
-                    insertExclusions(price, request, importRunId, detectedAt);
-                }
-            }
+            writePageInTransaction(page, request);
             connection.commit();
-        } catch (SQLException exception) {
+        } catch (RuntimeException | SQLException exception) {
             rollback();
-            throw new IllegalStateException("Could not write imported history page", exception);
+            throw exception instanceof IllegalStateException state ? state
+                    : new IllegalStateException("Could not write imported history page", exception);
         } finally {
             restoreAutoCommit();
+        }
+    }
+
+    WorkItem nextPending() {
+        String sql = """
+                SELECT work_id, requested_from_utc, requested_to_utc
+                FROM history_import_work WHERE state = 'PENDING' ORDER BY work_id LIMIT 1
+                """;
+        try (var statement = connection.createStatement(); var rows = statement.executeQuery(sql)) {
+            return rows.next() ? new WorkItem(rows.getLong(1), Instant.parse(rows.getString(2)),
+                    Instant.parse(rows.getString(3))) : null;
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Could not read pending history interval", exception);
+        }
+    }
+
+    void process(WorkItem work, ImportedPage page, HistoryImportRequest request) {
+        if (!work.fromInclusive().equals(page.requestedFrom()) || !work.toExclusive().equals(page.requestedTo())) {
+            throw new IllegalArgumentException("Page does not match pending work interval");
+        }
+        validatePageBounds(page, request);
+        List<ValidatedPrice> validated = validate(page);
+        Set<Instant> observed = coveredTimestamps(validated);
+        try {
+            connection.setAutoCommit(false);
+            requirePending(work);
+            long newCoverage = 0;
+            for (Instant timestamp : observed) {
+                if (!minuteCovered(request, timestamp)) {
+                    newCoverage++;
+                }
+            }
+            if (!page.prices().isEmpty() && newCoverage == 0) {
+                throw new IllegalStateException("Nonempty provider response made no new coverage progress");
+            }
+            writePageInTransaction(page, request, validated);
+            if (page.prices().isEmpty()) {
+                insertClosure(work, request, page.payloadHash());
+            } else {
+                enqueueMissingRuns(work, request, observed);
+            }
+            markProcessed(work);
+            connection.commit();
+        } catch (RuntimeException | SQLException exception) {
+            rollback();
+            throw exception instanceof IllegalStateException state ? state
+                    : new IllegalStateException("Could not process imported history interval", exception);
+        } finally {
+            restoreAutoCommit();
+        }
+    }
+
+    void recordFailure(WorkItem work, RuntimeException failure) {
+        String sql = """
+                UPDATE history_import_work SET last_error = ?, last_attempt_utc = ?
+                WHERE work_id = ? AND state = 'PENDING'
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, failure.getClass().getSimpleName() + ": " + failure.getMessage());
+            statement.setString(2, Instant.now().toString());
+            statement.setLong(3, work.id());
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            failure.addSuppressed(exception);
+        }
+    }
+
+    long pendingCount() {
+        try (var statement = connection.createStatement();
+             var rows = statement.executeQuery("SELECT COUNT(*) FROM history_import_work WHERE state = 'PENDING'")) {
+            return rows.getLong(1);
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Could not count pending history intervals", exception);
         }
     }
 
@@ -111,16 +207,14 @@ public final class HistoryStagingStore implements AutoCloseable {
     public List<PriceExclusion> exclusions(HistoryImportRequest request) {
         String sql = """
                 SELECT snapshot_time_utc, reason FROM price_exclusion
-                WHERE import_run_id = ?
-                ORDER BY snapshot_time_utc, reason
+                WHERE import_run_id = ? ORDER BY snapshot_time_utc, reason
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, importRunId(request));
             try (var rows = statement.executeQuery()) {
                 List<PriceExclusion> exclusions = new ArrayList<>();
                 while (rows.next()) {
-                    exclusions.add(new PriceExclusion(rows.getString("snapshot_time_utc"),
-                            rows.getString("reason")));
+                    exclusions.add(new PriceExclusion(rows.getString(1), rows.getString(2)));
                 }
                 return List.copyOf(exclusions);
             }
@@ -130,20 +224,27 @@ public final class HistoryStagingStore implements AutoCloseable {
     }
 
     public HistoryImportAudit audit(HistoryImportRequest request) {
-        PageCounts pageCounts = pageCounts(request);
         long acceptedMinutes = countAccepted(request);
         long excludedMinutes = excludedMinuteCount(request);
         Map<String, Long> exclusionsByReason = exclusionsByReason(request);
         Instant[] actualBounds = actualBounds(request);
         long malformedAcceptedCount = malformedAcceptedCount(request);
-        long rejectedWithoutExclusionCount = Math.max(0, pageCounts.rejectedCount() - excludedMinutes);
         HistoryCoverage.Assessment coverage = coverage(request);
+        long pending = tableExists("history_import_work") ? pendingCount() : 0;
+        long received = acceptedMinutes + excludedMinutes;
+        PageCounts raw = pageCounts(request);
+        long closureMinutes = coverage.recognizedSessionClosures().stream()
+                .mapToLong(closure -> Duration.between(closure.fromInclusive(), closure.toExclusive()).toMinutes())
+                .sum();
+        long requestedMinutes = Duration.between(request.from(), request.to()).toMinutes();
+        boolean exactNonOverlappingCoverage = acceptedMinutes + excludedMinutes + closureMinutes == requestedMinutes;
         return new HistoryImportAudit(
                 request.from(), request.to(), actualBounds[0], actualBounds[1],
-                pageCounts.receivedCount(), pageCounts.acceptedCount(), pageCounts.rejectedCount(),
-                acceptedMinutes, excludedMinutes, Math.max(0, pageCounts.acceptedCount() - acceptedMinutes),
-                exclusionsByReason, coverage.recognizedSessionClosures(), coverage.continuityGaps(),
-                malformedAcceptedCount == 0 && rejectedWithoutExclusionCount == 0
+                received, acceptedMinutes, excludedMinutes,
+                acceptedMinutes, excludedMinutes, 0, exclusionsByReason,
+                coverage.recognizedSessionClosures(), coverage.continuityGaps(),
+                raw.observationCount(), raw.receivedCount(), raw.acceptedCount(), raw.rejectedCount(), pending,
+                malformedAcceptedCount == 0 && pending == 0 && exactNonOverlappingCoverage
                         && coverage.continuityGaps().isEmpty());
     }
 
@@ -158,13 +259,120 @@ public final class HistoryStagingStore implements AutoCloseable {
 
     public record PriceExclusion(String snapshotTimeUtc, String reason) { }
 
-    private List<ValidatedPrice> validate(ImportedPage page, HistoryImportRequest request) {
+    record WorkItem(long id, Instant fromInclusive, Instant toExclusive) { }
+
+    private void initializeRun(HistoryImportRequest request, Duration baseWindow) throws SQLException {
+        connection.setAutoCommit(false);
+        try {
+            String sql = """
+                    INSERT INTO history_import_run (
+                        import_run_id, algorithm_version, source, epic, resolution,
+                        requested_from_utc, requested_to_utc, created_at_utc)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """;
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setString(1, importRunId(request));
+                statement.setInt(2, ALGORITHM_VERSION);
+                statement.setString(3, request.source());
+                statement.setString(4, request.epic());
+                statement.setString(5, request.resolution());
+                statement.setString(6, request.from().toString());
+                statement.setString(7, request.to().toString());
+                statement.setString(8, Instant.now().toString());
+                statement.executeUpdate();
+            }
+            for (Instant from = request.from(); from.isBefore(request.to()); ) {
+                Instant candidate = from.plus(baseWindow);
+                Instant to = candidate.isBefore(request.to()) ? candidate : request.to();
+                insertWork(request, from, to);
+                from = to;
+            }
+            connection.commit();
+        } catch (SQLException exception) {
+            rollback();
+            throw exception;
+        } finally {
+            restoreAutoCommit();
+        }
+    }
+
+    private void requireResumableIdentity(HistoryImportRequest request) throws SQLException {
+        if (!tableExists("history_import_run")) {
+            throw new IllegalStateException("Existing staging database has no valid import-run metadata");
+        }
+        if (tableExists("history_import_completion")) {
+            throw new IllegalStateException("Refusing to resume a completed staging database");
+        }
+        String sql = """
+                SELECT algorithm_version, source, epic, resolution, requested_from_utc, requested_to_utc
+                FROM history_import_run
+                """;
+        try (var statement = connection.createStatement(); var rows = statement.executeQuery(sql)) {
+            if (!rows.next()) {
+                throw new IllegalStateException("Existing staging database has no valid import-run metadata");
+            }
+            int version = rows.getInt(1);
+            if (version != ALGORITHM_VERSION) {
+                throw new IllegalStateException("Unknown staging algorithm version: " + version);
+            }
+            boolean same = request.source().equals(rows.getString(2))
+                    && request.epic().equals(rows.getString(3))
+                    && request.resolution().equals(rows.getString(4))
+                    && request.from().equals(Instant.parse(rows.getString(5)))
+                    && request.to().equals(Instant.parse(rows.getString(6)));
+            if (!same || rows.next()) {
+                throw new IllegalStateException("Configured request identity does not match the incomplete stage");
+            }
+        }
+        if (!tableExists("history_import_work") || !tableExists("history_import_closure")) {
+            throw new IllegalStateException("Existing staging database has no valid import-run metadata");
+        }
+    }
+
+    private void writePageInTransaction(ImportedPage page, HistoryImportRequest request) throws SQLException {
+        writePageInTransaction(page, request, validate(page));
+    }
+
+    private void writePageInTransaction(ImportedPage page, HistoryImportRequest request,
+                                        List<ValidatedPrice> prices) throws SQLException {
+        long acceptedCount = prices.stream().filter(ValidatedPrice::accepted).count();
+        long rejectedCount = prices.size() - acceptedCount;
+        String runId = importRunId(request);
+        ExistingPage existing = existingPage(page, runId);
+        if (existing != null) {
+            if (!existing.matches(page.payloadHash(), page.prices().size(), acceptedCount, rejectedCount)) {
+                throw new IllegalStateException("Page bounds already have a different payload or counts");
+            }
+            return;
+        }
+        try (PreparedStatement statement = connection.prepareStatement(INSERT_PAGE)) {
+            statement.setString(1, runId);
+            statement.setString(2, page.requestedFrom().toString());
+            statement.setString(3, page.requestedTo().toString());
+            statement.setString(4, page.payloadHash());
+            statement.setLong(5, page.prices().size());
+            statement.setLong(6, acceptedCount);
+            statement.setLong(7, rejectedCount);
+            statement.executeUpdate();
+        }
+        Instant detectedAt = Instant.now();
+        for (ValidatedPrice price : prices) {
+            if (price.accepted()) {
+                insertPrice(price.price(), request, detectedAt);
+            } else {
+                insertExclusions(price, request, runId, detectedAt);
+            }
+        }
+    }
+
+    private List<ValidatedPrice> validate(ImportedPage page) {
         List<ValidatedPrice> validated = new ArrayList<>();
         for (int index = 0; index < page.prices().size(); index++) {
             ImportedPrice price = page.prices().get(index);
             Set<PriceValidationFailure> failures = validator.validate(price);
             if (price != null && price.timestamp() != null
-                    && (price.timestamp().isBefore(page.requestedFrom()) || !price.timestamp().isBefore(page.requestedTo()))) {
+                    && (price.timestamp().isBefore(page.requestedFrom())
+                    || !price.timestamp().isBefore(page.requestedTo()))) {
                 failures.add(PriceValidationFailure.TIMESTAMP_OUT_OF_RANGE);
             }
             String exclusionTimestamp = price == null || price.timestamp() == null
@@ -174,16 +382,104 @@ public final class HistoryStagingStore implements AutoCloseable {
         return validated;
     }
 
-    private void insertPage(ImportedPage page, String importRunId, long acceptedCount, long rejectedCount) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement(INSERT_PAGE)) {
-            statement.setString(1, importRunId);
-            statement.setString(2, page.requestedFrom().toString());
-            statement.setString(3, page.requestedTo().toString());
-            statement.setString(4, page.payloadHash());
-            statement.setLong(5, page.prices().size());
-            statement.setLong(6, acceptedCount);
-            statement.setLong(7, rejectedCount);
+    private static Set<Instant> coveredTimestamps(List<ValidatedPrice> prices) {
+        Set<Instant> timestamps = new LinkedHashSet<>();
+        for (ValidatedPrice validated : prices) {
+            if (validated.price() != null && validated.price().timestamp() != null) {
+                timestamps.add(validated.price().timestamp());
+            }
+        }
+        return timestamps;
+    }
+
+    private void enqueueMissingRuns(WorkItem work, HistoryImportRequest request, Set<Instant> observed)
+            throws SQLException {
+        Instant gapStart = null;
+        for (Instant minute = work.fromInclusive(); minute.isBefore(work.toExclusive()); minute = minute.plusSeconds(60)) {
+            if (observed.contains(minute)) {
+                if (gapStart != null) {
+                    insertWork(request, gapStart, minute);
+                    gapStart = null;
+                }
+            } else if (gapStart == null) {
+                gapStart = minute;
+            }
+        }
+        if (gapStart != null) {
+            insertWork(request, gapStart, work.toExclusive());
+        }
+    }
+
+    private void insertWork(HistoryImportRequest request, Instant from, Instant to) throws SQLException {
+        String sql = """
+                INSERT OR IGNORE INTO history_import_work (
+                    import_run_id, requested_from_utc, requested_to_utc, state)
+                VALUES (?, ?, ?, 'PENDING')
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, importRunId(request));
+            statement.setString(2, from.toString());
+            statement.setString(3, to.toString());
             statement.executeUpdate();
+        }
+    }
+
+    private void insertClosure(WorkItem work, HistoryImportRequest request, String payloadHash) throws SQLException {
+        String sql = """
+                INSERT OR IGNORE INTO history_import_closure (
+                    import_run_id, from_utc, to_utc, provenance, payload_hash)
+                VALUES (?, ?, ?, 'CAPITAL_EMPTY_OR_404', ?)
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, importRunId(request));
+            statement.setString(2, work.fromInclusive().toString());
+            statement.setString(3, work.toExclusive().toString());
+            statement.setString(4, payloadHash);
+            statement.executeUpdate();
+        }
+    }
+
+    private void requirePending(WorkItem work) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT state FROM history_import_work WHERE work_id = ?")) {
+            statement.setLong(1, work.id());
+            try (var rows = statement.executeQuery()) {
+                if (!rows.next() || !"PENDING".equals(rows.getString(1))) {
+                    throw new IllegalStateException("History interval is no longer pending");
+                }
+            }
+        }
+    }
+
+    private void markProcessed(WorkItem work) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                UPDATE history_import_work SET state = 'PROCESSED', last_error = NULL,
+                    last_attempt_utc = ? WHERE work_id = ? AND state = 'PENDING'
+                """)) {
+            statement.setString(1, Instant.now().toString());
+            statement.setLong(2, work.id());
+            if (statement.executeUpdate() != 1) {
+                throw new IllegalStateException("History interval was not pending");
+            }
+        }
+    }
+
+    private boolean minuteCovered(HistoryImportRequest request, Instant timestamp) throws SQLException {
+        String sql = """
+                SELECT 1 FROM historical_price WHERE source=? AND epic=? AND resolution=? AND snapshot_time_utc=?
+                UNION ALL
+                SELECT 1 FROM price_exclusion WHERE import_run_id=? AND snapshot_time_utc=? LIMIT 1
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, request.source());
+            statement.setString(2, request.epic());
+            statement.setString(3, request.resolution());
+            statement.setString(4, timestamp.toString());
+            statement.setString(5, importRunId(request));
+            statement.setString(6, timestamp.toString());
+            try (var rows = statement.executeQuery()) {
+                return rows.next();
+            }
         }
     }
 
@@ -209,15 +505,15 @@ public final class HistoryStagingStore implements AutoCloseable {
         }
     }
 
-    private void insertExclusions(ValidatedPrice invalidPrice, HistoryImportRequest request, String importRunId,
+    private void insertExclusions(ValidatedPrice invalid, HistoryImportRequest request, String runId,
                                   Instant detectedAt) throws SQLException {
-        for (PriceValidationFailure failure : invalidPrice.failures()) {
+        for (PriceValidationFailure failure : invalid.failures()) {
             try (PreparedStatement statement = connection.prepareStatement(INSERT_EXCLUSION)) {
-                statement.setString(1, importRunId);
+                statement.setString(1, runId);
                 statement.setString(2, request.source());
                 statement.setString(3, request.epic());
                 statement.setString(4, request.resolution());
-                statement.setString(5, invalidPrice.exclusionTimestamp());
+                statement.setString(5, invalid.exclusionTimestamp());
                 statement.setString(6, failure.name());
                 statement.setString(7, detectedAt.toString());
                 statement.executeUpdate();
@@ -225,14 +521,43 @@ public final class HistoryStagingStore implements AutoCloseable {
         }
     }
 
-    private static void validatePageBounds(ImportedPage page, HistoryImportRequest request) {
-        if (page.requestedFrom().isBefore(request.from()) || page.requestedTo().isAfter(request.to())
-                || !page.requestedFrom().isBefore(page.requestedTo())) {
-            throw new IllegalArgumentException("Page bounds must be within the import range");
+    private HistoryCoverage.Assessment coverage(HistoryImportRequest request) {
+        if (tableExists("history_import_closure")) {
+            return ledgerCoverage(request);
+        }
+        return legacyPageCoverage(request);
+    }
+
+    private HistoryCoverage.Assessment ledgerCoverage(HistoryImportRequest request) {
+        List<HistoryCoverage.Page> pages = new ArrayList<>();
+        Set<Instant> observed = new HashSet<>();
+        try {
+            observed.addAll(observedTimestamps(request, request.from(), request.to()));
+            for (Instant timestamp : observed) {
+                pages.add(new HistoryCoverage.Page(timestamp, timestamp.plusSeconds(60), List.of(timestamp), false));
+            }
+            String sql = """
+                    SELECT from_utc, to_utc FROM history_import_closure
+                    WHERE import_run_id = ? ORDER BY from_utc
+                    """;
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setString(1, importRunId(request));
+                try (var rows = statement.executeQuery()) {
+                    while (rows.next()) {
+                        Instant from = Instant.parse(rows.getString(1));
+                        Instant to = Instant.parse(rows.getString(2));
+                        pages.add(new HistoryCoverage.Page(from, to, List.of(), true,
+                                "CAPITAL_EMPTY_OR_404"));
+                    }
+                }
+            }
+            return HistoryCoverage.assess(request.from(), request.to(), pages);
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Could not audit closure-ledger coverage", exception);
         }
     }
 
-    private HistoryCoverage.Assessment coverage(HistoryImportRequest request) {
+    private HistoryCoverage.Assessment legacyPageCoverage(HistoryImportRequest request) {
         String sql = """
                 SELECT requested_from_utc, requested_to_utc, received_count FROM history_import_page
                 WHERE import_run_id = ? ORDER BY requested_from_utc
@@ -254,30 +579,28 @@ public final class HistoryStagingStore implements AutoCloseable {
         }
     }
 
-    private List<Instant> observedTimestamps(HistoryImportRequest request, Instant fromInclusive, Instant toExclusive)
+    private List<Instant> observedTimestamps(HistoryImportRequest request, Instant from, Instant to)
             throws SQLException {
         Set<Instant> timestamps = new HashSet<>();
         String prices = """
                 SELECT snapshot_time_utc FROM historical_price
-                WHERE source = ? AND epic = ? AND resolution = ?
-                  AND snapshot_time_utc >= ? AND snapshot_time_utc < ?
+                WHERE source=? AND epic=? AND resolution=? AND snapshot_time_utc>=? AND snapshot_time_utc<?
                 """;
         try (PreparedStatement statement = connection.prepareStatement(prices)) {
             statement.setString(1, request.source());
             statement.setString(2, request.epic());
             statement.setString(3, request.resolution());
-            statement.setString(4, fromInclusive.toString());
-            statement.setString(5, toExclusive.toString());
+            statement.setString(4, from.toString());
+            statement.setString(5, to.toString());
             collectTimestamps(statement, timestamps);
         }
-        String exclusions = """
+        try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT snapshot_time_utc FROM price_exclusion
-                WHERE import_run_id = ? AND snapshot_time_utc >= ? AND snapshot_time_utc < ?
-                """;
-        try (PreparedStatement statement = connection.prepareStatement(exclusions)) {
+                WHERE import_run_id=? AND snapshot_time_utc>=? AND snapshot_time_utc<?
+                """)) {
             statement.setString(1, importRunId(request));
-            statement.setString(2, fromInclusive.toString());
-            statement.setString(3, toExclusive.toString());
+            statement.setString(2, from.toString());
+            statement.setString(3, to.toString());
             collectTimestamps(statement, timestamps);
         }
         return List.copyOf(timestamps);
@@ -289,38 +612,15 @@ public final class HistoryStagingStore implements AutoCloseable {
                 try {
                     timestamps.add(Instant.parse(rows.getString(1)));
                 } catch (java.time.format.DateTimeParseException ignored) {
-                    // Missing timestamps are auditable exclusions but cannot establish minute coverage.
+                    // Missing timestamps remain auditable exclusions but cannot establish minute coverage.
                 }
             }
-        }
-    }
-
-    private PageCounts pageCounts(HistoryImportRequest request) {
-        String sql = """
-                SELECT COALESCE(SUM(received_count), 0), COALESCE(SUM(accepted_count), 0),
-                    COALESCE(SUM(rejected_count), 0)
-                FROM history_import_page
-                WHERE import_run_id = ?
-                """;
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, importRunId(request));
-            try (var rows = statement.executeQuery()) {
-                if (!rows.next()) {
-                    throw new SQLException("Page count query returned no row");
-                }
-                return new PageCounts(rows.getLong(1), rows.getLong(2), rows.getLong(3));
-            }
-        } catch (SQLException exception) {
-            throw new IllegalStateException("Could not audit imported page counts", exception);
         }
     }
 
     private long excludedMinuteCount(HistoryImportRequest request) {
-        String sql = """
-                SELECT COUNT(DISTINCT snapshot_time_utc) FROM price_exclusion
-                WHERE import_run_id = ?
-                """;
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT COUNT(DISTINCT snapshot_time_utc) FROM price_exclusion WHERE import_run_id=?")) {
             statement.setString(1, importRunId(request));
             return singleLong(statement);
         } catch (SQLException exception) {
@@ -328,13 +628,24 @@ public final class HistoryStagingStore implements AutoCloseable {
         }
     }
 
+    private PageCounts pageCounts(HistoryImportRequest request) {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT COUNT(*), COALESCE(SUM(received_count),0), COALESCE(SUM(accepted_count),0),
+                    COALESCE(SUM(rejected_count),0) FROM history_import_page WHERE import_run_id=?
+                """)) {
+            statement.setString(1, importRunId(request));
+            try (var rows = statement.executeQuery()) {
+                return new PageCounts(rows.getLong(1), rows.getLong(2), rows.getLong(3), rows.getLong(4));
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Could not count raw history observations", exception);
+        }
+    }
+
     private Map<String, Long> exclusionsByReason(HistoryImportRequest request) {
-        String sql = """
-                SELECT reason, COUNT(*) FROM price_exclusion
-                WHERE import_run_id = ?
-                GROUP BY reason ORDER BY reason
-                """;
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT reason, COUNT(*) FROM price_exclusion WHERE import_run_id=? GROUP BY reason ORDER BY reason
+                """)) {
             statement.setString(1, importRunId(request));
             try (var rows = statement.executeQuery()) {
                 Map<String, Long> counts = new LinkedHashMap<>();
@@ -349,20 +660,16 @@ public final class HistoryStagingStore implements AutoCloseable {
     }
 
     private Instant[] actualBounds(HistoryImportRequest request) {
-        String sql = """
+        try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT MIN(snapshot_time_utc), MAX(snapshot_time_utc) FROM historical_price
-                WHERE source = ? AND epic = ? AND resolution = ?
-                    AND snapshot_time_utc >= ? AND snapshot_time_utc < ?
-                """;
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                WHERE source=? AND epic=? AND resolution=? AND snapshot_time_utc>=? AND snapshot_time_utc<?
+                """)) {
             setRequestIdentity(statement, request);
             try (var rows = statement.executeQuery()) {
-                if (!rows.next()) {
-                    throw new SQLException("Actual bounds query returned no row");
-                }
                 String first = rows.getString(1);
                 String last = rows.getString(2);
-                return new Instant[] {first == null ? null : Instant.parse(first), last == null ? null : Instant.parse(last)};
+                return new Instant[]{first == null ? null : Instant.parse(first),
+                        last == null ? null : Instant.parse(last)};
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Could not audit actual price bounds", exception);
@@ -372,12 +679,10 @@ public final class HistoryStagingStore implements AutoCloseable {
     private long malformedAcceptedCount(HistoryImportRequest request) {
         String sql = """
                 SELECT COUNT(*) FROM historical_price
-                WHERE source = ? AND epic = ? AND resolution = ?
-                    AND snapshot_time_utc >= ? AND snapshot_time_utc < ?
-                    AND (open_bid <= 0 OR open_ask <= 0 OR high_bid <= 0 OR high_ask <= 0
-                        OR low_bid <= 0 OR low_ask <= 0 OR close_bid <= 0 OR close_ask <= 0
-                        OR open_bid > open_ask OR high_bid > high_ask OR low_bid > low_ask
-                        OR close_bid > close_ask)
+                WHERE source=? AND epic=? AND resolution=? AND snapshot_time_utc>=? AND snapshot_time_utc<?
+                  AND (open_bid<=0 OR open_ask<=0 OR high_bid<=0 OR high_ask<=0 OR low_bid<=0 OR low_ask<=0
+                    OR close_bid<=0 OR close_ask<=0 OR open_bid>open_ask OR high_bid>high_ask
+                    OR low_bid>low_ask OR close_bid>close_ask)
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             setRequestIdentity(statement, request);
@@ -387,29 +692,44 @@ public final class HistoryStagingStore implements AutoCloseable {
         }
     }
 
+    private ExistingPage existingPage(ImportedPage page, String runId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT payload_hash, received_count, accepted_count, rejected_count FROM history_import_page
+                WHERE import_run_id=? AND requested_from_utc=? AND requested_to_utc=?
+                """)) {
+            statement.setString(1, runId);
+            statement.setString(2, page.requestedFrom().toString());
+            statement.setString(3, page.requestedTo().toString());
+            try (var rows = statement.executeQuery()) {
+                return rows.next() ? new ExistingPage(rows.getString(1), rows.getLong(2), rows.getLong(3),
+                        rows.getLong(4)) : null;
+            }
+        }
+    }
+
+    private boolean tableExists(String name) {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?")) {
+            statement.setString(1, name);
+            try (var rows = statement.executeQuery()) {
+                return rows.next();
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Could not inspect staging schema", exception);
+        }
+    }
+
+    private static void validatePageBounds(ImportedPage page, HistoryImportRequest request) {
+        if (page.requestedFrom().isBefore(request.from()) || page.requestedTo().isAfter(request.to())
+                || !page.requestedFrom().isBefore(page.requestedTo())) {
+            throw new IllegalArgumentException("Page bounds must be within the import range");
+        }
+    }
+
     private static String importRunId(HistoryImportRequest request) {
         String identity = String.join("\n", request.source(), request.epic(), request.resolution(),
                 request.from().toString(), request.to().toString());
         return UUID.nameUUIDFromBytes(identity.getBytes(StandardCharsets.UTF_8)).toString();
-    }
-
-    private ExistingPage existingPage(ImportedPage page, String importRunId) throws SQLException {
-        String sql = """
-                SELECT payload_hash, received_count, accepted_count, rejected_count
-                FROM history_import_page
-                WHERE import_run_id = ? AND requested_from_utc = ? AND requested_to_utc = ?
-                """;
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, importRunId);
-            statement.setString(2, page.requestedFrom().toString());
-            statement.setString(3, page.requestedTo().toString());
-            try (var rows = statement.executeQuery()) {
-                if (!rows.next()) {
-                    return null;
-                }
-                return new ExistingPage(rows.getString(1), rows.getLong(2), rows.getLong(3), rows.getLong(4));
-            }
-        }
     }
 
     private static String missingTimestampIdentity(ImportedPage page, int index) {
@@ -421,12 +741,11 @@ public final class HistoryStagingStore implements AutoCloseable {
         try (Statement statement = connection.createStatement()) {
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS historical_price (
-                      id varchar(36) PRIMARY KEY NOT NULL,
-                      epic varchar(255), resolution varchar(255), snapshot_time_utc timestamp,
-                      open_bid float NOT NULL, open_ask float NOT NULL, high_bid float NOT NULL, high_ask float NOT NULL,
-                      low_bid float NOT NULL, low_ask float NOT NULL, close_bid float NOT NULL, close_ask float NOT NULL,
-                      last_traded_volume integer NOT NULL, source varchar(255), ingestion_time_utc timestamp
-                    )
+                      id varchar(36) PRIMARY KEY NOT NULL, epic varchar(255), resolution varchar(255),
+                      snapshot_time_utc timestamp, open_bid float NOT NULL, open_ask float NOT NULL,
+                      high_bid float NOT NULL, high_ask float NOT NULL, low_bid float NOT NULL, low_ask float NOT NULL,
+                      close_bid float NOT NULL, close_ask float NOT NULL, last_traded_volume integer NOT NULL,
+                      source varchar(255), ingestion_time_utc timestamp)
                     """);
             statement.execute("""
                     CREATE UNIQUE INDEX IF NOT EXISTS historical_price_source_epic_resolution_timestamp
@@ -436,8 +755,7 @@ public final class HistoryStagingStore implements AutoCloseable {
                     CREATE TABLE IF NOT EXISTS price_exclusion (
                       import_run_id TEXT NOT NULL, source TEXT NOT NULL, epic TEXT NOT NULL, resolution TEXT NOT NULL,
                       snapshot_time_utc TEXT NOT NULL, reason TEXT NOT NULL, detected_at_utc TEXT NOT NULL,
-                      PRIMARY KEY (import_run_id, source, epic, resolution, snapshot_time_utc, reason)
-                    )
+                      PRIMARY KEY (import_run_id, source, epic, resolution, snapshot_time_utc, reason))
                     """);
             statement.execute("""
                     CREATE INDEX IF NOT EXISTS price_exclusion_epic_resolution_timestamp
@@ -448,13 +766,33 @@ public final class HistoryStagingStore implements AutoCloseable {
                       import_run_id TEXT NOT NULL, requested_from_utc TEXT NOT NULL, requested_to_utc TEXT NOT NULL,
                       payload_hash TEXT NOT NULL, received_count INTEGER NOT NULL, accepted_count INTEGER NOT NULL,
                       rejected_count INTEGER NOT NULL,
-                      PRIMARY KEY (import_run_id, requested_from_utc, requested_to_utc)
-                    )
+                      PRIMARY KEY (import_run_id, requested_from_utc, requested_to_utc))
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS history_import_run (
+                      import_run_id TEXT PRIMARY KEY, algorithm_version INTEGER NOT NULL, source TEXT NOT NULL,
+                      epic TEXT NOT NULL, resolution TEXT NOT NULL, requested_from_utc TEXT NOT NULL,
+                      requested_to_utc TEXT NOT NULL, created_at_utc TEXT NOT NULL)
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS history_import_work (
+                      work_id INTEGER PRIMARY KEY AUTOINCREMENT, import_run_id TEXT NOT NULL,
+                      requested_from_utc TEXT NOT NULL, requested_to_utc TEXT NOT NULL,
+                      state TEXT NOT NULL CHECK (state IN ('PENDING','PROCESSED')), last_error TEXT,
+                      last_attempt_utc TEXT,
+                      UNIQUE (import_run_id, requested_from_utc, requested_to_utc))
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS history_import_closure (
+                      import_run_id TEXT NOT NULL, from_utc TEXT NOT NULL, to_utc TEXT NOT NULL,
+                      provenance TEXT NOT NULL, payload_hash TEXT NOT NULL,
+                      PRIMARY KEY (import_run_id, from_utc, to_utc))
                     """);
         }
     }
 
-    private static void setRequestIdentity(PreparedStatement statement, HistoryImportRequest request) throws SQLException {
+    private static void setRequestIdentity(PreparedStatement statement, HistoryImportRequest request)
+            throws SQLException {
         statement.setString(1, request.source());
         statement.setString(2, request.epic());
         statement.setString(3, request.resolution());
@@ -486,21 +824,19 @@ public final class HistoryStagingStore implements AutoCloseable {
         }
     }
 
-    private record ValidatedPrice(ImportedPrice price, String exclusionTimestamp, Set<PriceValidationFailure> failures) {
+    private record ValidatedPrice(ImportedPrice price, String exclusionTimestamp,
+                                  Set<PriceValidationFailure> failures) {
         private boolean accepted() {
             return failures.isEmpty();
         }
     }
 
-    private record PageCounts(long receivedCount, long acceptedCount, long rejectedCount) { }
-
     private record ExistingPage(String payloadHash, long receivedCount, long acceptedCount, long rejectedCount) {
-        private boolean matches(String otherPayloadHash, long otherReceivedCount, long otherAcceptedCount,
-                                long otherRejectedCount) {
-            return payloadHash.equals(otherPayloadHash)
-                    && receivedCount == otherReceivedCount
-                    && acceptedCount == otherAcceptedCount
-                    && rejectedCount == otherRejectedCount;
+        private boolean matches(String hash, long received, long accepted, long rejected) {
+            return payloadHash.equals(hash) && receivedCount == received && acceptedCount == accepted
+                    && rejectedCount == rejected;
         }
     }
+
+    private record PageCounts(long observationCount, long receivedCount, long acceptedCount, long rejectedCount) { }
 }

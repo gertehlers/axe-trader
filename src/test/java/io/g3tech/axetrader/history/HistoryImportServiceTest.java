@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.sql.DriverManager;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -108,6 +109,9 @@ class HistoryImportServiceTest {
 
         assertThat(audit.receivedCount()).isEqualTo(4);
         assertThat(audit.acceptedCount()).isEqualTo(4);
+        assertThat(audit.observationCount()).isEqualTo(1);
+        assertThat(audit.rawReceivedCount()).isEqualTo(4);
+        assertThat(audit.pendingWorkCount()).isZero();
         assertThat(audit.rejectedCount()).isZero();
         assertThat(audit.exclusionsByReason()).doesNotContainKey("TIMESTAMP_OUT_OF_RANGE");
     }
@@ -131,6 +135,192 @@ class HistoryImportServiceTest {
     }
 
     @Test
+    void stageRetainsSparseParentAndFetchesOnlyItsMaximalMissingRuns() {
+        Instant to = FROM.plusSeconds(6 * 60L);
+        HistoryImportRequest request = new HistoryImportRequest("US500", "MINUTE", FROM, to,
+                tempDir.resolve("sparse-stage.sqlite"), "capital");
+        ScriptedSource source = new ScriptedSource(Map.of(
+                new Interval(FROM, to), page(FROM, to,
+                        price("2024-01-01T00:00:00Z"), price("2024-01-01T00:02:00Z"),
+                        price("2024-01-01T00:03:00Z"), price("2024-01-01T00:05:00Z")),
+                new Interval(FROM.plusSeconds(60), FROM.plusSeconds(120)),
+                page(FROM.plusSeconds(60), FROM.plusSeconds(120)),
+                new Interval(FROM.plusSeconds(240), FROM.plusSeconds(300)),
+                page(FROM.plusSeconds(240), FROM.plusSeconds(300))));
+
+        HistoryImportAudit audit = new HistoryImportService(source, new HistoryDatabasePromoter())
+                .stage(request, activeDatabase(), archive());
+
+        assertThat(source.calls).containsExactly(
+                new FetchCall(FROM, to, 1_000),
+                new FetchCall(FROM.plusSeconds(60), FROM.plusSeconds(120), 1_000),
+                new FetchCall(FROM.plusSeconds(240), FROM.plusSeconds(300), 1_000));
+        assertThat(audit.receivedCount()).isEqualTo(4);
+        assertThat(audit.acceptedCount()).isEqualTo(4);
+        assertThat(audit.observationCount()).isEqualTo(3);
+        assertThat(audit.rawReceivedCount()).isEqualTo(4);
+        assertThat(audit.pendingWorkCount()).isZero();
+        assertThat(audit.duplicateCount()).isZero();
+        assertThat(audit.recognizedClosureMinuteCount()).isEqualTo(2);
+        assertThat(audit.recognizedSessionClosures())
+                .allSatisfy(closure -> assertThat(closure.provenance()).isEqualTo("CAPITAL_EMPTY_OR_404"));
+        assertThat(audit.isConsistent()).isTrue();
+    }
+
+    @Test
+    void gapResponsesConvergeByQueueingOnlyTheirSmallerMissingRuns() {
+        Instant to = FROM.plusSeconds(5 * 60L);
+        Instant gapFrom = FROM.plusSeconds(60);
+        Instant gapTo = FROM.plusSeconds(240);
+        HistoryImportRequest request = new HistoryImportRequest("US500", "MINUTE", FROM, to,
+                tempDir.resolve("converging-stage.sqlite"), "capital");
+        ScriptedSource source = new ScriptedSource(Map.of(
+                new Interval(FROM, to), page(FROM, to,
+                        price("2024-01-01T00:00:00Z"), price("2024-01-01T00:04:00Z")),
+                new Interval(gapFrom, gapTo), page(gapFrom, gapTo, price("2024-01-01T00:02:00Z")),
+                new Interval(gapFrom, FROM.plusSeconds(120)), page(gapFrom, FROM.plusSeconds(120)),
+                new Interval(FROM.plusSeconds(180), gapTo), page(FROM.plusSeconds(180), gapTo)));
+
+        HistoryImportAudit audit = new HistoryImportService(source, new HistoryDatabasePromoter())
+                .stage(request, activeDatabase(), archive());
+
+        assertThat(source.calls).containsExactly(
+                new FetchCall(FROM, to, 1_000),
+                new FetchCall(gapFrom, gapTo, 1_000),
+                new FetchCall(gapFrom, FROM.plusSeconds(120), 1_000),
+                new FetchCall(FROM.plusSeconds(180), gapTo, 1_000));
+        assertThat(audit.receivedCount()).isEqualTo(3);
+        assertThat(audit.acceptedMinuteCount()).isEqualTo(3);
+        assertThat(audit.recognizedClosureMinuteCount()).isEqualTo(2);
+        assertThat(audit.isConsistent()).isTrue();
+    }
+
+    @Test
+    void resumeFetchesOnlyDurablyPendingIntervalsAndMatchesUninterruptedAudit() throws Exception {
+        Instant to = FROM.plusSeconds(4 * 60L);
+        HistoryImportRequest interruptedRequest = new HistoryImportRequest("US500", "MINUTE", FROM, to,
+                tempDir.resolve("interrupted-stage.sqlite"), "capital");
+        Files.writeString(activeDatabase(), "legacy-active");
+        Files.writeString(archive(), "legacy-archive");
+        byte[] activeBefore = Files.readAllBytes(activeDatabase());
+        byte[] archiveBefore = Files.readAllBytes(archive());
+        ImportedPage sparse = page(FROM, to,
+                price("2024-01-01T00:00:00Z"), price("2024-01-01T00:02:00Z"));
+        HistoricalPricePageSource interrupted = new HistoricalPricePageSource() {
+            int calls;
+
+            @Override
+            public ImportedPage fetch(HistoryImportRequest ignored, Instant from, Instant until, int maxBars) {
+                if (calls++ == 0) {
+                    return sparse;
+                }
+                throw new IllegalStateException("simulated interruption");
+            }
+        };
+
+        assertThatThrownBy(() -> new HistoryImportService(interrupted, new HistoryDatabasePromoter())
+                .stage(interruptedRequest, activeDatabase(), archive()))
+                .hasMessageContaining("simulated interruption");
+        assertThat(completionRows(interruptedRequest.stagingDatabase())).isZero();
+        assertThat(Files.readAllBytes(activeDatabase())).isEqualTo(activeBefore);
+        assertThat(Files.readAllBytes(archive())).isEqualTo(archiveBefore);
+        try (HistoryStagingStore store = HistoryStagingStore.open(interruptedRequest.stagingDatabase())) {
+            HistoryImportAudit partialAudit = store.audit(interruptedRequest);
+            assertThat(partialAudit.observationCount()).isEqualTo(1);
+            assertThat(partialAudit.pendingWorkCount()).isEqualTo(2);
+            assertThat(partialAudit.isConsistent()).isFalse();
+        }
+
+        ScriptedSource resumed = new ScriptedSource(Map.of(
+                new Interval(FROM.plusSeconds(60), FROM.plusSeconds(120)),
+                page(FROM.plusSeconds(60), FROM.plusSeconds(120)),
+                new Interval(FROM.plusSeconds(180), to), page(FROM.plusSeconds(180), to)));
+        HistoryImportAudit resumedAudit = new HistoryImportService(resumed, new HistoryDatabasePromoter())
+                .stage(interruptedRequest, activeDatabase(), archive());
+
+        HistoryImportRequest uninterruptedRequest = new HistoryImportRequest("US500", "MINUTE", FROM, to,
+                tempDir.resolve("uninterrupted-stage.sqlite"), "capital");
+        ScriptedSource uninterrupted = new ScriptedSource(Map.of(
+                new Interval(FROM, to), sparse,
+                new Interval(FROM.plusSeconds(60), FROM.plusSeconds(120)),
+                page(FROM.plusSeconds(60), FROM.plusSeconds(120)),
+                new Interval(FROM.plusSeconds(180), to), page(FROM.plusSeconds(180), to)));
+        HistoryImportAudit uninterruptedAudit = new HistoryImportService(uninterrupted, new HistoryDatabasePromoter())
+                .stage(uninterruptedRequest, activeDatabase(), archive());
+
+        assertThat(resumed.calls).containsExactly(
+                new FetchCall(FROM.plusSeconds(60), FROM.plusSeconds(120), 1_000),
+                new FetchCall(FROM.plusSeconds(180), to, 1_000));
+        assertThat(resumedAudit).isEqualTo(uninterruptedAudit);
+        assertThat(resumedAudit.duplicateCount()).isZero();
+        assertThat(completionRows(interruptedRequest.stagingDatabase())).isEqualTo(1);
+        assertThat(completionFingerprint(interruptedRequest.stagingDatabase()))
+                .isEqualTo(completionFingerprint(uninterruptedRequest.stagingDatabase()));
+    }
+
+    @Test
+    void resumeRefusesMismatchedIdentityAndUnknownAlgorithmVersionBeforeFetching() throws Exception {
+        HistoricalPricePageSource interrupted = (ignored, from, to, maxBars) -> {
+            throw new IllegalStateException("simulated interruption");
+        };
+        HistoryImportRequest original = request();
+        assertThatThrownBy(() -> new HistoryImportService(interrupted, new HistoryDatabasePromoter())
+                .stage(original, activeDatabase(), archive()))
+                .hasMessageContaining("simulated interruption");
+
+        List<HistoryImportRequest> mismatches = List.of(
+                new HistoryImportRequest("DE40", "MINUTE", FROM, TO, original.stagingDatabase(), "capital"),
+                new HistoryImportRequest("US500", "MINUTE", FROM, TO, original.stagingDatabase(), "other"),
+                new HistoryImportRequest("US500", "MINUTE", FROM.plusSeconds(60), TO,
+                        original.stagingDatabase(), "capital"),
+                new HistoryImportRequest("US500", "MINUTE", FROM, TO.plusSeconds(60),
+                        original.stagingDatabase(), "capital"));
+        for (HistoryImportRequest mismatch : mismatches) {
+            RecordingSource mismatchSource = new RecordingSource(List.of());
+            assertThatThrownBy(() -> new HistoryImportService(mismatchSource, new HistoryDatabasePromoter())
+                    .stage(mismatch, activeDatabase(), archive()))
+                    .hasMessageContaining("identity");
+            assertThat(mismatchSource.calls).isEmpty();
+        }
+
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + original.stagingDatabase())) {
+            connection.createStatement().executeUpdate("UPDATE history_import_run SET algorithm_version = 999");
+        }
+        RecordingSource versionSource = new RecordingSource(List.of());
+        assertThatThrownBy(() -> new HistoryImportService(versionSource, new HistoryDatabasePromoter())
+                .stage(original, activeDatabase(), archive()))
+                .hasMessageContaining("version");
+        assertThat(versionSource.calls).isEmpty();
+    }
+
+    @Test
+    void completedStageCannotBeReusedEvenWithTheSameIdentity() {
+        HistoryImportRequest request = request();
+        new HistoryImportService(new RecordingSource(List.of(completePage(FROM, TO))), new HistoryDatabasePromoter())
+                .stage(request, activeDatabase(), archive());
+        RecordingSource source = new RecordingSource(List.of());
+
+        assertThatThrownBy(() -> new HistoryImportService(source, new HistoryDatabasePromoter())
+                .stage(request, activeDatabase(), archive()))
+                .hasMessageContaining("completed");
+        assertThat(source.calls).isEmpty();
+    }
+
+    @Test
+    void stageNeverUsesTheRetainedTaskFiveDatabasePath() {
+        Path retained = tempDir.resolve("data/us500-clean-stage.sqlite");
+        HistoryImportRequest request = new HistoryImportRequest("US500", "MINUTE", FROM, TO,
+                retained, "capital");
+        RecordingSource source = new RecordingSource(List.of(completePage(FROM, TO)));
+
+        assertThatThrownBy(() -> new HistoryImportService(source, new HistoryDatabasePromoter())
+                .stage(request, activeDatabase(), archive()))
+                .hasMessageContaining("Task 5");
+        assertThat(source.calls).isEmpty();
+        assertThat(retained).doesNotExist();
+    }
+
+    @Test
     void stageRefusesToCertifyAnUnexplainedMissingMinute() {
         RecordingSource source = new RecordingSource(List.of(page(FROM, TO,
                 price("2024-01-01T00:00:00Z"), price("2024-01-01T00:02:00Z"))));
@@ -138,7 +328,7 @@ class HistoryImportServiceTest {
 
         assertThatThrownBy(() -> service.stage(request(), activeDatabase(), archive()))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("failed history import audit");
+                .hasMessageContaining("no new coverage progress");
 
         try (HistoryStagingStore store = HistoryStagingStore.open(request().stagingDatabase())) {
             HistoryImportAudit audit = store.audit(request());
@@ -157,7 +347,7 @@ class HistoryImportServiceTest {
         assertThatThrownBy(() -> new HistoryImportService(source, new HistoryDatabasePromoter())
                 .stage(request(), activeDatabase(), archive()))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("failed history import audit");
+                .hasMessageContaining("no new coverage progress");
     }
 
     @Test
@@ -167,11 +357,11 @@ class HistoryImportServiceTest {
         assertThatThrownBy(() -> new HistoryImportService(source, new HistoryDatabasePromoter())
                 .stage(request(), activeDatabase(), archive()))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("failed history import audit");
+                .hasMessageContaining("no new coverage progress");
     }
 
     @Test
-    void stageRefusesToReuseAnExistingNamedDatabase() throws Exception {
+    void stageRefusesMalformedExistingNamedDatabase() throws Exception {
         Files.writeString(request().stagingDatabase(), "existing-stage");
         RecordingSource source = new RecordingSource(List.of(page(FROM, TO,
                 price("2024-01-01T00:03:00Z"))));
@@ -179,7 +369,7 @@ class HistoryImportServiceTest {
 
         assertThatThrownBy(() -> service.stage(request(), activeDatabase(), archive()))
                 .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("existing");
+                .hasMessageContaining("valid import-run metadata");
 
         assertThat(Files.readString(request().stagingDatabase())).isEqualTo("existing-stage");
         assertThat(source.calls).isEmpty();
@@ -505,6 +695,44 @@ class HistoryImportServiceTest {
                 new BigDecimal("4801.1"), new BigDecimal("4801.3"),
                 new BigDecimal("4799.1"), new BigDecimal("4799.3"),
                 new BigDecimal("4800.1"), new BigDecimal("4800.3"), 123L);
+    }
+
+    private static long completionRows(Path database) throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database);
+             var rows = connection.createStatement().executeQuery(
+                     "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='history_import_completion'")) {
+            return rows.getLong(1);
+        }
+    }
+
+    private static String completionFingerprint(Path database) throws Exception {
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + database);
+             var rows = connection.createStatement().executeQuery(
+                     "SELECT audit_fingerprint FROM history_import_completion WHERE completion_id=1")) {
+            return rows.getString(1);
+        }
+    }
+
+    private static final class ScriptedSource implements HistoricalPricePageSource {
+        private final Map<Interval, ImportedPage> pages;
+        private final List<FetchCall> calls = new ArrayList<>();
+
+        private ScriptedSource(Map<Interval, ImportedPage> pages) {
+            this.pages = new HashMap<>(pages);
+        }
+
+        @Override
+        public ImportedPage fetch(HistoryImportRequest request, Instant from, Instant to, int maxBars) {
+            calls.add(new FetchCall(from, to, maxBars));
+            ImportedPage page = pages.get(new Interval(from, to));
+            if (page == null) {
+                throw new AssertionError("Unexpected interval " + from + " to " + to);
+            }
+            return page;
+        }
+    }
+
+    private record Interval(Instant from, Instant to) {
     }
 
     public static final class ImportApplicationProcess {

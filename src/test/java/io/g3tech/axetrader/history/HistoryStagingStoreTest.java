@@ -127,6 +127,49 @@ class HistoryStagingStoreTest {
         }
     }
 
+    @Test
+    void overlappingRawObservationsDoNotInflateDistinctAuditTotals() {
+        HistoryImportRequest request = request();
+        try (HistoryStagingStore store = HistoryStagingStore.open(request.stagingDatabase())) {
+            store.writePage(page(
+                    price("2024-01-01T00:00:00Z", "4800.1", "4800.3"),
+                    price("2024-01-01T00:01:00Z", "4800.1", "4800.3"),
+                    price("2024-01-01T00:02:00Z", "4800.1", "4800.3")), request);
+            store.writePage(new ImportedPage(FROM.plusSeconds(60), TO,
+                    List.of(price("2024-01-01T00:01:00Z", "4800.1", "4800.3")), "overlap"), request);
+
+            HistoryImportAudit audit = store.audit(request);
+
+            assertThat(audit.receivedCount()).isEqualTo(3);
+            assertThat(audit.acceptedCount()).isEqualTo(3);
+            assertThat(audit.observationCount()).isEqualTo(2);
+            assertThat(audit.rawReceivedCount()).isEqualTo(4);
+            assertThat(audit.acceptedMinuteCount()).isEqualTo(3);
+            assertThat(audit.duplicateCount()).isZero();
+            assertThat(audit.isConsistent()).isTrue();
+        }
+    }
+
+    @Test
+    void acceptedExcludedOverlapFailsExactNonOverlappingCoverageAudit() {
+        HistoryImportRequest request = request();
+        try (HistoryStagingStore store = HistoryStagingStore.open(request.stagingDatabase())) {
+            store.writePage(page(
+                    price("2024-01-01T00:00:00Z", "4800.1", "4800.3"),
+                    price("2024-01-01T00:01:00Z", "4800.1", "4800.3"),
+                    price("2024-01-01T00:02:00Z", "4800.1", "4800.3")), request);
+            store.writePage(new ImportedPage(FROM.plusSeconds(60), TO,
+                    List.of(price("2024-01-01T00:01:00Z", "4800.3", "4800.1")), "conflict"), request);
+
+            HistoryImportAudit audit = store.audit(request);
+
+            assertThat(audit.continuityGaps()).isEmpty();
+            assertThat(audit.acceptedMinuteCount()).isEqualTo(3);
+            assertThat(audit.excludedMinuteCount()).isEqualTo(1);
+            assertThat(audit.isConsistent()).isFalse();
+        }
+    }
+
     private HistoryImportRequest request() {
         return new HistoryImportRequest("US500", "MINUTE", FROM, TO,
                 tempDir.resolve("staging.sqlite"), "capital");

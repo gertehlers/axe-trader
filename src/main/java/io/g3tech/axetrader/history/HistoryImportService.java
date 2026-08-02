@@ -55,17 +55,18 @@ public class HistoryImportService {
         Objects.requireNonNull(request, "request");
         Path staging = request.stagingDatabase();
         validatePaths(staging, activeDatabase, archive);
-        if (Files.exists(staging)) {
-            throw new IllegalStateException("Refusing to stage into an existing database: " + staging);
-        }
-
-        Instant cursor = request.from();
+        rejectRetainedFailureStage(staging);
         HistoryImportAudit audit;
-        try (HistoryStagingStore store = HistoryStagingStore.open(staging)) {
-            while (cursor.isBefore(request.to())) {
-                Instant pageTo = boundedTo(cursor, request.to());
-                stageWindow(store, request, cursor, pageTo);
-                cursor = pageTo;
+        try (HistoryStagingStore store = HistoryStagingStore.openForStage(staging, request, CAPITAL_PAGE_WINDOW)) {
+            HistoryStagingStore.WorkItem work;
+            while ((work = store.nextPending()) != null) {
+                try {
+                    ImportedPage page = fetch(request, work.fromInclusive(), work.toExclusive());
+                    store.process(work, page, request);
+                } catch (RuntimeException exception) {
+                    store.recordFailure(work, exception);
+                    throw exception;
+                }
             }
             audit = store.audit(request);
         }
@@ -138,21 +139,11 @@ public class HistoryImportService {
         return pageLimit.isBefore(requestedTo) ? pageLimit : requestedTo;
     }
 
-    private void stageWindow(HistoryStagingStore store, HistoryImportRequest request, Instant fromInclusive,
-                             Instant toExclusive) {
-        ImportedPage page = fetch(request, fromInclusive, toExclusive);
-        HistoryCoverage.Assessment coverage = HistoryCoverage.assess(fromInclusive, toExclusive, List.of(
-                new HistoryCoverage.Page(fromInclusive, toExclusive, page.prices().stream()
-                        .filter(Objects::nonNull).map(ImportedPrice::timestamp).filter(Objects::nonNull).toList(),
-                        page.prices().isEmpty())));
-        if (coverage.continuityGaps().isEmpty() || Duration.between(fromInclusive, toExclusive).equals(Duration.ofMinutes(1))) {
-            store.writePage(page, request);
-            return;
+    private static void rejectRetainedFailureStage(Path staging) {
+        Path normalized = staging.toAbsolutePath().normalize();
+        if (normalized.endsWith(Path.of("data", "us500-clean-stage.sqlite"))) {
+            throw new IllegalStateException("Refusing to reuse retained Task 5 staging database; choose a new versioned stage path");
         }
-        Instant midpoint = fromInclusive.plus(Duration.between(fromInclusive, toExclusive).dividedBy(2).toMinutes(),
-                java.time.temporal.ChronoUnit.MINUTES);
-        stageWindow(store, request, fromInclusive, midpoint);
-        stageWindow(store, request, midpoint, toExclusive);
     }
 
     private HistoryImportAudit auditProbe(ImportedPage page, HistoryImportRequest request) {
@@ -185,6 +176,7 @@ public class HistoryImportService {
                 page.prices().size(), accepted.size(), rejected,
                 distinctTimestamps.size(), rejected, duplicateCount, exclusions,
                 coverage.recognizedSessionClosures(), coverage.continuityGaps(),
+                1, page.prices().size(), accepted.size(), rejected, 0,
                 duplicateCount == 0 && coverage.continuityGaps().isEmpty());
     }
 
@@ -273,7 +265,12 @@ public class HistoryImportService {
         audit.exclusionsByReason().entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .forEach(entry -> canonical.append(entry.getKey()).append('=').append(entry.getValue()).append('\n'));
-        canonical.append(audit.isConsistent());
+        canonical.append(audit.observationCount()).append('\n')
+                .append(audit.rawReceivedCount()).append('\n')
+                .append(audit.rawAcceptedCount()).append('\n')
+                .append(audit.rawRejectedCount()).append('\n')
+                .append(audit.pendingWorkCount()).append('\n')
+                .append(audit.isConsistent());
         try {
             byte[] bytes = MessageDigest.getInstance("SHA-256")
                     .digest(canonical.toString().getBytes(StandardCharsets.UTF_8));
