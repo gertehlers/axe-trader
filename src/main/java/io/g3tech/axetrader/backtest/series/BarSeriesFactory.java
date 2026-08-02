@@ -1,7 +1,9 @@
 package io.g3tech.axetrader.backtest.series;
 
 import io.g3tech.axetrader.strategy.backtest.repositories.HistoricalPriceRepository;
+import io.g3tech.axetrader.strategy.backtest.repositories.PriceExclusionRepository;
 import io.g3tech.axetrader.strategy.backtest.repositories.data.HistoricalPrice;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Limit;
@@ -13,17 +15,29 @@ import org.ta4j.core.aggregator.BaseBarSeriesAggregator;
 import org.ta4j.core.aggregator.DurationBarAggregator;
 
 import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Component
 public class BarSeriesFactory {
 
     private static final Logger logger = LoggerFactory.getLogger(BarSeriesFactory.class);
+    private static final String MINUTE_RESOLUTION = "MINUTE";
 
     private final HistoricalPriceRepository repository;
+    private final PriceExclusionRepository priceExclusionRepository;
 
     public BarSeriesFactory(HistoricalPriceRepository repository) {
+        this(repository, null);
+    }
+
+    @Autowired
+    public BarSeriesFactory(HistoricalPriceRepository repository, PriceExclusionRepository priceExclusionRepository) {
         this.repository = repository;
+        this.priceExclusionRepository = priceExclusionRepository;
     }
 
     public BarSeries build(String epic, int limit, int timeframeMinutes) {
@@ -32,7 +46,7 @@ public class BarSeriesFactory {
                 Sort.by(Sort.Direction.ASC, "snapshotTimeUtc"),
                 Limit.of(limit)
         );
-        return fromPrices(epic, prices, timeframeMinutes);
+        return fromPricesWithSides(epic, prices, timeframeMinutes, excludedMinutes(epic, prices)).mid();
     }
 
     /**
@@ -45,19 +59,95 @@ public class BarSeriesFactory {
     }
 
     public MarketSeries fromPricesWithSides(String epic, List<HistoricalPrice> prices, int timeframeMinutes) {
+        return fromPricesWithSides(epic, prices, timeframeMinutes, Set.of());
+    }
+
+    public MarketSeries fromPricesWithSides(String epic, List<HistoricalPrice> prices, int timeframeMinutes,
+                                            Set<Instant> excludedMinutes) {
         for (HistoricalPrice price : prices) {
             validate(price);
         }
 
-        BarSeries mid = aggregate(epic, prices, timeframeMinutes, PriceSide.MID);
-        BarSeries bid = aggregate(epic, prices, timeframeMinutes, PriceSide.BID);
-        BarSeries ask = aggregate(epic, prices, timeframeMinutes, PriceSide.ASK);
+        List<HistoricalPrice> completePrices = completeBuckets(prices, timeframeMinutes, excludedMinutes);
+        BarSeries mid = aggregate(epic, completePrices, timeframeMinutes, PriceSide.MID);
+        BarSeries bid = aggregate(epic, completePrices, timeframeMinutes, PriceSide.BID);
+        BarSeries ask = aggregate(epic, completePrices, timeframeMinutes, PriceSide.ASK);
         verifyMatchingEndTimes(mid, bid, ask);
 
         logger.info("Built market series {}: {} 1m bars aggregated to {} {}m bars",
-                epic, prices.size(), mid.getBarCount(), timeframeMinutes);
+                epic, completePrices.size(), mid.getBarCount(), timeframeMinutes);
 
         return new MarketSeries(mid, bid, ask);
+    }
+
+    private Set<Instant> excludedMinutes(String epic, List<HistoricalPrice> prices) {
+        if (priceExclusionRepository == null || prices.isEmpty()) {
+            return Set.of();
+        }
+
+        Instant from = prices.stream().map(HistoricalPrice::getSnapshotTimeUtc).min(Instant::compareTo).orElseThrow();
+        Instant to = prices.stream().map(HistoricalPrice::getSnapshotTimeUtc).max(Instant::compareTo)
+                .orElseThrow().plus(Duration.ofMinutes(1));
+        String resolution = prices.stream().map(HistoricalPrice::getResolution)
+                .filter(value -> value != null && !value.isBlank())
+                .findFirst()
+                .orElse(MINUTE_RESOLUTION);
+        return priceExclusionRepository.findDistinctSnapshotTimes(epic, resolution, from.toString(), to.toString())
+                .stream()
+                .map(Instant::parse)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    private static List<HistoricalPrice> completeBuckets(List<HistoricalPrice> prices, int timeframeMinutes,
+                                                          Set<Instant> excludedMinutes) {
+        if (timeframeMinutes <= 0) {
+            throw new IllegalArgumentException("timeframeMinutes must be positive");
+        }
+
+        Duration timeframe = Duration.ofMinutes(timeframeMinutes);
+        Set<Instant> exclusions = Set.copyOf(excludedMinutes);
+        var pricesByBucket = new java.util.TreeMap<Instant, List<HistoricalPrice>>();
+        for (HistoricalPrice price : prices) {
+            pricesByBucket.computeIfAbsent(bucketEnd(price.getSnapshotTimeUtc(), timeframe), ignored -> new ArrayList<>())
+                    .add(price);
+        }
+
+        List<HistoricalPrice> complete = new ArrayList<>();
+        for (var entry : pricesByBucket.entrySet()) {
+            if (isComplete(entry.getKey(), entry.getValue(), timeframeMinutes, exclusions)) {
+                complete.addAll(entry.getValue());
+            }
+        }
+        return complete;
+    }
+
+    private static Instant bucketEnd(Instant minuteEnd, Duration timeframe) {
+        long timeframeSeconds = timeframe.toSeconds();
+        long epochSeconds = minuteEnd.getEpochSecond();
+        long bucketEndSeconds = Math.floorDiv(epochSeconds - 1, timeframeSeconds) * timeframeSeconds
+                + timeframeSeconds;
+        return Instant.ofEpochSecond(bucketEndSeconds);
+    }
+
+    private static boolean isComplete(Instant bucketEnd, List<HistoricalPrice> prices, int timeframeMinutes,
+                                      Set<Instant> excludedMinutes) {
+        Set<Instant> presentMinutes = new HashSet<>();
+        for (HistoricalPrice price : prices) {
+            Instant minute = price.getSnapshotTimeUtc();
+            if (excludedMinutes.contains(minute)) {
+                return false;
+            }
+            presentMinutes.add(minute);
+        }
+        if (presentMinutes.size() != timeframeMinutes) {
+            return false;
+        }
+        for (int minuteOffset = 0; minuteOffset < timeframeMinutes; minuteOffset++) {
+            if (!presentMinutes.contains(bucketEnd.minus(Duration.ofMinutes(minuteOffset)))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static BarSeries aggregate(String epic, List<HistoricalPrice> prices, int timeframeMinutes, PriceSide side) {
