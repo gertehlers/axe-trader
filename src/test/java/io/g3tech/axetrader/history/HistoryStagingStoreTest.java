@@ -4,11 +4,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.math.BigDecimal;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.sql.DriverManager;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -207,9 +210,156 @@ class HistoryStagingStoreTest {
         }
     }
 
+    @Test
+    void symlinkAliasCannotOwnPendingWorkConcurrently() throws Exception {
+        Path database = request().stagingDatabase();
+        initializePendingStage(database);
+        Path alias = tempDir.resolve("staging-symlink.sqlite");
+        Files.createSymbolicLink(alias, database);
+
+        assertAliasCannotOwnPendingWork(database, alias);
+    }
+
+    @Test
+    void hardLinkAliasCannotOwnPendingWorkConcurrently() throws Exception {
+        Path database = request().stagingDatabase();
+        initializePendingStage(database);
+        Path alias = tempDir.resolve("staging-hard-link.sqlite");
+        Files.createLink(alias, database);
+
+        assertAliasCannotOwnPendingWork(database, alias);
+    }
+
+    @Test
+    void leaseHandoffKeepsOneUnderlyingDatabaseOwner() throws Exception {
+        Path database = request().stagingDatabase();
+        initializePendingStage(database);
+        Path symlink = tempDir.resolve("handoff-symlink.sqlite");
+        Path hardLink = tempDir.resolve("handoff-hard-link.sqlite");
+        Files.createSymbolicLink(symlink, database);
+        Files.createLink(hardLink, database);
+        LeaseProcess owner = startLeaseProcess(database, "owner", false);
+        LeaseProcess nextOwner = null;
+        LeaseProcess contender = null;
+        try {
+            awaitAnySignal(owner, owner.work(), owner.error());
+            assertThat(owner.error()).doesNotExist();
+            assertThat(owner.work()).exists();
+            Path stableLock = onlyLeaseFile();
+            Object stableLockKey = Files.readAttributes(stableLock, BasicFileAttributes.class).fileKey();
+
+            nextOwner = startLeaseProcess(symlink, "next-owner", true);
+            awaitAnySignal(nextOwner, nextOwner.waiting(), nextOwner.work(), nextOwner.error());
+            assertThat(nextOwner.error()).doesNotExist();
+            assertThat(nextOwner.waiting()).exists();
+            assertThat(nextOwner.work()).doesNotExist();
+
+            release(owner);
+            awaitAnySignal(nextOwner, nextOwner.work(), nextOwner.error());
+            assertThat(nextOwner.error()).doesNotExist();
+            assertThat(nextOwner.work()).exists();
+            assertThat(stableLock).exists();
+            assertThat(Files.readAttributes(stableLock, BasicFileAttributes.class).fileKey())
+                    .isEqualTo(stableLockKey);
+
+            contender = startLeaseProcess(hardLink, "handoff-contender", false);
+            awaitAnySignal(contender, contender.blocked(), contender.work(), contender.error());
+            assertThat(contender.error()).doesNotExist();
+            assertThat(contender.blocked()).exists();
+            assertThat(contender.work()).doesNotExist();
+        } finally {
+            release(contender);
+            release(nextOwner);
+            release(owner);
+        }
+    }
+
+    private void assertAliasCannotOwnPendingWork(Path database, Path alias) throws Exception {
+        LeaseProcess owner = startLeaseProcess(database, "owner", false);
+        LeaseProcess contender = null;
+        try {
+            awaitAnySignal(owner, owner.work(), owner.error());
+            assertThat(owner.error()).doesNotExist();
+            assertThat(owner.work()).exists();
+
+            contender = startLeaseProcess(alias, "contender", false);
+            awaitAnySignal(contender, contender.blocked(), contender.work(), contender.error());
+            assertThat(contender.error()).doesNotExist();
+            assertThat(contender.blocked()).exists();
+            assertThat(contender.work()).doesNotExist();
+        } finally {
+            release(contender);
+            release(owner);
+        }
+    }
+
+    private void initializePendingStage(Path database) {
+        HistoryImportRequest request = request(database);
+        try (HistoryStagingStore ignored = HistoryStagingStore.openForStage(
+                database, request, Duration.ofMinutes(999))) {
+            // Closing without processing preserves one pending interval for the subprocess owner.
+        }
+    }
+
+    private LeaseProcess startLeaseProcess(Path database, String name, boolean retry) throws Exception {
+        Path signalPrefix = tempDir.resolve("signals").resolve(name);
+        Path runtimeDirectory = tempDir.resolve("runtime");
+        Files.createDirectories(signalPrefix.getParent());
+        Files.createDirectories(runtimeDirectory);
+        Process process = new ProcessBuilder(
+                Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                "-Djava.io.tmpdir=" + runtimeDirectory,
+                "-cp", System.getProperty("surefire.test.class.path"),
+                LeaseProcessMain.class.getName(), database.toAbsolutePath().toString(),
+                signalPrefix.toString(), Boolean.toString(retry))
+                .redirectErrorStream(true)
+                .start();
+        return new LeaseProcess(process, signalPrefix);
+    }
+
+    private Path onlyLeaseFile() throws Exception {
+        try (var files = Files.list(tempDir.resolve("runtime/axe-trader-stage-leases"))) {
+            List<Path> leaseFiles = files.toList();
+            assertThat(leaseFiles).singleElement();
+            return leaseFiles.getFirst();
+        }
+    }
+
+    private static void awaitAnySignal(LeaseProcess process, Path... signals) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        while (System.nanoTime() < deadline) {
+            for (Path signal : signals) {
+                if (Files.exists(signal)) {
+                    return;
+                }
+            }
+            if (!process.process().isAlive()) {
+                break;
+            }
+            Thread.sleep(10);
+        }
+        String output = new String(process.process().getInputStream().readAllBytes());
+        String error = Files.exists(process.error()) ? Files.readString(process.error()) : "";
+        throw new AssertionError("Lease subprocess produced no expected signal. Output: " + output + error);
+    }
+
+    private static void release(LeaseProcess process) throws Exception {
+        if (process == null) {
+            return;
+        }
+        Files.writeString(process.release(), "release");
+        if (!process.process().waitFor(5, TimeUnit.SECONDS)) {
+            process.process().destroyForcibly();
+            assertThat(process.process().waitFor(5, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
     private HistoryImportRequest request() {
-        return new HistoryImportRequest("US500", "MINUTE", FROM, TO,
-                tempDir.resolve("staging.sqlite"), "capital");
+        return request(tempDir.resolve("staging.sqlite"));
+    }
+
+    private static HistoryImportRequest request(Path database) {
+        return new HistoryImportRequest("US500", "MINUTE", FROM, TO, database, "capital");
     }
 
     private static ImportedPage page(ImportedPrice... prices) {
@@ -236,5 +386,67 @@ class HistoryStagingStoreTest {
                 new BigDecimal("4801.3"), new BigDecimal("4801.1"),
                 new BigDecimal("4799.1"), new BigDecimal("4799.3"),
                 new BigDecimal("4800.1"), new BigDecimal("4800.3"), 123L);
+    }
+
+    private record LeaseProcess(Process process, Path prefix) {
+        private Path waiting() {
+            return Path.of(prefix + ".waiting");
+        }
+
+        private Path blocked() {
+            return Path.of(prefix + ".blocked");
+        }
+
+        private Path work() {
+            return Path.of(prefix + ".work");
+        }
+
+        private Path release() {
+            return Path.of(prefix + ".release");
+        }
+
+        private Path error() {
+            return Path.of(prefix + ".error");
+        }
+    }
+
+    public static final class LeaseProcessMain {
+        private LeaseProcessMain() {
+        }
+
+        public static void main(String[] args) throws Exception {
+            Path database = Path.of(args[0]);
+            Path prefix = Path.of(args[1]);
+            boolean retry = Boolean.parseBoolean(args[2]);
+            while (true) {
+                try (HistoryStagingStore store = HistoryStagingStore.openForStage(
+                        database, request(database), Duration.ofMinutes(999))) {
+                    if (store.nextPending() == null) {
+                        throw new IllegalStateException("Lease owner found no pending provider work");
+                    }
+                    Files.writeString(Path.of(prefix + ".work"), "work");
+                    waitForRelease(Path.of(prefix + ".release"));
+                    return;
+                } catch (IllegalStateException exception) {
+                    if (exception.getMessage() != null && exception.getMessage().contains("already active")) {
+                        if (!retry) {
+                            Files.writeString(Path.of(prefix + ".blocked"), "blocked");
+                            return;
+                        }
+                        Files.writeString(Path.of(prefix + ".waiting"), "waiting");
+                        Thread.sleep(10);
+                        continue;
+                    }
+                    Files.writeString(Path.of(prefix + ".error"), exception.toString());
+                    return;
+                }
+            }
+        }
+
+        private static void waitForRelease(Path release) throws InterruptedException {
+            while (!Files.exists(release)) {
+                Thread.sleep(10);
+            }
+        }
     }
 }

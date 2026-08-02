@@ -8,6 +8,7 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -78,8 +79,8 @@ public final class HistoryStagingStore implements AutoCloseable {
         Connection connection = null;
         StageLease lease = null;
         try {
-            lease = StageLease.acquire(database);
             connection = connect(database);
+            lease = StageLease.acquire(database);
             enableForeignKeys(connection);
             String runId = importRunId(request);
             HistoryStagingStore store = new HistoryStagingStore(connection, runId, lease);
@@ -955,44 +956,69 @@ public final class HistoryStagingStore implements AutoCloseable {
     private record PageCounts(long observationCount, long receivedCount, long acceptedCount, long rejectedCount) { }
 
     private static final class StageLease implements AutoCloseable {
-        private final Path path;
         private final FileChannel channel;
         private final FileLock lock;
 
-        private StageLease(Path path, FileChannel channel, FileLock lock) {
-            this.path = path;
+        private StageLease(FileChannel channel, FileLock lock) {
             this.channel = channel;
             this.lock = lock;
         }
 
         private static StageLease acquire(Path database) throws IOException {
-            Path absolute = database.toAbsolutePath().normalize();
-            Path lockPath = absolute.resolveSibling(absolute.getFileName() + ".stage.lock");
-            if (lockPath.getParent() != null) {
-                Files.createDirectories(lockPath.getParent());
+            Path realPath = database.toRealPath();
+            Object fileKey = Files.readAttributes(realPath, BasicFileAttributes.class).fileKey();
+            if (fileKey == null) {
+                throw new IllegalStateException(
+                        "Filesystem does not expose a stable identity for history staging " + database);
             }
+            String identity = Files.getFileStore(realPath) + "\n" + fileKey;
+            Path lockDirectory = Path.of(System.getProperty("java.io.tmpdir"), "axe-trader-stage-leases");
+            Files.createDirectories(lockDirectory);
+            Path lockPath = lockDirectory.resolve(
+                    UUID.nameUUIDFromBytes(identity.getBytes(StandardCharsets.UTF_8)) + ".lock");
             FileChannel channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
             try {
                 FileLock lock = channel.tryLock();
                 if (lock == null) {
-                    channel.close();
                     throw new IllegalStateException("History staging is already active for " + database);
                 }
-                return new StageLease(lockPath, channel, lock);
+                return new StageLease(channel, lock);
             } catch (OverlappingFileLockException exception) {
-                channel.close();
+                closeAfterAcquireFailure(channel, exception);
                 throw new IllegalStateException("History staging is already active for " + database, exception);
+            } catch (IOException | RuntimeException exception) {
+                closeAfterAcquireFailure(channel, exception);
+                throw exception;
+            }
+        }
+
+        private static void closeAfterAcquireFailure(FileChannel channel, Exception failure) {
+            try {
+                channel.close();
+            } catch (IOException closeFailure) {
+                failure.addSuppressed(closeFailure);
             }
         }
 
         @Override
         public void close() {
+            IOException failure = null;
             try {
                 lock.release();
-                channel.close();
-                Files.deleteIfExists(path);
             } catch (IOException exception) {
-                throw new IllegalStateException("Could not release history staging lease", exception);
+                failure = exception;
+            }
+            try {
+                channel.close();
+            } catch (IOException exception) {
+                if (failure == null) {
+                    failure = exception;
+                } else {
+                    failure.addSuppressed(exception);
+                }
+            }
+            if (failure != null) {
+                throw new IllegalStateException("Could not release history staging lease", failure);
             }
         }
     }
