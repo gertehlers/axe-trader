@@ -106,6 +106,25 @@ class BarSeriesFactoryTest {
         assertThat(series.mid().getBarCount()).isZero();
     }
 
+    @Test
+    void keepsCompleteBucketsOnBothSidesOfAnExcludedUtcBoundaryBucket() {
+        BarSeriesFactory factory = new BarSeriesFactory(null);
+        List<HistoricalPrice> prices = new ArrayList<>();
+        for (int minuteOffset = 0; minuteOffset < 15; minuteOffset++) {
+            Instant timestamp = Instant.parse("2023-12-31T23:56:00Z").plusSeconds((long) minuteOffset * 60);
+            prices.add(price(timestamp.toString(), 99.0, 101.0));
+        }
+
+        MarketSeries series = factory.fromPricesWithSides("US500", prices, 5,
+                Set.of(Instant.parse("2024-01-01T00:03:00Z")));
+
+        assertThat(series.mid().getBarCount()).isEqualTo(2);
+        assertThat(series.mid().getBar(0).getEndTime()).isEqualTo(Instant.parse("2024-01-01T00:00:00Z"));
+        assertThat(series.mid().getBar(1).getEndTime()).isEqualTo(Instant.parse("2024-01-01T00:10:00Z"));
+        assertThat(series.bid().getBar(0).getEndTime()).isEqualTo(series.mid().getBar(0).getEndTime());
+        assertThat(series.ask().getBar(1).getEndTime()).isEqualTo(series.mid().getBar(1).getEndTime());
+    }
+
     private static HistoricalPrice price(String timestamp, double bid, double ask) {
         HistoricalPrice price = new HistoricalPrice();
         price.setSnapshotTimeUtc(Instant.parse(timestamp));
