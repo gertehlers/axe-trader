@@ -26,9 +26,10 @@ the following hold:
 - bid is less than or equal to ask for open, high, low, and close.
 
 An invalid candle is never inserted into clean price history. The importer records an exclusion for that
-minute, including the reason and its five-minute UTC bucket. Research at five-minute resolution must exclude
-any bucket containing an excluded minute, so it never derives a bar from incomplete or invalid minute data.
-Recognised market-closure gaps are reported separately and are not silently converted into exclusions.
+minute and its reason. The local database stores only minute candles; the strategy chooses how to roll them
+into higher timeframes. Any derived bucket, at any selected timeframe, must be excluded when it contains an
+excluded minute, so research never derives a bar from incomplete or invalid minute data. Recognised
+market-closure gaps are reported separately and are not silently converted into exclusions.
 
 ## Import flow
 
@@ -36,7 +37,7 @@ Recognised market-closure gaps are reported separately and are not silently conv
 2. Authenticate once through the existing Capital client and fetch historical-price pages of at most 1,000
    candles, advancing with deterministic half-open UTC bounds until the requested end is reached.
 3. Validate each received candle before insertion. Insert valid candles into staging history and rejected
-   candles into the staging exclusion ledger in a transaction for each page. Persist page provenance: bounds,
+   candles into the minute-level staging exclusion ledger in a transaction for each page. Persist page provenance: bounds,
    received count, accepted count, rejected count, and a response hash.
 4. Audit the staged dataset. Report requested and actual bounds, distinct candle count, duplicate count,
    invalid/crossed-field counts, exclusion count and buckets, and continuity/session-gap summary.
@@ -57,10 +58,11 @@ only its named staging file; it cannot modify D1.
 ## Tests and verification
 
 Automated tests cover request pagination and half-open bounds, direct DTO mapping, clean-candle insertion,
-invalid and crossed-candle rejection, five-minute bucket exclusions, source/timestamp uniqueness, audit
-reporting, no active-database mutation before promotion, and atomic promotion with legacy backups.
+invalid and crossed-candle rejection, excluded-minute recording, rejection of derived buckets at each
+supported strategy timeframe when one contains an exclusion, source/timestamp uniqueness, audit reporting,
+no active-database mutation before promotion, and atomic promotion with legacy backups.
 
 Operational verification starts with a short read-only probe against Capital. Then run the full stage import,
 inspect the audit and exclusions, promote explicitly, verify the local database bounds/counts and rebuilt gzip
-snapshot, and run a local backtest that confirms excluded five-minute buckets are not used. No D1 command is
-run in this workflow.
+snapshot, and run a local backtest that confirms no derived bucket containing an excluded minute is used. No
+D1 command is run in this workflow.
