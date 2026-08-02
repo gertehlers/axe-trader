@@ -26,6 +26,13 @@ class HistoryImportRequestTest {
     }
 
     @Test
+    void rejectsNonMinuteAlignedBoundsBeforePagingCanSplitThem() {
+        assertThatIllegalArgumentException().isThrownBy(() -> new HistoryImportRequest(
+                "US500", "MINUTE", FROM, Instant.parse("2024-01-01T00:01:30Z"), STAGING, "capital"))
+                .withMessageContaining("whole UTC minutes");
+    }
+
+    @Test
     void rejectsMissingImportIdentityOrStagingPath() {
         assertThatIllegalArgumentException().isThrownBy(() -> new HistoryImportRequest(
                 " ", "MINUTE", FROM, TO, STAGING, "capital"));

@@ -20,6 +20,10 @@ public record HistoryImportRequest(
         if (from == null || to == null || !from.isBefore(to)) {
             throw new IllegalArgumentException("from must be before to");
         }
+        if (from.getEpochSecond() % 60 != 0 || to.getEpochSecond() % 60 != 0
+                || from.getNano() != 0 || to.getNano() != 0) {
+            throw new IllegalArgumentException("from and to must be aligned to whole UTC minutes");
+        }
         if (stagingDatabase == null) {
             throw new IllegalArgumentException("stagingDatabase must be configured");
         }

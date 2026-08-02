@@ -30,7 +30,7 @@ Capture one UTC upper bound once and reuse that exact value for the complete sta
 to overwrite an existing file.
 
 ```bash
-IMPORT_END="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+IMPORT_END="$(date -u +%Y-%m-%dT%H:%M:00Z)"
 printf 'IMPORT_END=%s\n' "$IMPORT_END"
 ./mvnw spring-boot:run -Dspring-boot.run.main-class=io.g3tech.axetrader.AxeTraderApplication -Dspring-boot.run.arguments="--spring.config.import=file:/Users/gertehlers/Development/projects/axe-trader/.env[.properties] --axe-trader.history-import.enabled=true --axe-trader.history-import.mode=stage --axe-trader.history-import.epic=US500 --axe-trader.history-import.resolution=MINUTE --axe-trader.history-import.from=2024-01-01T00:00:00Z --axe-trader.history-import.to=${IMPORT_END} --axe-trader.history-import.staging-database=data/us500-clean-stage.sqlite"
 ```
