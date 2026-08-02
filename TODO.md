@@ -7,6 +7,20 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
 (not scalping), reproducible via 5-pillar confluence, with each instrument tuned as its own
 "personality" rather than one shared config.
 
+## Local price-history rebuild — provider-blocked 2026-08-02
+
+The Cloudflare D1 price-history workflow is retired. Clean history is now a local-only SQLite
+operation documented in `docs/local-price-history.md`; do not use Wrangler, the dashboard, or D1
+for price-history repair.
+
+The required US500/MINUTE probe for `[2024-01-01T00:00:00Z, 2024-01-01T01:00:00Z)` reached Capital
+but returned HTTP 404 `error.prices.not-found` before an audit was produced. Received, accepted, and
+rejected counts are therefore unavailable. No full-import end was captured, and no stage, audit,
+promotion, backup creation, or local backtest was run. Active database and archive SHA-256 values
+were identical before and after the probe, and `data/us500-clean-stage.sqlite` remained absent.
+Resume at the probe gate; do not choose a different range or weaken the audit to bypass the provider
+response.
+
 ---
 
 ## ⭐ ACTIVE WORK — empirical path-first strategy discovery (started 2026-07-27)
