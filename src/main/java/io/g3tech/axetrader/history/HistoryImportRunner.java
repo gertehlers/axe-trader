@@ -26,8 +26,10 @@ public final class HistoryImportRunner implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments arguments) {
         switch (properties.requiredMode()) {
-            case PROBE -> logAudit("Probe", service.probe(properties.request()));
-            case STAGE -> logAudit("Staged import", service.stage(properties.request()));
+            case PROBE -> logAudit("Probe", service.probe(properties.request(),
+                    properties.activeDatabase(), properties.archive()));
+            case STAGE -> logAudit("Staged import", service.stage(properties.request(),
+                    properties.activeDatabase(), properties.archive()));
             case PROMOTE -> {
                 Path backup = service.promote(properties.requiredStagingDatabase(),
                         properties.activeDatabase(), properties.archive());

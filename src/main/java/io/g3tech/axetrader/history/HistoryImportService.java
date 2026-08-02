@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -13,7 +14,9 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -36,15 +39,22 @@ public class HistoryImportService {
         this.promoter = Objects.requireNonNull(promoter, "promoter");
     }
 
-    public HistoryImportAudit probe(HistoryImportRequest request) {
+    public HistoryImportAudit probe(HistoryImportRequest request, Path activeDatabase, Path archive) {
         Objects.requireNonNull(request, "request");
+        validatePaths(request.stagingDatabase(), activeDatabase, archive);
         ImportedPage page = fetch(request, request.from());
         return auditProbe(page, request);
     }
 
-    public HistoryImportAudit stage(HistoryImportRequest request) {
+    public HistoryImportAudit probe(HistoryImportRequest request) {
+        return probe(request, Path.of("data", "axe-trader.sqlite"),
+                Path.of("data", "axe-trader.sqlite.gz"));
+    }
+
+    public HistoryImportAudit stage(HistoryImportRequest request, Path activeDatabase, Path archive) {
         Objects.requireNonNull(request, "request");
         Path staging = request.stagingDatabase();
+        validatePaths(staging, activeDatabase, archive);
         if (Files.exists(staging)) {
             throw new IllegalStateException("Refusing to stage into an existing database: " + staging);
         }
@@ -65,8 +75,14 @@ public class HistoryImportService {
         return audit;
     }
 
+    public HistoryImportAudit stage(HistoryImportRequest request) {
+        return stage(request, Path.of("data", "axe-trader.sqlite"),
+                Path.of("data", "axe-trader.sqlite.gz"));
+    }
+
     public Path promote(HistoryImportRequest request, Path activeDatabase, Path archive) {
         Objects.requireNonNull(request, "request");
+        validatePaths(request.stagingDatabase(), activeDatabase, archive);
         CompletedImport completion = discoverCompletedImport(request.stagingDatabase());
         if (!sameImport(completion.request(), request)) {
             throw new IllegalStateException("Configured request does not match the completed staged import");
@@ -82,8 +98,18 @@ public class HistoryImportService {
     }
 
     public Path promote(Path stagingDatabase, Path activeDatabase, Path archive) {
+        validatePaths(stagingDatabase, activeDatabase, archive);
         CompletedImport completion = discoverCompletedImport(stagingDatabase);
         return promote(completion.request(), activeDatabase, archive);
+    }
+
+    static void validatePaths(Path stagingDatabase, Path activeDatabase, Path archive) {
+        Path staging = canonicalIdentity(stagingDatabase, "stagingDatabase");
+        Path active = canonicalIdentity(activeDatabase, "activeDatabase");
+        Path gzArchive = canonicalIdentity(archive, "archive");
+        rejectSamePath(staging, active);
+        rejectSamePath(staging, gzArchive);
+        rejectSamePath(active, gzArchive);
     }
 
     private ImportedPage fetch(HistoryImportRequest request, Instant cursor) {
@@ -246,6 +272,62 @@ public class HistoryImportService {
                 && first.to().equals(second.to())
                 && first.stagingDatabase().toAbsolutePath().normalize()
                 .equals(second.stagingDatabase().toAbsolutePath().normalize());
+    }
+
+    private static Path normalized(Path path, String name) {
+        return Objects.requireNonNull(path, name).toAbsolutePath().normalize();
+    }
+
+    private static Path canonicalIdentity(Path path, String name) {
+        try {
+            return canonicalIdentity(normalized(path, name), new HashSet<>());
+        } catch (java.io.IOException exception) {
+            throw new IllegalStateException("Could not resolve history import path " + path, exception);
+        }
+    }
+
+    private static Path canonicalIdentity(Path path, Set<Path> visited) throws java.io.IOException {
+        if (!visited.add(path)) {
+            throw new java.io.IOException("Symbolic-link cycle while resolving " + path);
+        }
+        if (Files.isSymbolicLink(path)) {
+            Path target = Files.readSymbolicLink(path);
+            Path resolved = target.isAbsolute() ? target : path.getParent().resolve(target);
+            return canonicalIdentity(resolved.toAbsolutePath().normalize(), visited);
+        }
+
+        ArrayDeque<Path> missingNames = new ArrayDeque<>();
+        Path existingAncestor = path;
+        while (existingAncestor != null && !Files.exists(existingAncestor, LinkOption.NOFOLLOW_LINKS)) {
+            missingNames.addFirst(existingAncestor.getFileName());
+            existingAncestor = existingAncestor.getParent();
+        }
+        if (existingAncestor == null) {
+            return path;
+        }
+        Path canonicalAncestor = Files.isSymbolicLink(existingAncestor)
+                ? canonicalIdentity(existingAncestor, visited)
+                : existingAncestor.toRealPath();
+        for (Path missingName : missingNames) {
+            canonicalAncestor = canonicalAncestor.resolve(missingName);
+        }
+        return canonicalAncestor.normalize();
+    }
+
+    private static void rejectSamePath(Path first, Path second) {
+        if (first.equals(second)) {
+            throw new IllegalArgumentException("Staging, active, and archive paths must be different");
+        }
+        if (!Files.exists(first) || !Files.exists(second)) {
+            return;
+        }
+        try {
+            if (Files.isSameFile(first, second)) {
+                throw new IllegalArgumentException("Staging, active, and archive paths must be different");
+            }
+        } catch (java.io.IOException exception) {
+            throw new IllegalStateException("Could not verify history import path isolation", exception);
+        }
     }
 
     private record CompletedImport(HistoryImportRequest request, String auditFingerprint) {

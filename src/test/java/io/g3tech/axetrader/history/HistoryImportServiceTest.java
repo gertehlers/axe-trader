@@ -2,6 +2,9 @@ package io.g3tech.axetrader.history;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -10,6 +13,7 @@ import java.sql.DriverManager;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -29,7 +33,7 @@ class HistoryImportServiceTest {
                 price("2024-01-01T00:00:00Z"), crossedClose("2024-01-01T00:01:00Z"))));
         HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
 
-        HistoryImportAudit audit = service.probe(request());
+        HistoryImportAudit audit = service.probe(request(), activeDatabase(), archive());
 
         assertThat(source.calls).containsExactly(new FetchCall(FROM, TO, 1_000));
         assertThat(audit.receivedCount()).isEqualTo(2);
@@ -53,7 +57,7 @@ class HistoryImportServiceTest {
                 price("2024-01-01T00:03:00Z"))));
         HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
 
-        HistoryImportAudit audit = service.stage(request());
+        HistoryImportAudit audit = service.stage(request(), active, archive);
 
         assertThat(audit.acceptedMinuteCount()).isEqualTo(1);
         assertThat(Files.readAllBytes(active)).isEqualTo(activeBefore);
@@ -73,7 +77,7 @@ class HistoryImportServiceTest {
                         price("2024-01-01T00:03:00Z"))));
         HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
 
-        service.stage(request());
+        service.stage(request(), activeDatabase(), archive());
 
         assertThat(source.calls).containsExactly(
                 new FetchCall(FROM, TO, 1_000),
@@ -85,9 +89,33 @@ class HistoryImportServiceTest {
         RecordingSource source = new RecordingSource(List.of(page(FROM, TO)));
         HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
 
-        assertThatThrownBy(() -> service.stage(request()))
+        assertThatThrownBy(() -> service.stage(request(), activeDatabase(), archive()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("empty");
+    }
+
+    @Test
+    void stageFailsClosedWhenAPageCannotAdvancePastItsCursor() {
+        RecordingSource source = new RecordingSource(List.of(
+                page(FROM, TO, price("2024-01-01T00:01:00Z")),
+                page(Instant.parse("2024-01-01T00:02:00Z"), TO,
+                        price("2024-01-01T00:01:00Z"))));
+        HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
+
+        assertThatThrownBy(() -> service.stage(request(), activeDatabase(), archive()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("did not advance");
+    }
+
+    @Test
+    void stageFailsClosedWhenAPageReturnsTheExclusiveUpperBound() {
+        RecordingSource source = new RecordingSource(List.of(page(FROM, TO,
+                price("2024-01-01T00:04:00Z"))));
+        HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
+
+        assertThatThrownBy(() -> service.stage(request(), activeDatabase(), archive()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("half-open");
     }
 
     @Test
@@ -97,7 +125,7 @@ class HistoryImportServiceTest {
                 price("2024-01-01T00:03:00Z"))));
         HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
 
-        assertThatThrownBy(() -> service.stage(request()))
+        assertThatThrownBy(() -> service.stage(request(), activeDatabase(), archive()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("existing");
 
@@ -106,10 +134,70 @@ class HistoryImportServiceTest {
     }
 
     @Test
+    void stageRejectsAbsentActivePathUsedAsTheStagingPathBeforeFetching() {
+        RecordingSource source = new RecordingSource(List.of(page(FROM, TO,
+                price("2024-01-01T00:03:00Z"))));
+        HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
+
+        assertThatThrownBy(() -> service.stage(request(), request().stagingDatabase(), archive()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("different");
+
+        assertThat(request().stagingDatabase()).doesNotExist();
+        assertThat(source.calls).isEmpty();
+    }
+
+    @Test
+    void stageRejectsAbsentArchivePathUsedAsTheStagingPathBeforeFetching() {
+        RecordingSource source = new RecordingSource(List.of(page(FROM, TO,
+                price("2024-01-01T00:03:00Z"))));
+        HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
+
+        assertThatThrownBy(() -> service.stage(request(), activeDatabase(), request().stagingDatabase()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("different");
+
+        assertThat(request().stagingDatabase()).doesNotExist();
+        assertThat(source.calls).isEmpty();
+    }
+
+    @Test
+    void stageRejectsAnExistingFilesystemAliasOfTheActiveDatabaseBeforeFetching() throws Exception {
+        Files.writeString(activeDatabase(), "legacy-active");
+        Files.createSymbolicLink(request().stagingDatabase(), activeDatabase());
+        RecordingSource source = new RecordingSource(List.of(page(FROM, TO,
+                price("2024-01-01T00:03:00Z"))));
+        HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
+
+        assertThatThrownBy(() -> service.stage(request(), activeDatabase(), archive()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("different");
+
+        assertThat(Files.readString(activeDatabase())).isEqualTo("legacy-active");
+        assertThat(source.calls).isEmpty();
+    }
+
+    @Test
+    void stageRejectsADanglingSymlinkAliasOfAnAbsentActiveDatabaseBeforeFetching() throws Exception {
+        Files.createSymbolicLink(request().stagingDatabase(), activeDatabase());
+        RecordingSource source = new RecordingSource(List.of(page(FROM, TO,
+                price("2024-01-01T00:03:00Z"))));
+        HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
+
+        assertThatThrownBy(() -> service.stage(request(), activeDatabase(), archive()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("different");
+
+        assertThat(activeDatabase()).doesNotExist();
+        assertThat(source.calls).isEmpty();
+    }
+
+    @Test
     void promoteReauditsStagingBeforeChangingActiveFiles() throws Exception {
         HistoryImportRequest request = request();
         new HistoryImportService(new RecordingSource(List.of(page(FROM, TO,
-                price("2024-01-01T00:03:00Z")))), new HistoryDatabasePromoter()).stage(request);
+                price("2024-01-01T00:03:00Z")))), new HistoryDatabasePromoter())
+                .stage(request, activeDatabase(), archive());
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + request.stagingDatabase())) {
             connection.createStatement().executeUpdate("UPDATE historical_price SET close_bid = close_ask + 1");
         }
@@ -135,7 +223,8 @@ class HistoryImportServiceTest {
     void promoteDiscoversTheStoredRequestWithoutCommandLineRangeProperties() throws Exception {
         HistoryImportRequest request = request();
         new HistoryImportService(new RecordingSource(List.of(page(FROM, TO,
-                price("2024-01-01T00:03:00Z")))), new HistoryDatabasePromoter()).stage(request);
+                price("2024-01-01T00:03:00Z")))), new HistoryDatabasePromoter())
+                .stage(request, activeDatabase(), archive());
         Path active = tempDir.resolve("active.sqlite");
         Path archive = tempDir.resolve("active.sqlite.gz");
         Files.writeString(active, "legacy-active");
@@ -159,7 +248,7 @@ class HistoryImportServiceTest {
                 page(FROM, TO, price("2024-01-01T00:01:00Z")),
                 page(Instant.parse("2024-01-01T00:02:00Z"), TO)));
         HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
-        assertThatThrownBy(() -> service.stage(request()))
+        assertThatThrownBy(() -> service.stage(request(), activeDatabase(), archive()))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("empty");
         Path active = tempDir.resolve("active.sqlite");
@@ -180,7 +269,8 @@ class HistoryImportServiceTest {
     void runnerPromotesUsingOnlyStagingAndDefaultedActivePaths() throws Exception {
         HistoryImportRequest request = request();
         new HistoryImportService(new RecordingSource(List.of(page(FROM, TO,
-                price("2024-01-01T00:03:00Z")))), new HistoryDatabasePromoter()).stage(request);
+                price("2024-01-01T00:03:00Z")))), new HistoryDatabasePromoter())
+                .stage(request, activeDatabase(), archive());
         Path active = tempDir.resolve("active.sqlite");
         Path archive = tempDir.resolve("active.sqlite.gz");
         Files.writeString(active, "legacy-active");
@@ -226,9 +316,81 @@ class HistoryImportServiceTest {
         assertThat(tempDir.resolve("data/axe-trader.sqlite.gz")).doesNotExist();
     }
 
+    @Test
+    void externalConfigurationCanEnableAFileFreeProbe() throws Exception {
+        Files.createDirectory(tempDir.resolve("data"));
+        Path configuration = tempDir.resolve("history-import.properties");
+        Files.writeString(configuration, """
+                axe-trader.history-import.enabled=true
+                axe-trader.history-import.mode=probe
+                axe-trader.history-import.epic=US500
+                axe-trader.history-import.resolution=MINUTE
+                axe-trader.history-import.from=2024-01-01T00:00:00Z
+                axe-trader.history-import.to=2024-01-01T00:04:00Z
+                axe-trader.history-import.staging-database=stage.sqlite
+                spring.main.web-application-type=none
+                """);
+
+        ProcessResult result = runImportApplication(List.of(
+                "--spring.config.additional-location=" + configuration.toUri(),
+                "--spring.main.sources=" + ImportTestConfiguration.class.getName()), Map.of());
+
+        assertThat(result.output()).contains("Probe audit:");
+        assertThat(tempDir.resolve("stage.sqlite")).doesNotExist();
+        assertThat(tempDir.resolve("data/axe-trader.sqlite")).doesNotExist();
+        assertThat(tempDir.resolve("data/axe-trader.sqlite.gz")).doesNotExist();
+    }
+
+    @Test
+    void springApplicationJsonCanEnableAStageWithoutCreatingActiveFiles() throws Exception {
+        Files.createDirectory(tempDir.resolve("data"));
+        String json = """
+                {"axe-trader":{"history-import":{
+                  "enabled":true,"mode":"stage","epic":"US500","resolution":"MINUTE",
+                  "from":"2024-01-01T00:00:00Z","to":"2024-01-01T00:04:00Z",
+                  "staging-database":"stage.sqlite"}},
+                  "spring":{"main":{"web-application-type":"none"}}}
+                """.replace("\n", "");
+
+        ProcessResult result = runImportApplication(List.of(
+                "--spring.main.sources=" + ImportTestConfiguration.class.getName()),
+                Map.of("SPRING_APPLICATION_JSON", json));
+
+        assertThat(result.output()).contains("Staged import audit:");
+        assertThat(tempDir.resolve("stage.sqlite")).exists();
+        assertThat(tempDir.resolve("data/axe-trader.sqlite")).doesNotExist();
+        assertThat(tempDir.resolve("data/axe-trader.sqlite.gz")).doesNotExist();
+    }
+
     private HistoryImportRequest request() {
         return new HistoryImportRequest("US500", "MINUTE", FROM, TO,
                 tempDir.resolve("stage.sqlite"), "capital");
+    }
+
+    private Path activeDatabase() {
+        return tempDir.resolve("active.sqlite");
+    }
+
+    private Path archive() {
+        return tempDir.resolve("active.sqlite.gz");
+    }
+
+    private ProcessResult runImportApplication(List<String> arguments, Map<String, String> environment)
+            throws Exception {
+        String classPath = System.getProperty("surefire.test.class.path");
+        List<String> command = new ArrayList<>();
+        command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+        command.add("-cp");
+        command.add(classPath);
+        command.add(ImportApplicationProcess.class.getName());
+        command.addAll(arguments);
+        ProcessBuilder builder = new ProcessBuilder(command)
+                .directory(tempDir.toFile())
+                .redirectErrorStream(true);
+        builder.environment().putAll(environment);
+        Process process = builder.start();
+        assertThat(process.waitFor(30, TimeUnit.SECONDS)).isTrue();
+        return new ProcessResult(process.exitValue(), new String(process.getInputStream().readAllBytes()));
     }
 
     private static ImportedPage page(Instant requestedFrom, Instant requestedTo, ImportedPrice... prices) {
@@ -280,5 +442,20 @@ class HistoryImportServiceTest {
             main.setAccessible(true);
             main.invoke(null, (Object) args);
         }
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    public static class ImportTestConfiguration {
+        @Bean
+        @Primary
+        HistoricalPricePageSource deterministicHistoryPageSource() {
+            return (request, fromInclusive, toExclusive, maxBars) -> new ImportedPage(
+                    fromInclusive, toExclusive,
+                    List.of(price(toExclusive.minusSeconds(60).toString())),
+                    "deterministic-subprocess-page");
+        }
+    }
+
+    private record ProcessResult(int exitCode, String output) {
     }
 }
