@@ -84,6 +84,9 @@ public class BarSeriesFactory {
         if (priceExclusionRepository == null || prices.isEmpty()) {
             return Set.of();
         }
+        if (priceExclusionRepository.priceExclusionLedgerTableCount() == 0) {
+            return Set.of();
+        }
 
         Instant from = prices.stream().map(HistoricalPrice::getSnapshotTimeUtc).min(Instant::compareTo).orElseThrow();
         Instant to = prices.stream().map(HistoricalPrice::getSnapshotTimeUtc).max(Instant::compareTo)

@@ -372,6 +372,10 @@ public final class HistoryStagingStore implements AutoCloseable {
                     )
                     """);
             statement.execute("""
+                    CREATE INDEX IF NOT EXISTS price_exclusion_epic_resolution_timestamp
+                    ON price_exclusion (epic, resolution, snapshot_time_utc)
+                    """);
+            statement.execute("""
                     CREATE TABLE IF NOT EXISTS history_import_page (
                       import_run_id TEXT NOT NULL, requested_from_utc TEXT NOT NULL, requested_to_utc TEXT NOT NULL,
                       payload_hash TEXT NOT NULL, received_count INTEGER NOT NULL, accepted_count INTEGER NOT NULL,

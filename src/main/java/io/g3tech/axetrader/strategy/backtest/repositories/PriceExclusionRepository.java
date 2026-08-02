@@ -11,6 +11,12 @@ import java.util.List;
 @Transactional(readOnly = true)
 public interface PriceExclusionRepository extends Repository<PriceExclusion, PriceExclusion.Id> {
 
+    @Query(value = """
+            select count(*) from sqlite_master
+            where type = 'table' and name = 'price_exclusion'
+            """, nativeQuery = true)
+    int priceExclusionLedgerTableCount();
+
     @Query("""
             select distinct exclusion.id.snapshotTimeUtc
             from PriceExclusion exclusion
