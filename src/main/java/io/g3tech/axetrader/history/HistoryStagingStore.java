@@ -234,7 +234,7 @@ public final class HistoryStagingStore implements AutoCloseable {
 
     private HistoryCoverage.Assessment coverage(HistoryImportRequest request) {
         String sql = """
-                SELECT requested_from_utc, requested_to_utc FROM history_import_page
+                SELECT requested_from_utc, requested_to_utc, received_count FROM history_import_page
                 WHERE import_run_id = ? ORDER BY requested_from_utc
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -244,7 +244,8 @@ public final class HistoryStagingStore implements AutoCloseable {
                 while (rows.next()) {
                     Instant from = Instant.parse(rows.getString(1));
                     Instant to = Instant.parse(rows.getString(2));
-                    pages.add(new HistoryCoverage.Page(from, to, observedTimestamps(request, from, to)));
+                    pages.add(new HistoryCoverage.Page(from, to, observedTimestamps(request, from, to),
+                            rows.getLong(3) == 0));
                 }
                 return HistoryCoverage.assess(request.from(), request.to(), pages);
             }

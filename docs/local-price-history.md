@@ -68,5 +68,5 @@ Before and after the probe, the active database SHA-256 was
 `cb900eaf39050508ab51243faf5aa279971e1e5f1b8a2ad9795ed0ae777780df`, the archive SHA-256 was
 `88b268f766c3ddb23601051ecfeaadfa04537fc228e1111e6429631db71ebb06`, and the staging database was
 absent. The untouched active database contained zero US500/MINUTE price rows and zero exclusions;
-the existing gzip archive passed `gzip -t`. Resume from the probe, not the stage, after the
-provider can serve the specified probe interval.
+the existing gzip archive passed `gzip -t`. Rerun the corrected open-session probe now, then proceed
+to stage only after its coverage audit is valid.

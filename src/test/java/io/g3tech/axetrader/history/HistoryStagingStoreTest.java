@@ -66,7 +66,7 @@ class HistoryStagingStoreTest {
             assertThat(audit.receivedCount()).isEqualTo(1);
             assertThat(audit.rejectedCount()).isEqualTo(1);
             assertThat(audit.excludedMinuteCount()).isEqualTo(1);
-            assertThat(audit.isConsistent()).isTrue();
+            assertThat(audit.isConsistent()).isFalse();
         }
     }
 

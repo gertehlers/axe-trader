@@ -53,13 +53,12 @@ class HistoryImportServiceTest {
         Files.writeString(archive, "legacy-archive");
         byte[] activeBefore = Files.readAllBytes(active);
         byte[] archiveBefore = Files.readAllBytes(archive);
-        RecordingSource source = new RecordingSource(List.of(page(FROM, TO,
-                price("2024-01-01T00:03:00Z"))));
+        RecordingSource source = new RecordingSource(List.of(completePage(FROM, TO)));
         HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
 
         HistoryImportAudit audit = service.stage(request(), active, archive);
 
-        assertThat(audit.acceptedMinuteCount()).isEqualTo(1);
+        assertThat(audit.acceptedMinuteCount()).isEqualTo(4);
         assertThat(Files.readAllBytes(active)).isEqualTo(activeBefore);
         assertThat(Files.readAllBytes(archive)).isEqualTo(archiveBefore);
         assertThat(request().stagingDatabase()).exists();
@@ -71,8 +70,7 @@ class HistoryImportServiceTest {
 
     @Test
     void stageUsesTheFullBoundedWindowInsteadOfTheGreatestReturnedTimestamp() {
-        RecordingSource source = new RecordingSource(List.of(
-                page(FROM, TO, price("2024-01-01T00:01:00Z"), price("2024-01-01T00:00:00Z"))));
+        RecordingSource source = new RecordingSource(List.of(completePage(FROM, TO)));
         HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
 
         service.stage(request(), activeDatabase(), archive());
@@ -87,7 +85,7 @@ class HistoryImportServiceTest {
         HistoryImportRequest request = new HistoryImportRequest("US500", "MINUTE", FROM, longImportEnd,
                 tempDir.resolve("closure-stage.sqlite"), "capital");
         RecordingSource source = new RecordingSource(List.of(
-                page(FROM, firstWindowEnd, price("2024-01-01T00:00:00Z")),
+                completePage(FROM, firstWindowEnd),
                 page(firstWindowEnd, longImportEnd)));
         HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
 
@@ -101,13 +99,15 @@ class HistoryImportServiceTest {
     @Test
     void stageDiscardsTheProvidersNominalInclusiveUpperBound() {
         RecordingSource source = new RecordingSource(List.of(page(FROM, TO,
-                price("2024-01-01T00:03:00Z"), price("2024-01-01T00:04:00Z"))));
+                price("2024-01-01T00:00:00Z"), price("2024-01-01T00:01:00Z"),
+                price("2024-01-01T00:02:00Z"), price("2024-01-01T00:03:00Z"),
+                price("2024-01-01T00:04:00Z"))));
         HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
 
         HistoryImportAudit audit = service.stage(request(), activeDatabase(), archive());
 
-        assertThat(audit.receivedCount()).isEqualTo(1);
-        assertThat(audit.acceptedCount()).isEqualTo(1);
+        assertThat(audit.receivedCount()).isEqualTo(4);
+        assertThat(audit.acceptedCount()).isEqualTo(4);
         assertThat(audit.rejectedCount()).isZero();
         assertThat(audit.exclusionsByReason()).doesNotContainKey("TIMESTAMP_OUT_OF_RANGE");
     }
@@ -119,8 +119,8 @@ class HistoryImportServiceTest {
         HistoryImportRequest request = new HistoryImportRequest("US500", "MINUTE", FROM, longImportEnd,
                 tempDir.resolve("long-stage.sqlite"), "capital");
         RecordingSource source = new RecordingSource(List.of(
-                page(FROM, firstWindowEnd, price("2024-01-01T00:00:00Z")),
-                page(firstWindowEnd, longImportEnd, price("2024-01-01T16:39:00Z"))));
+                completePage(FROM, firstWindowEnd),
+                completePage(firstWindowEnd, longImportEnd)));
         HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
 
         service.stage(request, activeDatabase(), archive());
@@ -142,12 +142,32 @@ class HistoryImportServiceTest {
 
         try (HistoryStagingStore store = HistoryStagingStore.open(request().stagingDatabase())) {
             HistoryImportAudit audit = store.audit(request());
-            assertThat(audit.continuityGaps()).singleElement().satisfies(gap -> {
+            assertThat(audit.continuityGaps()).anySatisfy(gap -> {
                 assertThat(gap.fromInclusive()).isEqualTo(Instant.parse("2024-01-01T00:01:00Z"));
                 assertThat(gap.toExclusive()).isEqualTo(Instant.parse("2024-01-01T00:02:00Z"));
             });
             assertThat(audit.isConsistent()).isFalse();
         }
+    }
+
+    @Test
+    void stageRefusesASingleLeadingEdgeCandleWithAnUncoveredSuffix() {
+        RecordingSource source = new RecordingSource(List.of(page(FROM, TO, price("2024-01-01T00:00:00Z"))));
+
+        assertThatThrownBy(() -> new HistoryImportService(source, new HistoryDatabasePromoter())
+                .stage(request(), activeDatabase(), archive()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("failed history import audit");
+    }
+
+    @Test
+    void stageRefusesASingleTrailingEdgeCandleWithAnUncoveredPrefix() {
+        RecordingSource source = new RecordingSource(List.of(page(FROM, TO, price("2024-01-01T00:03:00Z"))));
+
+        assertThatThrownBy(() -> new HistoryImportService(source, new HistoryDatabasePromoter())
+                .stage(request(), activeDatabase(), archive()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("failed history import audit");
     }
 
     @Test
@@ -227,8 +247,7 @@ class HistoryImportServiceTest {
     @Test
     void promoteReauditsStagingBeforeChangingActiveFiles() throws Exception {
         HistoryImportRequest request = request();
-        new HistoryImportService(new RecordingSource(List.of(page(FROM, TO,
-                price("2024-01-01T00:03:00Z")))), new HistoryDatabasePromoter())
+        new HistoryImportService(new RecordingSource(List.of(completePage(FROM, TO))), new HistoryDatabasePromoter())
                 .stage(request, activeDatabase(), archive());
         try (var connection = DriverManager.getConnection("jdbc:sqlite:" + request.stagingDatabase())) {
             connection.createStatement().executeUpdate("UPDATE historical_price SET close_bid = close_ask + 1");
@@ -254,8 +273,7 @@ class HistoryImportServiceTest {
     @Test
     void promoteDiscoversTheStoredRequestWithoutCommandLineRangeProperties() throws Exception {
         HistoryImportRequest request = request();
-        new HistoryImportService(new RecordingSource(List.of(page(FROM, TO,
-                price("2024-01-01T00:03:00Z")))), new HistoryDatabasePromoter())
+        new HistoryImportService(new RecordingSource(List.of(completePage(FROM, TO))), new HistoryDatabasePromoter())
                 .stage(request, activeDatabase(), archive());
         Path active = tempDir.resolve("active.sqlite");
         Path archive = tempDir.resolve("active.sqlite.gz");
@@ -304,8 +322,7 @@ class HistoryImportServiceTest {
     @Test
     void runnerPromotesUsingOnlyStagingAndDefaultedActivePaths() throws Exception {
         HistoryImportRequest request = request();
-        new HistoryImportService(new RecordingSource(List.of(page(FROM, TO,
-                price("2024-01-01T00:03:00Z")))), new HistoryDatabasePromoter())
+        new HistoryImportService(new RecordingSource(List.of(completePage(FROM, TO))), new HistoryDatabasePromoter())
                 .stage(request, activeDatabase(), archive());
         Path active = tempDir.resolve("active.sqlite");
         Path archive = tempDir.resolve("active.sqlite.gz");
@@ -434,6 +451,14 @@ class HistoryImportServiceTest {
                 "hash-" + requestedFrom + '-' + prices.length);
     }
 
+    private static ImportedPage completePage(Instant requestedFrom, Instant requestedTo) {
+        List<ImportedPrice> prices = new ArrayList<>();
+        for (Instant timestamp = requestedFrom; timestamp.isBefore(requestedTo); timestamp = timestamp.plusSeconds(60)) {
+            prices.add(price(timestamp.toString()));
+        }
+        return new ImportedPage(requestedFrom, requestedTo, prices, "complete-" + requestedFrom);
+    }
+
     private static ImportedPrice price(String timestamp) {
         return price(timestamp, "4800.1", "4800.3");
     }
@@ -467,8 +492,19 @@ class HistoryImportServiceTest {
         public ImportedPage fetch(HistoryImportRequest request, Instant fromInclusive, Instant toExclusive,
                                   int maxBars) {
             calls.add(new FetchCall(fromInclusive, toExclusive, maxBars));
+            if (nextPage == pages.size()) {
+                return new ImportedPage(fromInclusive, toExclusive, List.of(missingTimestampPrice()), "missing-page");
+            }
             return pages.get(nextPage++);
         }
+    }
+
+    private static ImportedPrice missingTimestampPrice() {
+        return new ImportedPrice(null,
+                new BigDecimal("4800.1"), new BigDecimal("4800.3"),
+                new BigDecimal("4801.1"), new BigDecimal("4801.3"),
+                new BigDecimal("4799.1"), new BigDecimal("4799.3"),
+                new BigDecimal("4800.1"), new BigDecimal("4800.3"), 123L);
     }
 
     public static final class ImportApplicationProcess {
@@ -487,7 +523,7 @@ class HistoryImportServiceTest {
         HistoricalPricePageSource deterministicHistoryPageSource() {
             return (request, fromInclusive, toExclusive, maxBars) -> new ImportedPage(
                     fromInclusive, toExclusive,
-                    List.of(price(toExclusive.minusSeconds(60).toString())),
+                    completePage(fromInclusive, toExclusive).prices(),
                     "deterministic-subprocess-page");
         }
     }

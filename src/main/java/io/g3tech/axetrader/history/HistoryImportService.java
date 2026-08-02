@@ -64,8 +64,7 @@ public class HistoryImportService {
         try (HistoryStagingStore store = HistoryStagingStore.open(staging)) {
             while (cursor.isBefore(request.to())) {
                 Instant pageTo = boundedTo(cursor, request.to());
-                ImportedPage page = fetch(request, cursor, pageTo);
-                store.writePage(page, request);
+                stageWindow(store, request, cursor, pageTo);
                 cursor = pageTo;
             }
             audit = store.audit(request);
@@ -139,6 +138,23 @@ public class HistoryImportService {
         return pageLimit.isBefore(requestedTo) ? pageLimit : requestedTo;
     }
 
+    private void stageWindow(HistoryStagingStore store, HistoryImportRequest request, Instant fromInclusive,
+                             Instant toExclusive) {
+        ImportedPage page = fetch(request, fromInclusive, toExclusive);
+        HistoryCoverage.Assessment coverage = HistoryCoverage.assess(fromInclusive, toExclusive, List.of(
+                new HistoryCoverage.Page(fromInclusive, toExclusive, page.prices().stream()
+                        .filter(Objects::nonNull).map(ImportedPrice::timestamp).filter(Objects::nonNull).toList(),
+                        page.prices().isEmpty())));
+        if (coverage.continuityGaps().isEmpty() || Duration.between(fromInclusive, toExclusive).equals(Duration.ofMinutes(1))) {
+            store.writePage(page, request);
+            return;
+        }
+        Instant midpoint = fromInclusive.plus(Duration.between(fromInclusive, toExclusive).dividedBy(2).toMinutes(),
+                java.time.temporal.ChronoUnit.MINUTES);
+        stageWindow(store, request, fromInclusive, midpoint);
+        stageWindow(store, request, midpoint, toExclusive);
+    }
+
     private HistoryImportAudit auditProbe(ImportedPage page, HistoryImportRequest request) {
         List<ImportedPrice> accepted = new ArrayList<>();
         Map<String, Long> exclusions = new LinkedHashMap<>();
@@ -163,7 +179,7 @@ public class HistoryImportService {
         Instant actualFrom = distinctTimestamps.stream().min(Instant::compareTo).orElse(null);
         Instant actualTo = distinctTimestamps.stream().max(Instant::compareTo).orElse(null);
         HistoryCoverage.Assessment coverage = HistoryCoverage.assess(request.from(), request.to(), List.of(
-                new HistoryCoverage.Page(page.requestedFrom(), page.requestedTo(), timestamps)));
+                new HistoryCoverage.Page(page.requestedFrom(), page.requestedTo(), timestamps, page.prices().isEmpty())));
         return new HistoryImportAudit(
                 request.from(), request.to(), actualFrom, actualTo,
                 page.prices().size(), accepted.size(), rejected,

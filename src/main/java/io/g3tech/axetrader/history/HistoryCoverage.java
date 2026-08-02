@@ -41,25 +41,32 @@ final class HistoryCoverage {
                 observed.add(timestamp);
             }
         }
+        if (page.emptyProviderWindow()) {
+            closures.add(new HistoryCoverageGap(page.fromInclusive(), page.toExclusive()));
+            return;
+        }
         Instant cursor = page.fromInclusive();
-        boolean first = true;
         for (Instant timestamp : observed) {
             if (cursor.isBefore(timestamp)) {
-                (first ? closures : gaps).add(new HistoryCoverageGap(cursor, timestamp));
+                gaps.add(new HistoryCoverageGap(cursor, timestamp));
             }
             cursor = timestamp.plus(MINUTE);
-            first = false;
         }
         if (cursor.isBefore(page.toExclusive())) {
-            closures.add(new HistoryCoverageGap(cursor, page.toExclusive()));
+            gaps.add(new HistoryCoverageGap(cursor, page.toExclusive()));
         }
     }
 
-    record Page(Instant fromInclusive, Instant toExclusive, List<Instant> observedTimestamps) {
+    record Page(Instant fromInclusive, Instant toExclusive, List<Instant> observedTimestamps,
+                boolean emptyProviderWindow) {
         Page {
             Objects.requireNonNull(fromInclusive, "fromInclusive");
             Objects.requireNonNull(toExclusive, "toExclusive");
             observedTimestamps = List.copyOf(observedTimestamps);
+        }
+
+        Page(Instant fromInclusive, Instant toExclusive, List<Instant> observedTimestamps) {
+            this(fromInclusive, toExclusive, observedTimestamps, observedTimestamps.isEmpty());
         }
     }
 
