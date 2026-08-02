@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class HistoryStagingStoreTest {
 
@@ -45,6 +46,46 @@ class HistoryStagingStoreTest {
     }
 
     @Test
+    void recordsMissingTimestampAsAnAuditableExclusion() {
+        HistoryImportRequest request = request();
+        ImportedPrice missingTimestamp = new ImportedPrice(
+                null,
+                new BigDecimal("4800.1"), new BigDecimal("4800.3"),
+                new BigDecimal("4801.1"), new BigDecimal("4801.3"),
+                new BigDecimal("4799.1"), new BigDecimal("4799.3"),
+                new BigDecimal("4800.1"), new BigDecimal("4800.3"), 123L);
+        try (HistoryStagingStore store = HistoryStagingStore.open(request.stagingDatabase())) {
+            store.writePage(page(missingTimestamp), request);
+
+            assertThat(store.countAccepted(request)).isZero();
+            assertThat(store.exclusions(request)).singleElement().satisfies(exclusion -> {
+                assertThat(exclusion.reason()).isEqualTo("TIMESTAMP_MISSING");
+                assertThat(exclusion.snapshotTimeUtc()).startsWith("MISSING_TIMESTAMP:");
+            });
+            HistoryImportAudit audit = store.audit(request);
+            assertThat(audit.receivedCount()).isEqualTo(1);
+            assertThat(audit.rejectedCount()).isEqualTo(1);
+            assertThat(audit.excludedMinuteCount()).isEqualTo(1);
+            assertThat(audit.isConsistent()).isTrue();
+        }
+    }
+
+    @Test
+    void rejectsSameBoundsWithDifferentPayloadHash() {
+        HistoryImportRequest request = request();
+        ImportedPage original = page("first-payload", price("2024-01-01T00:01:00Z", "4800.1", "4800.3"));
+        ImportedPage changed = page("changed-payload", price("2024-01-01T00:01:00Z", "4800.1", "4800.3"));
+        try (HistoryStagingStore store = HistoryStagingStore.open(request.stagingDatabase())) {
+            store.writePage(original, request);
+
+            assertThatThrownBy(() -> store.writePage(changed, request))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("different payload");
+            assertThat(store.countAccepted(request)).isEqualTo(1);
+        }
+    }
+
+    @Test
     void auditSeparatesAcceptedAndExcludedMinutes() {
         HistoryImportRequest request = request();
         try (HistoryStagingStore store = HistoryStagingStore.open(request.stagingDatabase())) {
@@ -76,7 +117,11 @@ class HistoryStagingStoreTest {
     }
 
     private static ImportedPage page(ImportedPrice... prices) {
-        return new ImportedPage(FROM, TO, List.of(prices), "page-hash");
+        return page("page-hash", prices);
+    }
+
+    private static ImportedPage page(String payloadHash, ImportedPrice... prices) {
+        return new ImportedPage(FROM, TO, List.of(prices), payloadHash);
     }
 
     private static ImportedPrice price(String timestamp, String closeBid, String closeAsk) {

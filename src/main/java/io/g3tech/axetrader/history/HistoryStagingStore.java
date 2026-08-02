@@ -19,7 +19,7 @@ import java.util.UUID;
 public final class HistoryStagingStore implements AutoCloseable {
 
     private static final String INSERT_PAGE = """
-            INSERT OR IGNORE INTO history_import_page (
+            INSERT INTO history_import_page (
                 import_run_id, requested_from_utc, requested_to_utc, payload_hash,
                 received_count, accepted_count, rejected_count)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -60,17 +60,23 @@ public final class HistoryStagingStore implements AutoCloseable {
 
     public void writePage(ImportedPage page, HistoryImportRequest request) {
         validatePageBounds(page, request);
-        List<ValidatedPrice> prices = validate(page.prices(), request);
+        List<ValidatedPrice> prices = validate(page, request);
         long acceptedCount = prices.stream().filter(ValidatedPrice::accepted).count();
         long rejectedCount = prices.size() - acceptedCount;
         String importRunId = importRunId(request);
         Instant detectedAt = Instant.now();
         try {
             connection.setAutoCommit(false);
-            if (!insertPage(page, importRunId, acceptedCount, rejectedCount)) {
+            ExistingPage existing = existingPage(page, importRunId);
+            if (existing != null) {
+                if (!existing.matches(page.payloadHash(), page.prices().size(), acceptedCount, rejectedCount)) {
+                    rollback();
+                    throw new IllegalStateException("Page bounds already have a different payload or counts");
+                }
                 connection.commit();
                 return;
             }
+            insertPage(page, importRunId, acceptedCount, rejectedCount);
             for (ValidatedPrice price : prices) {
                 if (price.accepted()) {
                     insertPrice(price.price(), request, detectedAt);
@@ -112,7 +118,7 @@ public final class HistoryStagingStore implements AutoCloseable {
             try (var rows = statement.executeQuery()) {
                 List<PriceExclusion> exclusions = new ArrayList<>();
                 while (rows.next()) {
-                    exclusions.add(new PriceExclusion(Instant.parse(rows.getString("snapshot_time_utc")),
+                    exclusions.add(new PriceExclusion(rows.getString("snapshot_time_utc"),
                             rows.getString("reason")));
                 }
                 return List.copyOf(exclusions);
@@ -146,25 +152,25 @@ public final class HistoryStagingStore implements AutoCloseable {
         }
     }
 
-    public record PriceExclusion(Instant snapshotTime, String reason) { }
+    public record PriceExclusion(String snapshotTimeUtc, String reason) { }
 
-    private List<ValidatedPrice> validate(List<ImportedPrice> prices, HistoryImportRequest request) {
+    private List<ValidatedPrice> validate(ImportedPage page, HistoryImportRequest request) {
         List<ValidatedPrice> validated = new ArrayList<>();
-        for (ImportedPrice price : prices) {
+        for (int index = 0; index < page.prices().size(); index++) {
+            ImportedPrice price = page.prices().get(index);
             Set<PriceValidationFailure> failures = validator.validate(price);
             if (price != null && price.timestamp() != null
                     && (price.timestamp().isBefore(request.from()) || !price.timestamp().isBefore(request.to()))) {
                 failures.add(PriceValidationFailure.TIMESTAMP_OUT_OF_RANGE);
             }
-            if (price == null || price.timestamp() == null) {
-                throw new IllegalArgumentException("Imported prices must have a timestamp to record exclusions");
-            }
-            validated.add(new ValidatedPrice(price, Set.copyOf(failures)));
+            String exclusionTimestamp = price == null || price.timestamp() == null
+                    ? missingTimestampIdentity(page, index) : price.timestamp().toString();
+            validated.add(new ValidatedPrice(price, exclusionTimestamp, Set.copyOf(failures)));
         }
         return validated;
     }
 
-    private boolean insertPage(ImportedPage page, String importRunId, long acceptedCount, long rejectedCount) throws SQLException {
+    private void insertPage(ImportedPage page, String importRunId, long acceptedCount, long rejectedCount) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(INSERT_PAGE)) {
             statement.setString(1, importRunId);
             statement.setString(2, page.requestedFrom().toString());
@@ -173,7 +179,7 @@ public final class HistoryStagingStore implements AutoCloseable {
             statement.setLong(5, page.prices().size());
             statement.setLong(6, acceptedCount);
             statement.setLong(7, rejectedCount);
-            return statement.executeUpdate() == 1;
+            statement.executeUpdate();
         }
     }
 
@@ -207,7 +213,7 @@ public final class HistoryStagingStore implements AutoCloseable {
                 statement.setString(2, request.source());
                 statement.setString(3, request.epic());
                 statement.setString(4, request.resolution());
-                statement.setString(5, invalidPrice.price().timestamp().toString());
+                statement.setString(5, invalidPrice.exclusionTimestamp());
                 statement.setString(6, failure.name());
                 statement.setString(7, detectedAt.toString());
                 statement.executeUpdate();
@@ -319,6 +325,30 @@ public final class HistoryStagingStore implements AutoCloseable {
         return UUID.nameUUIDFromBytes(identity.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
+    private ExistingPage existingPage(ImportedPage page, String importRunId) throws SQLException {
+        String sql = """
+                SELECT payload_hash, received_count, accepted_count, rejected_count
+                FROM history_import_page
+                WHERE import_run_id = ? AND requested_from_utc = ? AND requested_to_utc = ?
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, importRunId);
+            statement.setString(2, page.requestedFrom().toString());
+            statement.setString(3, page.requestedTo().toString());
+            try (var rows = statement.executeQuery()) {
+                if (!rows.next()) {
+                    return null;
+                }
+                return new ExistingPage(rows.getString(1), rows.getLong(2), rows.getLong(3), rows.getLong(4));
+            }
+        }
+    }
+
+    private static String missingTimestampIdentity(ImportedPage page, int index) {
+        return "MISSING_TIMESTAMP:" + page.requestedFrom() + ':' + page.requestedTo() + ':'
+                + page.payloadHash() + ':' + index;
+    }
+
     private static void applySchema(Connection connection) throws SQLException {
         try (Statement statement = connection.createStatement()) {
             statement.execute("""
@@ -384,11 +414,21 @@ public final class HistoryStagingStore implements AutoCloseable {
         }
     }
 
-    private record ValidatedPrice(ImportedPrice price, Set<PriceValidationFailure> failures) {
+    private record ValidatedPrice(ImportedPrice price, String exclusionTimestamp, Set<PriceValidationFailure> failures) {
         private boolean accepted() {
             return failures.isEmpty();
         }
     }
 
     private record PageCounts(long receivedCount, long acceptedCount, long rejectedCount) { }
+
+    private record ExistingPage(String payloadHash, long receivedCount, long acceptedCount, long rejectedCount) {
+        private boolean matches(String otherPayloadHash, long otherReceivedCount, long otherAcceptedCount,
+                                long otherRejectedCount) {
+            return payloadHash.equals(otherPayloadHash)
+                    && receivedCount == otherReceivedCount
+                    && acceptedCount == otherAcceptedCount
+                    && rejectedCount == otherRejectedCount;
+        }
+    }
 }
