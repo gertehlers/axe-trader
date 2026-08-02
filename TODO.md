@@ -7,19 +7,21 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
 (not scalping), reproducible via 5-pillar confluence, with each instrument tuned as its own
 "personality" rather than one shared config.
 
-## Local price-history rebuild — provider-blocked 2026-08-02
+## Local price-history rebuild — provider/paging-blocked 2026-08-02
 
 The Cloudflare D1 price-history workflow is retired. Clean history is now a local-only SQLite
 operation documented in `docs/local-price-history.md`; do not use Wrangler, the dashboard, or D1
 for price-history repair.
 
-The required US500/MINUTE probe for `[2024-01-01T00:00:00Z, 2024-01-01T01:00:00Z)` reached Capital
-but returned HTTP 404 `error.prices.not-found` before an audit was produced. Received, accepted, and
-rejected counts are therefore unavailable. No full-import end was captured, and no stage, audit,
-promotion, backup creation, or local backtest was run. Active database and archive SHA-256 values
-were identical before and after the probe, and `data/us500-clean-stage.sqlite` remained absent.
-Resume at the probe gate; do not choose a different range or weaken the audit to bypass the provider
-response.
+The original 2024-01-01 probe was a closure window. The corrected open-session probe for
+`[2024-01-02T15:00:00Z, 2024-01-02T16:00:00Z)` succeeded with 60 received/accepted, 0 rejected,
+0 duplicates, 0 continuity gaps, and `consistent=true`. A complete US500/MINUTE stage was then
+started with fixed `IMPORT_END=2026-08-02T21:27:00Z`, but Capital returned HTTP 429
+`error.too-many.requests` before a final audit or completion marker. The retained partial stage has
+61 page records and 86 accepted rows; it is not promotable. No promotion, backup creation, or local
+backtest was run. Active database and archive SHA-256 values stayed unchanged. Resume only after
+the provider/paging rate-limit behavior is addressed; do not reuse or promote the incomplete stage,
+choose a different range, or weaken validation.
 
 ---
 

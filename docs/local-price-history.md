@@ -61,12 +61,21 @@ The originally selected `[2024-01-01T00:00:00Z, 2024-01-01T01:00:00Z)` probe was
 window, not a provider outage. A read-only diagnostic on the open `[2024-01-02T15:00:00Z,
 2024-01-02T16:00:00Z)` interval reached Capital; its 61st nominal upper-bound candle exposed the
 provider's inclusive `to` convention. The importer now translates that boundary to its internal
-half-open interval and records empty/404 bounded windows as recognized closures. No stage, full
-audit, promotion, backup creation, or post-promotion backtest has yet been attempted.
+half-open interval and records empty/404 bounded windows as recognized closures. The corrected
+open-session probe then passed with 60 received/accepted, 0 rejected, 0 duplicates, 0 continuity
+gaps, and `consistent=true`.
+
+The complete stage used the fixed `IMPORT_END=2026-08-02T21:27:00Z` but stopped when Capital
+returned HTTP 429 `error.too-many.requests`. No final staged audit was emitted and no completion
+marker exists. The retained `data/us500-clean-stage.sqlite` contains 61 recorded page windows and
+86 accepted US500/MINUTE rows, but is incomplete and must not be promoted or reused. No promotion,
+backup creation, or post-promotion backtest was attempted. Resume only after the provider/paging
+rate-limit behavior is corrected; do not bypass the stage/audit gate.
 
 Before and after the probe, the active database SHA-256 was
 `cb900eaf39050508ab51243faf5aa279971e1e5f1b8a2ad9795ed0ae777780df`, the archive SHA-256 was
-`88b268f766c3ddb23601051ecfeaadfa04537fc228e1111e6429631db71ebb06`, and the staging database was
-absent. The untouched active database contained zero US500/MINUTE price rows and zero exclusions;
-the existing gzip archive passed `gzip -t`. Rerun the corrected open-session probe now, then proceed
-to stage only after its coverage audit is valid.
+`88b268f766c3ddb23601051ecfeaadfa04537fc228e1111e6429631db71ebb06`. The untouched active database
+contained zero US500/MINUTE price rows and zero exclusions; the existing gzip archive passed
+`gzip -t`. After the blocked stage, the partial staging database SHA-256 was
+`ff0be34e11c0d8b5bcd589345bd59a1b2a45dcdfa49af46150f10c13c7191bbd`; it is retained solely as
+failure evidence.
