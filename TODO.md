@@ -7,21 +7,22 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
 (not scalping), reproducible via 5-pillar confluence, with each instrument tuned as its own
 "personality" rather than one shared config.
 
-## Local price-history rebuild — provider/paging-blocked 2026-08-02
+## Local price-history rebuild — completed locally 2026-08-03
 
 The Cloudflare D1 price-history workflow is retired. Clean history is now a local-only SQLite
 operation documented in `docs/local-price-history.md`; do not use Wrangler, the dashboard, or D1
 for price-history repair.
 
-The original 2024-01-01 probe was a closure window. The corrected open-session probe for
-`[2024-01-02T15:00:00Z, 2024-01-02T16:00:00Z)` succeeded with 60 received/accepted, 0 rejected,
-0 duplicates, 0 continuity gaps, and `consistent=true`. A complete US500/MINUTE stage was then
-started with fixed `IMPORT_END=2026-08-02T21:27:00Z`, but Capital returned HTTP 429
-`error.too-many.requests` before a final audit or completion marker. The retained partial stage has
-61 page records and 86 accepted rows; it is not promotable. No promotion, backup creation, or local
-backtest was run. Active database and archive SHA-256 values stayed unchanged. Resume only after
-the provider/paging rate-limit behavior is addressed; do not reuse or promote the incomplete stage,
-choose a different range, or weaken validation.
+The original 2024-01-01 probe was a closure window; the open-session probe passed with 60 accepted
+minutes and no rejection, duplicate, or continuity-gap evidence. The reviewed paced/resumable v2
+stage completed through `IMPORT_END=2026-08-02T22:53:00Z`: 913,053 received, 912,132 accepted, 921
+recorded exclusions, zero duplicates, 12,780 recognized closures, zero continuity gaps, and
+`consistent=true`. Explicit local promotion succeeded with both legacy artifacts backed up. The
+active SQLite database and decompressed archive share SHA-256
+`e19cbb90df9612df98283882aa9567efc335d60267baa90b71b402f1c30b9953`; they contain 912,132
+US500/MINUTE rows from 2024-01-01T23:01Z through 2026-08-02T22:52Z and 1,685 exclusions. Focused
+history/import tests (82) and the full suite (233 tests, 3 skipped) pass. The old incomplete
+`us500-clean-stage.sqlite` remains preserved as non-promotable failure evidence.
 
 ---
 

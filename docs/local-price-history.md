@@ -40,7 +40,7 @@ split across different lock-file inodes.
 ```bash
 IMPORT_END="$(date -u +%Y-%m-%dT%H:%M:00Z)"
 printf 'IMPORT_END=%s\n' "$IMPORT_END"
-./mvnw spring-boot:run -Dspring-boot.run.main-class=io.g3tech.axetrader.AxeTraderApplication -Dspring-boot.run.arguments="--spring.config.import=file:/Users/gertehlers/Development/projects/axe-trader/.env[.properties] --axe-trader.history-import.enabled=true --axe-trader.history-import.mode=stage --axe-trader.history-import.epic=US500 --axe-trader.history-import.resolution=MINUTE --axe-trader.history-import.from=2024-01-01T00:00:00Z --axe-trader.history-import.to=${IMPORT_END} --axe-trader.history-import.staging-database=data/us500-clean-stage.sqlite"
+./mvnw spring-boot:run -Dspring-boot.run.main-class=io.g3tech.axetrader.AxeTraderApplication -Dspring-boot.run.arguments="--spring.config.import=file:/Users/gertehlers/Development/projects/axe-trader/.env[.properties] --axe-trader.history-import.enabled=true --axe-trader.history-import.mode=stage --axe-trader.history-import.epic=US500 --axe-trader.history-import.resolution=MINUTE --axe-trader.history-import.from=2024-01-01T00:00:00Z --axe-trader.history-import.to=${IMPORT_END} --axe-trader.history-import.staging-database=data/us500-clean-v2-stage.sqlite"
 ```
 
 Do not promote unless the full staged audit is successful: counts reconcile, accepted rows equal
@@ -57,7 +57,7 @@ the staged database as `data/axe-trader.sqlite`, rebuilds `data/axe-trader.sqlit
 the staging file only after both replacements succeed.
 
 ```bash
-./mvnw spring-boot:run -Dspring-boot.run.main-class=io.g3tech.axetrader.AxeTraderApplication -Dspring-boot.run.arguments="--spring.config.import=file:/Users/gertehlers/Development/projects/axe-trader/.env[.properties] --axe-trader.history-import.enabled=true --axe-trader.history-import.mode=promote --axe-trader.history-import.staging-database=data/us500-clean-stage.sqlite"
+./mvnw spring-boot:run -Dspring-boot.run.main-class=io.g3tech.axetrader.AxeTraderApplication -Dspring-boot.run.arguments="--spring.config.import=file:/Users/gertehlers/Development/projects/axe-trader/.env[.properties] --axe-trader.history-import.enabled=true --axe-trader.history-import.mode=promote --axe-trader.history-import.staging-database=data/us500-clean-v2-stage.sqlite"
 ```
 
 After promotion, verify the active row count and UTC bounds, the gzip archive, both timestamped
@@ -87,3 +87,19 @@ contained zero US500/MINUTE price rows and zero exclusions; the existing gzip ar
 `gzip -t`. After the blocked stage, the partial staging database SHA-256 was
 `ff0be34e11c0d8b5bcd589345bd59a1b2a45dcdfa49af46150f10c13c7191bbd`; it is retained solely as
 failure evidence.
+
+## 2026-08-03 paced v2 completion
+
+The fresh `data/us500-clean-v2-stage.sqlite` import used
+`IMPORT_END=2026-08-02T22:53:00Z`. Its completed audit had 913,053 received, 912,132 accepted,
+921 rejected/excluded, 912,132 accepted minutes, zero duplicates, 12,780 recognized closures
+(447,680 minutes), zero continuity gaps, zero pending work, and `consistent=true`. The staging
+database stored one completion marker and fingerprint for the exact requested range.
+
+Explicit promotion succeeded. The active database and decompressed archive both have SHA-256
+`e19cbb90df9612df98283882aa9567efc335d60267baa90b71b402f1c30b9953`; the archive passed
+`gzip -t`. The promoted active database contains 912,132 US500/MINUTE rows over
+`[2024-01-01T23:01:00Z, 2026-08-02T22:52:00Z]` and 1,685 recorded exclusions. Legacy backups were
+preserved as `axe-trader.sqlite.legacy-corrupt-20260803T003252Z` and
+`axe-trader.sqlite.gz.legacy-corrupt-20260803T003252Z`. Focused history/import tests (82) and the
+full Maven suite (233 tests, 3 skipped) passed after promotion.
