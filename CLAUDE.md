@@ -187,6 +187,12 @@ Single table: `historical_price` — columns: `epic`, `resolution`, `snapshot_ti
 
 MONITOR mode populates this table. BACKTEST mode reads from it.
 
+History is topped up with `--axe-trader.history-import.mode=update`, which imports from each stored
+instrument's last bar to the last completed UTC minute and writes only validated candles — rejects go
+to `price_exclusion` with a reason. `mode=report` shows the dirty rate without touching the network;
+`mode=archive` rebuilds the gzip snapshot, which `update` does not do. See
+`docs/local-price-history.md`.
+
 ## Open Work (from `TODO.md`)
 
 - [ ] Validate MONITOR mode end-to-end (auth → WebSocket → SQLite writes)

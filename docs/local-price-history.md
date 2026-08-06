@@ -8,6 +8,65 @@ Run the commands from the repository root. The explicit Config Data import point
 checkout's credential file because linked worktrees do not contain a copy. Never print or copy the
 file's values.
 
+There are two workflows. **Update** is the routine one: it tops instruments up incrementally and is
+what you want almost always. **Probe / stage / promote** rebuilds a dataset from nothing and replaces
+the active database wholesale — reach for it only when the existing data is unusable.
+
+## Update
+
+`update` imports every minute between an instrument's last stored bar and the last completed UTC
+minute. The in-progress minute is deliberately excluded, since a partial candle would be stored once
+and never revisited. Cursors are derived from `MAX(snapshot_time_utc)` per source/epic/resolution, so
+there is no cursor state to keep in sync and an interrupted run simply resumes with a shorter window.
+
+```bash
+# Top up every stored instrument from its own cursor.
+./mvnw spring-boot:run -Dspring-boot.run.main-class=io.g3tech.axetrader.AxeTraderApplication -Dspring-boot.run.arguments="--spring.config.import=file:/Users/gertehlers/Development/projects/axe-trader/.env[.properties] --axe-trader.history-import.enabled=true --axe-trader.history-import.mode=update"
+
+# Top up one instrument.
+./mvnw spring-boot:run -Dspring-boot.run.main-class=io.g3tech.axetrader.AxeTraderApplication -Dspring-boot.run.arguments="--spring.config.import=file:/Users/gertehlers/Development/projects/axe-trader/.env[.properties] --axe-trader.history-import.enabled=true --axe-trader.history-import.mode=update --axe-trader.history-import.epic=US500"
+
+# Seed a new instrument (requires an explicit resolution and start).
+./mvnw spring-boot:run -Dspring-boot.run.main-class=io.g3tech.axetrader.AxeTraderApplication -Dspring-boot.run.arguments="--spring.config.import=file:/Users/gertehlers/Development/projects/axe-trader/.env[.properties] --axe-trader.history-import.enabled=true --axe-trader.history-import.mode=update --axe-trader.history-import.epic=GOLD --axe-trader.history-import.resolution=MINUTE --axe-trader.history-import.from=2024-01-01T00:00:00Z"
+```
+
+Each delta stages into its own file under `data/.staging/`, is audited by the same gate that governs
+promotion, and is only then merged into `data/axe-trader.sqlite` inside a single transaction. Dirty
+source candles never enter `historical_price`; they are recorded in `price_exclusion` with a reason
+and reported in the run summary, and they do **not** block the merge. Duplicates, counts that fail to
+reconcile, and unexplained continuity gaps do block it. Empty and 404 provider windows are recognised
+session closures — weekend and holiday top-ups are the ordinary case, not a failure.
+
+A failed instrument does not abort the others, but the process exits non-zero and **leaves its
+staging file under `data/.staging/` as evidence**. Delete it only after you have read it. Rerunning
+`update` is always safe: the merge is idempotent against the unique index on
+`(source, epic, resolution, snapshot_time_utc)`.
+
+Seeding fails closed. An instrument with no stored rows has no cursor, so `update` refuses to guess a
+start date and requires an explicit `from` and `resolution`.
+
+## Report
+
+`report` reads the database only and never contacts the provider, so it is safe to run at any time.
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.main-class=io.g3tech.axetrader.AxeTraderApplication -Dspring-boot.run.arguments="--axe-trader.history-import.enabled=true --axe-trader.history-import.mode=report --axe-trader.history-import.epic=US500"
+```
+
+Omit the epic to report on every stored instrument, and pass `from`/`to` to restrict the range. It
+reports stored minutes, excluded minutes, the resulting dirty rate, and the breakdown by failure
+reason. A legacy database with no `price_exclusion` table reports zero exclusions rather than failing.
+
+## Archive
+
+`update` never rewrites `data/axe-trader.sqlite.gz` — re-gzipping a 281 MB database on every routine
+append is disproportionate. Run `archive` before committing the snapshot, otherwise a fresh checkout
+restores stale data through `DatabaseBootstrap`.
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.main-class=io.g3tech.axetrader.AxeTraderApplication -Dspring-boot.run.arguments="--axe-trader.history-import.enabled=true --axe-trader.history-import.mode=archive"
+```
+
 ## Probe
 
 The probe fetches and validates one short page without creating or changing the staging, active, or

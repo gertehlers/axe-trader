@@ -24,6 +24,24 @@ US500/MINUTE rows from 2024-01-01T23:01Z through 2026-08-02T22:52Z and 1,685 exc
 history/import tests (82) and the full suite (233 tests, 3 skipped) pass. The old incomplete
 `us500-clean-stage.sqlite` remains preserved as non-promotable failure evidence.
 
+## Incremental price top-up — built 2026-08-06, first real run still pending
+
+Routine top-up is now `--axe-trader.history-import.mode=update`, documented in
+`docs/local-price-history.md`. It is instrument-agnostic: with no epic it refreshes every
+`(source, epic, resolution)` already stored, each from its own `MAX(snapshot_time_utc)` cursor to the
+last completed UTC minute. Each delta stages separately, passes the existing audit gate, and is
+merged into `data/axe-trader.sqlite` in one `INSERT OR IGNORE` transaction, so a second instrument no
+longer wipes the first. Dirty candles are excluded and reported without blocking the merge;
+duplicates, unreconciled counts, and unexplained continuity gaps still block it. `mode=report` gives a
+network-free dirty-rate breakdown; `mode=archive` rebuilds the gzip snapshot, which `update`
+deliberately leaves alone.
+
+Full suite passes at 263 tests, 3 skipped (30 new). **The first real `update` run has not happened
+yet** — it needs the promoted 912,132-row database in the working checkout. The legacy 500,000-row
+database stores minutes as `2024-12-04T23:20Z`, and `HistoryCursorReader` fails closed on that
+non-canonical form rather than mis-order `MAX()`. Restore the clean dataset first, then run `update`,
+record its audit numbers here, and rerun it once to confirm it reports already current.
+
 ---
 
 ## ⭐ ACTIVE WORK — empirical path-first strategy discovery (started 2026-07-27)
