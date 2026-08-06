@@ -162,3 +162,28 @@ Explicit promotion succeeded. The active database and decompressed archive both 
 preserved as `axe-trader.sqlite.legacy-corrupt-20260803T003252Z` and
 `axe-trader.sqlite.gz.legacy-corrupt-20260803T003252Z`. Focused history/import tests (82) and the
 full Maven suite (233 tests, 3 skipped) passed after promotion.
+
+## 2026-08-06 first incremental update
+
+The clean 2026-08-03 dataset was topped up with `mode=update`. One instrument was resolved from the
+data (`capital`/`US500`/`MINUTE`) with cursor `2026-08-02T22:52:00Z`.
+
+The run imported `[2026-08-02T22:53:00Z, 2026-08-06T19:55:00Z)`: 5,517 accepted minutes, 27 excluded
+minutes carrying 34 exclusion rows (`OPEN_BID_ABOVE_ASK` 14, `HIGH_BID_ABOVE_ASK` 9,
+`CLOSE_BID_ABOVE_ASK` 6, `LOW_BID_ABOVE_ASK` 5), 20 recognised session closures over the weekend, and
+zero continuity gaps. Row count moved 912,132 → 917,649, exactly the accepted count, and exclusions
+moved 1,685 → 1,719. The staging file was removed after the merge committed.
+
+A rerun one minute later imported exactly one new minute rather than re-importing the window, which
+is the idempotency evidence: `SELECT ... GROUP BY source, epic, resolution, snapshot_time_utc
+HAVING COUNT(*) > 1` returns no rows over all 917,650.
+
+`mode=report` then showed 917,650 stored minutes, 948 distinct excluded minutes and a 0.1032% dirty
+rate. The first report run exposed a defect: `excludedMinutes` summed the per-reason counts, so any
+minute violating several OHLC fields was counted more than once and the figure read 1,719 instead of
+948. It now counts distinct excluded minutes; `HistoryDirtyDataReporterTest` pins the multi-reason
+case, and the percentage is formatted with `Locale.ROOT`.
+
+The application starts cleanly against the extended database (Flyway validates both migrations, no
+errors). Note that a plain `spring-boot:run` starts the web application and does not by itself emit a
+backtest trade summary, so no trade-level numbers were captured here.

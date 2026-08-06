@@ -88,7 +88,8 @@ public final class HistoryImportRunner implements ApplicationRunner, ExitCodeGen
             logger.info("Dirty-data report {} {} [{}, {}): stored={}, excluded={}, dirtyRate={}, byReason={}",
                     target.epic(), target.resolution(), report.fromInclusive(), report.toExclusive(),
                     report.storedMinutes(), report.excludedMinutes(),
-                    String.format("%.4f%%", report.dirtyRate() * 100), report.exclusionsByReason());
+                    String.format(java.util.Locale.ROOT, "%.4f%%", report.dirtyRate() * 100),
+                    report.exclusionsByReason());
         }
     }
 

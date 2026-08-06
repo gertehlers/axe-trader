@@ -89,6 +89,24 @@ class HistoryDirtyDataReporterTest {
     }
 
     @Test
+    void countsAMinuteOnceEvenWhenItViolatesSeveralFields() throws Exception {
+        createExclusions();
+        try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + database);
+             Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    INSERT INTO price_exclusion VALUES
+                      ('r1','capital','US500','MINUTE','2026-03-01T10:02:00Z','HIGH_BID_ABOVE_ASK','2026-03-01T11:00:00Z')
+                    """);
+        }
+
+        HistoryDirtyDataReport report = reporter.report(database, target, null, null);
+
+        assertThat(report.exclusionsByReason()).containsEntry("HIGH_BID_ABOVE_ASK", 1L);
+        assertThat(report.excludedMinutes()).isEqualTo(3);
+        assertThat(report.dirtyRate()).isCloseTo(0.5, within(0.0001));
+    }
+
+    @Test
     void restrictsTheReportToTheRequestedRange() throws Exception {
         createExclusions();
 

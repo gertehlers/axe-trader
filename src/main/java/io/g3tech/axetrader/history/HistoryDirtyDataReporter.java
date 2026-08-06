@@ -32,10 +32,13 @@ public class HistoryDirtyDataReporter {
         }
         try (Connection connection = DriverManager.getConnection("jdbc:sqlite:file:" + database + "?mode=ro")) {
             long stored = countStored(connection, target, fromInclusive, toExclusive);
-            Map<String, Long> byReason = hasExclusionLedger(connection)
+            boolean ledger = hasExclusionLedger(connection);
+            Map<String, Long> byReason = ledger
                     ? countExclusions(connection, target, fromInclusive, toExclusive)
                     : Map.of();
-            long excluded = byReason.values().stream().mapToLong(Long::longValue).sum();
+            // Summing byReason would double-count a minute that violates several fields, which is
+            // common in this dataset: 27 excluded minutes produced 34 reason rows on 2026-08-06.
+            long excluded = ledger ? countExcludedMinutes(connection, target, fromInclusive, toExclusive) : 0L;
             long offered = stored + excluded;
             double dirtyRate = offered == 0 ? 0d : (double) excluded / (double) offered;
             return new HistoryDirtyDataReport(target, fromInclusive, toExclusive,
@@ -59,6 +62,20 @@ public class HistoryDirtyDataReporter {
                                     Instant fromInclusive, Instant toExclusive) throws SQLException {
         StringBuilder sql = new StringBuilder("""
                 SELECT COUNT(DISTINCT snapshot_time_utc) FROM historical_price
+                WHERE source = ? AND epic = ? AND resolution = ?
+                """);
+        List<Object> parameters = targetParameters(target, fromInclusive, toExclusive, sql);
+        try (PreparedStatement statement = prepare(connection, sql.toString(), parameters);
+             ResultSet rows = statement.executeQuery()) {
+            rows.next();
+            return rows.getLong(1);
+        }
+    }
+
+    private static long countExcludedMinutes(Connection connection, HistoryTarget target,
+                                             Instant fromInclusive, Instant toExclusive) throws SQLException {
+        StringBuilder sql = new StringBuilder("""
+                SELECT COUNT(DISTINCT snapshot_time_utc) FROM price_exclusion
                 WHERE source = ? AND epic = ? AND resolution = ?
                 """);
         List<Object> parameters = targetParameters(target, fromInclusive, toExclusive, sql);
