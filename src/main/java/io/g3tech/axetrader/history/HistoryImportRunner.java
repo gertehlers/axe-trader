@@ -22,16 +22,18 @@ public final class HistoryImportRunner implements ApplicationRunner, ExitCodeGen
     private final HistoryUpdateService updateService;
     private final HistoryDirtyDataReporter reporter;
     private final HistoryCursorReader cursorReader;
+    private final HistoryArchiveWriter archiveWriter;
     private int exitCode;
 
     public HistoryImportRunner(HistoryImportProperties properties, HistoryImportService service,
                                HistoryUpdateService updateService, HistoryDirtyDataReporter reporter,
-                               HistoryCursorReader cursorReader) {
+                               HistoryCursorReader cursorReader, HistoryArchiveWriter archiveWriter) {
         this.properties = properties;
         this.service = service;
         this.updateService = updateService;
         this.reporter = reporter;
         this.cursorReader = cursorReader;
+        this.archiveWriter = archiveWriter;
     }
 
     @Override
@@ -48,7 +50,8 @@ public final class HistoryImportRunner implements ApplicationRunner, ExitCodeGen
             }
             case UPDATE -> runUpdate();
             case REPORT -> runReport();
-            case ARCHIVE -> throw new IllegalStateException("Archive mode is implemented in Task 7");
+            case ARCHIVE -> logger.info("Rewrote archive {}",
+                    archiveWriter.rewrite(properties.activeDatabase(), properties.archive()));
         }
     }
 

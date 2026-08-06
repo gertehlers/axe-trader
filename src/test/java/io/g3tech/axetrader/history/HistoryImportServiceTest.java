@@ -631,7 +631,7 @@ class HistoryImportServiceTest {
                 new HistoryDeltaMerger(), tempDir.resolve(".staging"), java.time.Instant::now);
 
         new HistoryImportRunner(properties, service, updateService,
-                new HistoryDirtyDataReporter(), cursorReader).run(null);
+                new HistoryDirtyDataReporter(), cursorReader, new HistoryArchiveWriter()).run(null);
 
         assertThat(request.stagingDatabase()).doesNotExist();
         assertThat(Files.readString(active, java.nio.charset.StandardCharsets.ISO_8859_1))
