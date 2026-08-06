@@ -43,6 +43,7 @@ axe-trader:
     from: ${HISTORY_IMPORT_FROM:}
     to: ${HISTORY_IMPORT_TO:}
     staging-database: ${HISTORY_IMPORT_STAGING_DATABASE:}
+    staging-directory: ${HISTORY_IMPORT_STAGING_DIRECTORY:data/.staging}
     requests-per-second: ${HISTORY_IMPORT_REQUESTS_PER_SECOND:5}
     active-database: data/axe-trader.sqlite
     archive: data/axe-trader.sqlite.gz

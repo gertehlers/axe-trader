@@ -4,6 +4,7 @@ logs/
 
 ### Local SQLite DB — restored from the committed .gz snapshot on startup (see DatabaseBootstrap) ###
 data/*.sqlite
+data/.staging/
 data/*.sqlite-journal
 data/*.sqlite-wal
 data/*.sqlite-shm

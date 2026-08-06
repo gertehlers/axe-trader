@@ -619,14 +619,19 @@ class HistoryImportServiceTest {
         Files.writeString(active, "legacy-active");
         Files.writeString(archive, "legacy-archive");
         HistoryImportProperties properties = new HistoryImportProperties(
-                true, "promote", null, null, null, null, request.stagingDatabase(), active, archive);
+                true, "promote", null, null, null, null, request.stagingDatabase(), null, active, archive);
         HistoryImportService service = new HistoryImportService(
                 (ignoredRequest, ignoredFrom, ignoredTo, ignoredMaxBars) -> {
                     throw new AssertionError("promotion must not fetch provider data");
                 },
                 new HistoryDatabasePromoter());
 
-        new HistoryImportRunner(properties, service).run(null);
+        HistoryCursorReader cursorReader = new HistoryCursorReader(active);
+        HistoryUpdateService updateService = new HistoryUpdateService(cursorReader, service,
+                new HistoryDeltaMerger(), tempDir.resolve(".staging"), java.time.Instant::now);
+
+        new HistoryImportRunner(properties, service, updateService,
+                new HistoryDirtyDataReporter(), cursorReader).run(null);
 
         assertThat(request.stagingDatabase()).doesNotExist();
         assertThat(Files.readString(active, java.nio.charset.StandardCharsets.ISO_8859_1))

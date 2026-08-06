@@ -14,16 +14,19 @@ public record HistoryImportProperties(
         Instant from,
         Instant to,
         Path stagingDatabase,
+        Path stagingDirectory,
         Path activeDatabase,
         Path archive
 ) {
 
     private static final Path DEFAULT_ACTIVE_DATABASE = Path.of("data", "axe-trader.sqlite");
     private static final Path DEFAULT_ARCHIVE = Path.of("data", "axe-trader.sqlite.gz");
+    private static final Path DEFAULT_STAGING_DIRECTORY = Path.of("data", ".staging");
 
     public HistoryImportProperties {
         activeDatabase = activeDatabase == null ? DEFAULT_ACTIVE_DATABASE : activeDatabase;
         archive = archive == null ? DEFAULT_ARCHIVE : archive;
+        stagingDirectory = stagingDirectory == null ? DEFAULT_STAGING_DIRECTORY : stagingDirectory;
     }
 
     public Mode requiredMode() {
@@ -51,6 +54,9 @@ public record HistoryImportProperties(
     public enum Mode {
         PROBE,
         STAGE,
-        PROMOTE
+        PROMOTE,
+        UPDATE,
+        REPORT,
+        ARCHIVE
     }
 }
