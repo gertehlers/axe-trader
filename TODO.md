@@ -24,7 +24,7 @@ US500/MINUTE rows from 2024-01-01T23:01Z through 2026-08-02T22:52Z and 1,685 exc
 history/import tests (82) and the full suite (233 tests, 3 skipped) pass. The old incomplete
 `us500-clean-stage.sqlite` remains preserved as non-promotable failure evidence.
 
-## Incremental price top-up — built 2026-08-06, first real run still pending
+## Incremental price top-up — built and verified 2026-08-06
 
 Routine top-up is now `--axe-trader.history-import.mode=update`, documented in
 `docs/local-price-history.md`. It is instrument-agnostic: with no epic it refreshes every
@@ -36,11 +36,20 @@ duplicates, unreconciled counts, and unexplained continuity gaps still block it.
 network-free dirty-rate breakdown; `mode=archive` rebuilds the gzip snapshot, which `update`
 deliberately leaves alone.
 
-Full suite passes at 263 tests, 3 skipped (30 new). **The first real `update` run has not happened
-yet** — it needs the promoted 912,132-row database in the working checkout. The legacy 500,000-row
+Full suite passes at 264 tests, 3 skipped (31 new). The first real run closed the four-day gap on
+2026-08-06: 5,517 accepted minutes over `[2026-08-02T22:53:00Z, 2026-08-06T19:55:00Z)`, 27 excluded
+minutes, 20 recognised closures, zero continuity gaps, 912,132 → 917,649 rows. A rerun imported only
+the single newly-completed minute and produced no duplicates. Full numbers in
+`docs/local-price-history.md` → "2026-08-06 first incremental update".
+
+The real run also caught a reporter defect the unit tests missed — `excludedMinutes` summed
+per-reason counts and so double-counted minutes violating several OHLC fields (1,719 reported vs 948
+actual). Fixed and pinned by a test.
+
+Caveat for a cold session: this only works against the **clean** dataset. The legacy 500,000-row
 database stores minutes as `2024-12-04T23:20Z`, and `HistoryCursorReader` fails closed on that
-non-canonical form rather than mis-order `MAX()`. Restore the clean dataset first, then run `update`,
-record its audit numbers here, and rerun it once to confirm it reports already current.
+non-canonical form rather than mis-order `MAX()`. The clean 917,650-row database currently lives in
+the working checkout only; the committed `.gz` snapshot is deliberately still the legacy one.
 
 ---
 
