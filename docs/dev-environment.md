@@ -28,6 +28,10 @@ gzip -dc data/axe-trader.sqlite.gz > data/axe-trader.sqlite   # ~32 MB gz -> ~95
 
 Gitignored, so it will not dirty the working tree. Do this once per fresh container.
 
+For provider-backed replacement, audit, and promotion of the complete local dataset, follow
+[`docs/local-price-history.md`](local-price-history.md). That runbook is local-only; the former D1
+price-history workflow is retired.
+
 ## 3. Running the strategy sweep harness
 
 `ConfluenceSweepTest` is skipped in a normal `mvnw test` run (gated by `-Dsweep=true`). To run it:

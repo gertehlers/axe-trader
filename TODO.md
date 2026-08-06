@@ -7,6 +7,23 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
 (not scalping), reproducible via 5-pillar confluence, with each instrument tuned as its own
 "personality" rather than one shared config.
 
+## Local price-history rebuild — completed locally 2026-08-03
+
+The Cloudflare D1 price-history workflow is retired. Clean history is now a local-only SQLite
+operation documented in `docs/local-price-history.md`; do not use Wrangler, the dashboard, or D1
+for price-history repair.
+
+The original 2024-01-01 probe was a closure window; the open-session probe passed with 60 accepted
+minutes and no rejection, duplicate, or continuity-gap evidence. The reviewed paced/resumable v2
+stage completed through `IMPORT_END=2026-08-02T22:53:00Z`: 913,053 received, 912,132 accepted, 921
+recorded exclusions, zero duplicates, 12,780 recognized closures, zero continuity gaps, and
+`consistent=true`. Explicit local promotion succeeded with both legacy artifacts backed up. The
+active SQLite database and decompressed archive share SHA-256
+`e19cbb90df9612df98283882aa9567efc335d60267baa90b71b402f1c30b9953`; they contain 912,132
+US500/MINUTE rows from 2024-01-01T23:01Z through 2026-08-02T22:52Z and 1,685 exclusions. Focused
+history/import tests (82) and the full suite (233 tests, 3 skipped) pass. The old incomplete
+`us500-clean-stage.sqlite` remains preserved as non-promotable failure evidence.
+
 ---
 
 ## ⭐ ACTIVE WORK — empirical path-first strategy discovery (started 2026-07-27)

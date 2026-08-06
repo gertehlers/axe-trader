@@ -35,6 +35,17 @@ brokers:
 
 axe-trader:
   mode: backtest
+  history-import:
+    enabled: false
+    mode: ${HISTORY_IMPORT_MODE:}
+    epic: ${HISTORY_IMPORT_EPIC:}
+    resolution: ${HISTORY_IMPORT_RESOLUTION:}
+    from: ${HISTORY_IMPORT_FROM:}
+    to: ${HISTORY_IMPORT_TO:}
+    staging-database: ${HISTORY_IMPORT_STAGING_DATABASE:}
+    requests-per-second: ${HISTORY_IMPORT_REQUESTS_PER_SECOND:5}
+    active-database: data/axe-trader.sqlite
+    archive: data/axe-trader.sqlite.gz
   market:
     epics: US500
     resolutions: MINUTE
