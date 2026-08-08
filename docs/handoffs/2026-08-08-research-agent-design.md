@@ -3,7 +3,7 @@ date: 2026-08-08
 status: open
 branch: feature/delta-price-import
 head: 0aeb81f
-next: Design Section 4 — the agent definition, its run loop, error handling and testing
+next: Decide whether to fix HistoricalSessionCalendar (Phase 1.5) — no discovery report can be non-empty until it lands; then Section 4
 ---
 
 # Axe-Trader Research Agent — design in progress
@@ -241,9 +241,21 @@ these one-off micro-holes, and the extractor drops the observation as `UNKNOWN_S
 
 Measured, not inferred: only **449 of 11,573 gaps (3.9%)** have a signature recurring ≥10
 times over the full two years. The genuine daily boundary — the 61–62 minute gaps, ~283 of
-them — is drowned out. A one-month discovery run produced **0 observations and 10,166
-`UNKNOWN_SESSION` exclusions out of 10,614 attempts**, and the full window behaves the same
-way, so this is not a small-window artifact.
+them — is drowned out.
+
+Both runs confirm it, so this is not a small-window artifact:
+
+| Run | Bars | Observations kept | `UNKNOWN_SESSION` | Zones | Rules |
+| --- | --- | --- | --- | --- | --- |
+| 1 month (2024-01) | 5,307 | 0 | 10,166 of 10,614 | 0 | 0 |
+| 24 months (full) | 132,792 | 8,266 (3.1%) | 256,870 (96.9%) | 0 | 0 |
+
+The full run took **130 s** and completed with exit 0 under `-Xmx4g` with no memory pressure,
+which settles the spec's runtime risk — the pipeline scales fine; the output is empty for the
+session-calendar reason above, not a resource one. `dashboard/discovery-report.json` is
+written and well-formed with correct provenance, but carries zero patterns, zero monthly
+results and zero examples. Note the surviving 8,266 observations still yielded **zero
+opportunity zones**, so whether fixing the calendar is sufficient on its own is unverified.
 
 Requiring a minimum gap length before a boundary counts fixes it. Measured over the same
 window: at ≥20 minutes, 438 gaps collapse to 84 signatures with **332 (76%) qualifying**,
