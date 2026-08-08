@@ -18,7 +18,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @ConfigurationPropertiesScan
 public class AxeTraderApplication {
 
-	static void main(String[] args) throws IOException {
+	public static void main(String[] args) throws IOException {
 		SpringApplication application = new SpringApplication(AxeTraderApplication.class);
 		application.addListeners(new HistoryImportEnvironmentListener());
 		application.run(args);
