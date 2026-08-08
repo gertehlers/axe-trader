@@ -2,8 +2,8 @@
 date: 2026-08-08
 status: open
 branch: feature/delta-price-import
-head: 82af78f
-next: Re-present design Section 2 against the real 2024-onward dataset, then continue to Section 3 (hypothesis ledger)
+head: 0aeb81f
+next: Design Section 3 — hypothesis ledger data model and lifecycle
 ---
 
 # Axe-Trader Research Agent — design in progress
@@ -40,11 +40,34 @@ second of which still needs owner approval.
 **Done — approach chosen:** "B with a real run first". Build the entry point, produce one
 real discovery report, then design the ledger against observed output rather than guesses.
 
-**In flight — the design sections.** Section 1 (architecture and three-phase split) was
-presented and approved, including the specific decision to add `DISCOVERY` as a fourth
-`AxeTraderMode` value rather than a separate CLI concern. Section 2 (the `DISCOVERY` entry
-point) was presented but **the owner invoked `/handover` instead of answering, so Section 2
-is NOT approved.**
+**Done — Section 1 approved.** Architecture and the three-phase split, including the specific
+decision to add `DISCOVERY` as a fourth `AxeTraderMode` value rather than a separate CLI
+concern.
+
+**Done — Section 2 approved 2026-08-08** (re-presented after the retraction below; the owner
+had invoked `/handover` instead of answering the first time). The `DISCOVERY` entry point:
+
+- **Trigger:** `--axe-trader.mode=discovery` plus a new `DiscoveryRunner implements
+  ApplicationRunner, ExitCodeGenerator`, gated by `@ConditionalOnProperty`, modelled on
+  `HistoryImportRunner`. `AxeTraderMode.from` needs no change — `"discovery"` already parses,
+  and `isLiveMarketMode()` returns false so the live runner stays off.
+- **Window:** development is `2024-01-01 → 2026-01-01` (24 months). `DiscoveryWindowPolicy`
+  gets **extended to also reject any window touching 2026-05-02 onward**, making the tail an
+  enforced reserve rather than a convention. See the window landmine below for why this is
+  needed.
+- **Request population:** nine fields mechanical from `BacktestProperties` and the window;
+  `market` from `HistoricalPriceRepository.findByEpicAndSnapshotTimeUtcBetweenOrderBy
+  SnapshotTimeUtcAsc` → `BarSeriesFactory.fromPricesWithSides`, deliberately bypassing
+  `BacktestProperties.limit` because discovery is window-bounded, not row-bounded;
+  `persistencePath`/`reportPath` left null so the record supplies its own defaults.
+- **Provenance:** `sourceCommit` from `git rev-parse HEAD`. `inputDataHash` is a **logical
+  content digest** — row count, min/max timestamp, and a hash of the ordered
+  `(snapshot_time_utc, OHLC)` tuples in the window — **not** the SQLite file hash.
+- **Failure behaviour:** fail before the pipeline starts, exit 1 via `ExitCodeGenerator`.
+  Reject a protected-window overlap, an empty or short series, and a dirty tree — where
+  "dirty" means `src/` or `application.yaml`, ignoring `output/` because `./mvnw test`
+  rewrites tracked files there. Record the full `git status` string in the report regardless.
+  Do not re-implement one-shot protection; `DiscoveryStore.window_spent` already has it.
 
 **Not started:** Sections 3 onward (ledger data model and lifecycle, the agent definition
 and its run loop, error handling, testing), the spec document, the implementation plan.
@@ -88,8 +111,8 @@ Observed 2026-08-08 at `82af78f` on `feature/delta-price-import`:
 
 ```
 ./mvnw clean package -DskipTests
-# exit 1 — Failed to execute goal spring-boot-maven-plugin:4.0.5:repackage
-#          Unable to find main class
+# exit 0 since 0aeb81f — 84M jar, Start-Class: io.g3tech.axetrader.AxeTraderApplication
+# (still exit 1 on main, which does not have the fix)
 ```
 
 ```
@@ -122,20 +145,37 @@ backtest and discovery paths have no such guard and will simply run on less data
 promotion as never having happened and `TODO.md` as "badly stale on the dataset." Both
 claims were wrong.*
 
-**`./mvnw clean package -DskipTests`, the build command documented in `CLAUDE.md`, fails on
-every branch** — confirmed on both `main` and here. `AxeTraderApplication.java:21` declares
-`static void main(String[] args)` —
-package-private, not `public static void main` — and `grep -rn "public static void main"
-src/main/java` returns nothing. Spring Boot's `repackage` goal cannot find an entry point,
-so no runnable jar is produced. This directly blocks the planned Phase 1, which needs the
-application to start in a new `DISCOVERY` mode. Whether `./mvnw spring-boot:run` still
-works was not tested; do not assume either way.
+**~~`./mvnw clean package` fails~~ — FIXED 2026-08-08 in `0aeb81f` on this branch.**
+`AxeTraderApplication.java:21` declared `static void main` (package-private), so Spring
+Boot's `repackage` goal could not find an entry point and produced no runnable jar. `public`
+had been dropped incidentally in `b1c26ee`. Restored; the build now exits 0 and yields an 84M
+jar with `Start-Class: io.g3tech.axetrader.AxeTraderApplication`, suite unchanged at 264/3.
+**`main` still carries the bug** — it is fixed only here until this branch merges.
+
+**The `AxeTraderMode` switch is dormant — adding `DISCOVERY` to the enum does nothing on its
+own.** `AxeTraderMode` is referenced in exactly one place, `AxeTraderRunner`, and
+`AxeTraderRunner.run()`, `.ping()` and `.close()` are never called from anywhere in
+`src/main` — nothing wires that `@Service` to startup. `BacktestRunner` is not invoked at
+startup either. The only thing that actually drives behaviour on boot is
+`HistoryImportRunner` via `@ConditionalOnProperty` + `ApplicationRunner`.
+
+Two consequences. `CLAUDE.md` is wrong that `./mvnw spring-boot:run` runs a backtest — it
+runs nothing. And MONITOR mode "not working end-to-end", still open in `TODO.md`, is this
+same dormancy rather than an independent bug. Phase 1 must supply the runner that reads the
+mode; the enum constant alone is inert.
 
 **`./mvnw test` dirties the working tree.** In this worktree it rewrites two tracked files,
 `output/charts/chart.html` and `output/charts/runner-results.html`. This matters more than it
 looks: Section 2 proposes that a discovery run record `sourceCommit` and fail closed on a
 dirty tree, and running the test suite would trip that check on an otherwise clean checkout.
 `git restore output/charts/` clears it.
+
+**`DiscoveryWindowPolicy` protects only the middle band, not the tail.** The guard is
+`if (from.isBefore(OOS_TO) && OOS_FROM.isBefore(to)) throw` — it rejects overlap with
+`2026-01-01 → 2026-05-02` and nothing else. A window lying entirely *after* the protected
+band passes validation happily, so the ~3 months out to `2026-08-06` that the delta import
+added are unprotected by default. Section 2 closes this by extending the policy; until that
+lands, do not assume the tail is safe just because a window validated.
 
 **SHA-256 of a live SQLite file is not a stable content identifier.** The dataset in
 `.worktrees/clean-local-price-history` matches `TODO.md`'s row count and time range exactly
@@ -183,8 +223,9 @@ comparison wrongly claimed budget enforcement still needed building.
   ("Introduce Capital.com API and WebSocket integration…") silently dropped `public`. Nothing
   in that commit concerns main-method style. Restoring `public` is a one-word fix, and Phase 1
   needs it.
-- **Section 2 approval** — still outstanding, now to be re-presented against the real dataset
-  rather than against corrected facts.
+- ~~**Section 2 approval**~~ **Granted 2026-08-08**, with all three open choices resolved as
+  recommended: enforced tail reserve, logical content digest, fail-on-source-dirt. Terms are
+  recorded under "Where this stands" above.
 - **Which model tier runs the agent** — the ladder in `~/.claude/CLAUDE.md` puts design
   judgement at opus and hardest reasoning at fable. Not yet discussed.
 
