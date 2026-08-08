@@ -1,17 +1,25 @@
 ---
 date: 2026-08-08
 status: open
-branch: main
-head: 49b6a09
-next: Re-present design Section 2 with corrected dataset facts, then continue to Section 3 (hypothesis ledger)
+branch: feature/delta-price-import
+head: 82af78f
+next: Re-present design Section 2 against the real 2024-onward dataset, then continue to Section 3 (hypothesis ledger)
 ---
 
 # Axe-Trader Research Agent — design in progress
 
 A brainstorming session (`/superpowers:brainstorming`) turning a "Head Quantitative
 Researcher" charter into a durable research agent. **No code and no spec file have been
-written yet.** The output so far is four locked decisions and two design sections, one of
-which now needs revising because evidence gathered during this handover contradicts it.
+written yet.** The output so far is four locked decisions and two design sections, the
+second of which still needs owner approval.
+
+> **Correction, 2026-08-08 (second session).** The first version of this document claimed
+> the clean price dataset "was never promoted" and that `TODO.md` was wrong about it. That
+> was a misreading, and every conclusion drawn from it — including the doubt cast on
+> Section 2 — was unfounded. `data/*.sqlite` is gitignored (`.gitignore:6`), so the clean
+> database was never meant to travel through git; a checkout that lacks it proves nothing.
+> The promotion did happen, exactly as `TODO.md` records. The work has since moved to the
+> worktree that holds the data. Details in the first landmine below.
 
 ## Where this stands
 
@@ -41,26 +49,26 @@ is NOT approved.**
 **Not started:** Sections 3 onward (ledger data model and lifecycle, the agent definition
 and its run loop, error handling, testing), the spec document, the implementation plan.
 
-**Section 2 is now known to be partly wrong.** It asserted the dataset spans 2024-01-01 to
-2026-08-02 and proposed a two-year development window of 2024-01-01 → 2026-01-01, holding
-2026-05-02 → 2026-08-02 in reserve. That is true of the dataset in two *worktrees*, not of
-the one in `main`. See the first landmine. The corrected picture:
+**Section 2's dataset assumption was right all along.** It assumed a 2024-onward dataset and
+proposed a two-year development window of 2024-01-01 → 2026-01-01, holding the tail in
+reserve. Working in this worktree, that is exactly what is on disk:
 
-| Location | Rows | Range |
+| Checkout | Rows | Range |
 | --- | --- | --- |
-| `main` working tree and committed `.gz` | 500,000 | 2024-12-04T23:20Z → 2026-05-01T08:25Z |
+| `.worktrees/delta-price-import` (**here**) | 917,650 | 2024-01-01T23:01Z → 2026-08-06T19:55Z |
 | `.worktrees/clean-local-price-history` | 912,132 | 2024-01-01T23:01Z → 2026-08-02T22:52Z |
-| `.worktrees/delta-price-import` | 917,650 | 2024-01-01T23:01Z → 2026-08-06T19:55Z |
+| `main` checkout, and the committed `.gz` on every branch | 500,000 | 2024-12-04T23:20Z → 2026-05-01T08:25Z |
 
-Against `main`'s actual data, `DiscoveryWindowPolicy`'s protected window (2026-01-01 →
-2026-05-02) leaves only ~13 months of development data, and the reserve quarter does not
-exist at all — the data stops one day before the protected window ends.
+With `DiscoveryWindowPolicy`'s protected window at 2026-01-01 → 2026-05-02, this worktree
+gives a full two-year development window plus a genuine 2026-05-02 → 2026-08-06 reserve.
+Section 2 remains unapproved, but for want of an answer, not because it was wrong.
 
 ## Next action
 
-Re-present design Section 2 to the owner with the corrected dataset facts above, stating
-plainly that the two-year window and the reserve quarter both depend on promoting a clean
-dataset into `main` first. Then get approval and continue to Section 3 (hypothesis ledger
+Re-present design Section 2 to the owner **from this worktree**, against the real
+917,650-row dataset — a 2024-01-01 → 2026-01-01 development window with a genuine
+2026-05-02 → 2026-08-06 reserve, which is what Section 2 assumed in the first place. Then
+get approval and continue to Section 3 (hypothesis ledger
 data model and lifecycle). The brainstorming skill's flow is: finish sections → write spec
 to `docs/superpowers/specs/2026-08-08-<topic>-design.md` → commit → self-review → owner
 reviews → invoke `writing-plans`. Do not write implementation code before the owner
@@ -68,11 +76,14 @@ approves the spec.
 
 ## Verify current state
 
-Observed just now, at `49b6a09` on `main`:
+Run these **from `.worktrees/delta-price-import`**, not from `main` — the dataset check gives
+a different answer per checkout, and that difference is the point.
+
+Observed 2026-08-08 at `82af78f` on `feature/delta-price-import`:
 
 ```
 ./mvnw test
-# exit 0 — Tests run: 233, Failures: 0, Errors: 0, Skipped: 3
+# exit 0 — Tests run: 264, Failures: 0, Errors: 0, Skipped: 3
 ```
 
 ```
@@ -81,53 +92,68 @@ Observed just now, at `49b6a09` on `main`:
 #          Unable to find main class
 ```
 
-Dataset in `main`, observed via `sqlite3`:
-
 ```
 sqlite3 data/axe-trader.sqlite "SELECT COUNT(*), MIN(snapshot_time_utc), MAX(snapshot_time_utc) FROM historical_price;"
-# 500000|2024-12-04T23:20Z|2026-05-01T08:25Z
+# 917650|2024-01-01T23:01:00Z|2026-08-06T19:55:00Z
 ```
 
-No lint command is documented for this project and none was run.
+The 264-test count is this branch's (31 history/import tests above `main`'s 233); the build
+failure and the dataset are both worktree-local facts. No lint command is documented for this
+project and none was run.
 
 ## Landmines
 
-**The clean price dataset was never promoted into `main`.** `TODO.md` states the promotion
-"succeeded" on 2026-08-03 with 912,132 rows and SHA-256 `e19cbb90…`. In `main`'s working
-tree, `data/axe-trader.sqlite` holds 500,000 rows over a shorter range and hashes to
-`debe29b4…`; the committed `data/axe-trader.sqlite.gz` decompresses to that same
-`debe29b4…`, so the archive `DatabaseBootstrap` restores from is the old dataset too. The
-clean data exists only inside the worktrees listed above. `main`'s database also lacks the
-`price_exclusion` table and the six `history_import_*` tables that both worktree databases
-have. Anything that assumes `TODO.md`'s dataset while working in `main` will be wrong.
+**The clean dataset is real, and it does not live in git — work in a checkout that has it.**
+`data/*.sqlite` is gitignored (`.gitignore:6`); only `data/axe-trader.sqlite.gz` is tracked,
+and `TODO.md` says in as many words that the committed snapshot "is deliberately still the
+legacy one." So the clean database exists **per working checkout**, not per branch, and
+finding a legacy 500,000-row database in some other checkout is not evidence that anything
+failed. It only means that checkout never ran the import.
+
+The promotion recorded in `TODO.md` did happen. This worktree holds 917,650 rows spanning
+2024-01-01T23:01Z → 2026-08-06T19:55Z, plus the `price_exclusion` and six `history_import_*`
+tables the legacy database lacks. Switching to a checkout without them — `main`, or
+`.worktrees/reusable-history-reingestion` — silently swaps a two-year dataset for a
+thirteen-month one. `HistoryCursorReader` at least fails closed on the legacy database's
+non-canonical `2024-12-04T23:20Z` minute format rather than mis-ordering `MAX()`; the
+backtest and discovery paths have no such guard and will simply run on less data.
+
+*An earlier version of this document read this situation backwards and reported the
+promotion as never having happened and `TODO.md` as "badly stale on the dataset." Both
+claims were wrong.*
 
 **`./mvnw clean package -DskipTests`, the build command documented in `CLAUDE.md`, fails on
-`main`.** `AxeTraderApplication.java:21` declares `static void main(String[] args)` —
+every branch** — confirmed on both `main` and here. `AxeTraderApplication.java:21` declares
+`static void main(String[] args)` —
 package-private, not `public static void main` — and `grep -rn "public static void main"
 src/main/java` returns nothing. Spring Boot's `repackage` goal cannot find an entry point,
 so no runnable jar is produced. This directly blocks the planned Phase 1, which needs the
 application to start in a new `DISCOVERY` mode. Whether `./mvnw spring-boot:run` still
 works was not tested; do not assume either way.
 
-**`./mvnw test` dirties the working tree.** It rewrites the tracked file
-`output/charts/runner-results.html`. This matters more than it looks: Section 2 proposes
-that a discovery run record `sourceCommit` and fail closed on a dirty tree, and running the
-test suite would trip that check on an otherwise clean checkout.
+**`./mvnw test` dirties the working tree.** In this worktree it rewrites two tracked files,
+`output/charts/chart.html` and `output/charts/runner-results.html`. This matters more than it
+looks: Section 2 proposes that a discovery run record `sourceCommit` and fail closed on a
+dirty tree, and running the test suite would trip that check on an otherwise clean checkout.
+`git restore output/charts/` clears it.
 
-**SHA-256 of a live SQLite file is not a stable content identifier.** The clean dataset in
+**SHA-256 of a live SQLite file is not a stable content identifier.** The dataset in
 `.worktrees/clean-local-price-history` matches `TODO.md`'s row count and time range exactly
-(912,132 rows, 2024-01-01T23:01Z → 2026-08-02T22:52Z) but now hashes to `138ef7b2…` rather
-than the recorded `e19cbb90…`. Opening a SQLite database can change its bytes. Section 2's
-proposal to use the file hash as `DiscoveryRequest.inputDataHash` should be reconsidered in
-favour of a digest over logical content.
+(912,132 rows, 2024-01-01T23:01Z → 2026-08-02T22:52Z) but hashes to `138ef7b2…` rather than
+the recorded `e19cbb90…`. Opening a SQLite database can change its bytes, so a drifted hash
+over an otherwise-matching database is expected, not corruption. Section 2's proposal to use
+the file hash as `DiscoveryRequest.inputDataHash` should be reconsidered in favour of a
+digest over logical content — row count, min/max timestamp, and a hash of the ordered rows.
 
-**`TODO.md` is badly stale on the discovery work.** It describes the empirical path-first
-discovery as active with Task 3 in progress, Tasks 5–12 unstarted, and four uncommitted
-tests to preserve in a worktree at `.worktrees/empirical-path-first-discovery`. In fact the
-work is complete and merged to `main` — 46 files under
-`src/main/java/io/g3tech/axetrader/backtest/discovery/`, with `94d9759 feat(discovery): add
-task 10 and 11 dashboard integration` as the most recent commit touching it. That worktree
-no longer exists; `git worktree list` shows only three, and the branch survives as
+**`TODO.md` is stale on the discovery work** — this one is real, unlike the dataset claim
+retracted above. It describes the empirical path-first discovery as active with Task 3 in
+progress, Tasks 5–12 unstarted, and four uncommitted tests to preserve in a worktree at
+`.worktrees/empirical-path-first-discovery`. In fact the work is complete and merged — 46
+files under `src/main/java/io/g3tech/axetrader/backtest/discovery/`, present on `main` and
+here, with `94d9759 feat(discovery): add task 10 and 11 dashboard integration` as the most
+recent commit touching it. That worktree no longer exists; `git worktree list` shows four
+(`main` plus `clean-local-price-history`, `delta-price-import`,
+`reusable-history-reingestion`), and the branch survives as
 `remotes/origin/feature/empirical-path-first-discovery`.
 
 **The discovery pipeline has never run outside tests.** `DiscoveryPipeline` is referenced
@@ -146,14 +172,19 @@ comparison wrongly claimed budget enforcement still needed building.
 
 ## Open questions
 
-- **Does the clean dataset get promoted into `main` before Phase 1, and from which
-  worktree?** `delta-price-import` has 5,518 more rows and four extra days than
-  `clean-local-price-history`. Its branch `feature/delta-price-import` (at `08dbfb4`) is not
-  merged. Phase 1's window decision depends entirely on this and cannot be settled without
-  the owner.
-- **Is the missing `public static void main` a deliberate Java 21 flexible-main-methods
-  choice or a regression?** It changes whether fixing it is a one-word edit or a discussion.
-- **Section 2 approval**, once re-presented with corrected facts.
+- ~~**Does the clean dataset get promoted into `main` before Phase 1?**~~ **Settled
+  2026-08-08:** the question rested on the misreading retracted above. The owner directed the
+  work into `.worktrees/delta-price-import`, which already holds the 917,650-row dataset, and
+  `main` was merged in so the handover travels with it. No promotion is needed, and none
+  would help — the database is gitignored and does not move between checkouts via git.
+- ~~**Is the missing `public static void main` a deliberate Java 21 choice or a
+  regression?**~~ **Answered 2026-08-08: regression.** `git log -L 21,21:…` shows the
+  signature was `public static void main` from the first commit (`8613142`) until `b1c26ee`
+  ("Introduce Capital.com API and WebSocket integration…") silently dropped `public`. Nothing
+  in that commit concerns main-method style. Restoring `public` is a one-word fix, and Phase 1
+  needs it.
+- **Section 2 approval** — still outstanding, now to be re-presented against the real dataset
+  rather than against corrected facts.
 - **Which model tier runs the agent** — the ladder in `~/.claude/CLAUDE.md` puts design
   judgement at opus and hardest reasoning at fable. Not yet discussed.
 
@@ -175,6 +206,9 @@ comparison wrongly claimed budget enforcement still needed building.
   `CommandLineRunner` pattern Phase 1's runner should follow.
 - `src/main/java/io/g3tech/axetrader/AxeTraderApplication.java` — line 21, the
   package-private `main` behind the build failure.
-- `TODO.md` — stale on discovery status and on the dataset promotion; needs correcting.
-- `docs/d1-price-history-import-progress.md` — untracked, and describes the retired D1
-  workflow that `TODO.md` supersedes.
+- `TODO.md` — accurate on the dataset (including the deliberately-legacy `.gz`); stale on
+  discovery status, which it still lists as in-progress. Needs correcting there only.
+- `docs/local-price-history.md` — the import/top-up runbook, and the authority on how the
+  clean dataset is produced and refreshed in a checkout.
+- `docs/d1-price-history-import-progress.md` — untracked in `main`, and describes the retired
+  D1 workflow that `TODO.md` supersedes.
