@@ -3,15 +3,15 @@ date: 2026-08-08
 status: open
 branch: feature/delta-price-import
 head: 0aeb81f
-next: Design Section 3 — hypothesis ledger data model and lifecycle
+next: Design Section 4 — the agent definition, its run loop, error handling and testing
 ---
 
 # Axe-Trader Research Agent — design in progress
 
 A brainstorming session (`/superpowers:brainstorming`) turning a "Head Quantitative
 Researcher" charter into a durable research agent. **No code and no spec file have been
-written yet.** The output so far is four locked decisions and two design sections, the
-second of which still needs owner approval.
+written yet.** The output so far is four locked decisions and three approved design sections
+(1, 2 and 3), with Section 4 next.
 
 > **Correction, 2026-08-08 (second session).** The first version of this document claimed
 > the clean price dataset "was never promoted" and that `TODO.md` was wrong about it. That
@@ -69,12 +69,36 @@ had invoked `/handover` instead of answering the first time). The `DISCOVERY` en
   rewrites tracked files there. Record the full `git status` string in the report regardless.
   Do not re-implement one-shot protection; `DiscoveryStore.window_spent` already has it.
 
-**Not started:** Sections 3 onward (ledger data model and lifecycle, the agent definition
-and its run loop, error handling, testing), the spec document, the implementation plan.
+**Done — Section 3 approved 2026-08-08.** The hypothesis ledger:
 
-**Section 2's dataset assumption was right all along.** It assumed a 2024-onward dataset and
-proposed a two-year development window of 2024-01-01 → 2026-01-01, holding the tail in
-reserve. Working in this worktree, that is exactly what is on disk:
+- **Two levels of identity.** Candidate identity already exists — `CandidateRule.create` sets
+  `id = sha256(canonicalJson(direction, sortedClauses))`. The ledger adds a coarser
+  **hypothesis key** over `(direction, sorted [(feature, operator)])` with **thresholds
+  excluded**.
+- **Why the coarser key is mandatory.** `ShallowRuleMiner` takes thresholds from
+  `ConditionalSliceAnalyzer.thresholds(scores, feature)` — they are *derived from the data*.
+  A window shifted by a month re-mints the same idea at `rsi14 < 24.7` instead of
+  `rsi14 < 25.1`: different canonical JSON, different sha256, different `id`. Exact-id dedup
+  therefore **cannot** satisfy decision 3, because it waves through unlimited near-misses of
+  an already-falsified idea. Threshold bucketing by quantile is the principled refinement and
+  is deferred until real feature distributions exist; starting coarse over-suppresses, which
+  is the visible and correctable failure mode.
+- **Lifecycle:** `OPEN → SUPPORTED | FALSIFIED`, plus `PROMOTED` and `SUPERSEDED`. Every
+  transition must cite a `DiscoveryRun.runKey()`, the triggering candidate id, and the
+  statistic. This is what structurally enforces the locked constraint that numeric claims come
+  from the backtest engine rather than the agent's own arithmetic.
+- **Suppression is not deletion.** A candidate whose hypothesis key is `FALSIFIED` is withheld
+  from the proposal list but recorded as a *sighting*. Repeated sightings of a dead hypothesis
+  are themselves signal about the feature set.
+- **Storage:** new tables inside `experiments/discovery.sqlite`, not a separate file, so a
+  transition and the run justifying it commit in one transaction.
+
+**Not started:** Section 4 onward (the agent definition and its run loop, error handling,
+testing), the spec document, the implementation plan.
+
+**The dataset, for reference.** Section 2 assumed a 2024-onward dataset and proposed a
+two-year development window of 2024-01-01 → 2026-01-01, holding the tail in reserve. Working
+in this worktree, that is exactly what is on disk:
 
 | Checkout | Rows | Range |
 | --- | --- | --- |
@@ -83,19 +107,21 @@ reserve. Working in this worktree, that is exactly what is on disk:
 | `main` checkout, and the committed `.gz` on every branch | 500,000 | 2024-12-04T23:20Z → 2026-05-01T08:25Z |
 
 With `DiscoveryWindowPolicy`'s protected window at 2026-01-01 → 2026-05-02, this worktree
-gives a full two-year development window plus a genuine 2026-05-02 → 2026-08-06 reserve.
-Section 2 remains unapproved, but for want of an answer, not because it was wrong.
+gives a full two-year development window plus a 2026-05-02 → 2026-08-06 tail that Section 2
+turns into an enforced reserve.
 
 ## Next action
 
-Re-present design Section 2 to the owner **from this worktree**, against the real
-917,650-row dataset — a 2024-01-01 → 2026-01-01 development window with a genuine
-2026-05-02 → 2026-08-06 reserve, which is what Section 2 assumed in the first place. Then
-get approval and continue to Section 3 (hypothesis ledger
-data model and lifecycle). The brainstorming skill's flow is: finish sections → write spec
+Design **Section 4** — the agent definition itself, its run loop, error handling, and how
+any of it gets tested. Then the brainstorming skill's flow: finish sections → write the spec
 to `docs/superpowers/specs/2026-08-08-<topic>-design.md` → commit → self-review → owner
-reviews → invoke `writing-plans`. Do not write implementation code before the owner
-approves the spec.
+reviews → invoke `writing-plans`. **Do not write implementation code before the owner
+approves the spec** — the only code written so far is the one-word `main` build fix, which
+was a prerequisite, not part of the design.
+
+Two open threads to fold into Section 4 or the spec: the model tier the agent runs at (still
+undiscussed), and the fact that Phase 1 must supply a runner because `AxeTraderMode` is inert
+today (see the dormancy landmine).
 
 ## Verify current state
 
@@ -202,6 +228,11 @@ only by `DiscoveryPipelineTest` and `EmpiricalDiscoveryHarnessTest`. There is no
 artifact exists on disk — no `experiments/discovery.sqlite`, no
 `dashboard/discovery-report.json`. The JSON contract the agent is meant to read is
 currently produced only by test fixtures.
+
+**Deleting `experiments/discovery.sqlite` silently resets the one-shot OOS protection.**
+`window_spent` lives in that file, so removing it to "start clean" hands back a budget that
+is supposed to be unrecoverable. Pre-existing hazard, not introduced by this design — but
+Section 3 puts the hypothesis ledger in the same file, which raises the cost of losing it.
 
 **One-shot OOS protection already exists — do not rebuild it.** `DiscoveryStore` has a
 `window_spent` table that raises `Discovery window is already spent` on a repeat insert;
