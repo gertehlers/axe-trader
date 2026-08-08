@@ -229,6 +229,28 @@ artifact exists on disk — no `experiments/discovery.sqlite`, no
 `dashboard/discovery-report.json`. The JSON contract the agent is meant to read is
 currently produced only by test fixtures.
 
+**`HistoricalSessionCalendar` treats every missing minute as a session boundary, which
+excludes ~96% of observations on real data.** `gapsIn` registers *any* gap longer than one
+minute as a boundary candidate. Real US500 history is full of single absent minutes — over
+`2024-01-01 → 2026-01-01` there are 11,573 gaps, of which **11,055 are 2–6 minute intraday
+holes** (8,387 of them exactly 2 minutes). Each gets a `GapSignature` of
+`(weekday, previous minute-of-day, next minute-of-day, duration)` that occurs once or twice
+ever, so it falls under the 10-occurrence threshold and is marked unknown. Because
+`boundaryAfter` returns the *ceiling* entry, nearly every bar's nearest boundary is one of
+these one-off micro-holes, and the extractor drops the observation as `UNKNOWN_SESSION`.
+
+Measured, not inferred: only **449 of 11,573 gaps (3.9%)** have a signature recurring ≥10
+times over the full two years. The genuine daily boundary — the 61–62 minute gaps, ~283 of
+them — is drowned out. A one-month discovery run produced **0 observations and 10,166
+`UNKNOWN_SESSION` exclusions out of 10,614 attempts**, and the full window behaves the same
+way, so this is not a small-window artifact.
+
+Requiring a minimum gap length before a boundary counts fixes it. Measured over the same
+window: at ≥20 minutes, 438 gaps collapse to 84 signatures with **332 (76%) qualifying**,
+versus 3.9% today. This is a change to discovery *analysis*, deliberately outside the Phase 1
+spec's scope, so it was left unmade — but no discovery run can produce a non-empty report
+until it lands.
+
 **Deleting `experiments/discovery.sqlite` silently resets the one-shot OOS protection.**
 `window_spent` lives in that file, so removing it to "start clean" hands back a budget that
 is supposed to be unrecoverable. Pre-existing hazard, not introduced by this design — but
