@@ -35,6 +35,13 @@ brokers:
 
 axe-trader:
   mode: backtest
+  # Empirical discovery run (--axe-trader.mode=discovery). Instrument, timeframe and strategy come
+  # from backtest.* below; only the window lives here. The window must end at or before 2026-01-01:
+  # DiscoveryWindowPolicy protects 2026-01-01 -> 2026-05-02 as the one-shot OOS band and everything
+  # from 2026-05-02 onward as an untouched reserve.
+  discovery:
+    from: ${DISCOVERY_FROM:2024-01-01T00:00:00Z}
+    to: ${DISCOVERY_TO:2026-01-01T00:00:00Z}
   history-import:
     enabled: false
     mode: ${HISTORY_IMPORT_MODE:}
