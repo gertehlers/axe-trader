@@ -11,12 +11,11 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 import org.ta4j.core.BarSeries;
 import org.ta4j.core.BaseBarSeriesBuilder;
-import org.ta4j.core.aggregator.BaseBarSeriesAggregator;
-import org.ta4j.core.aggregator.DurationBarAggregator;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -64,18 +63,31 @@ public class BarSeriesFactory {
 
     public MarketSeries fromPricesWithSides(String epic, List<HistoricalPrice> prices, int timeframeMinutes,
                                             Set<Instant> excludedMinutes) {
+        return fromPricesWithSides(epic, prices, timeframeMinutes, excludedMinutes, 0);
+    }
+
+    /**
+     * @param maxMissingMinutesPerBucket how many absent minutes a timeframe bucket may still be
+     *     built from. Zero — the default everywhere else — keeps a bucket only when every minute is
+     *     present. Discovery raises it because real minute history has scattered absent minutes, and
+     *     dropping a whole bucket for one of them punches holes that the extractor's contiguity
+     *     check then treats as fatal.
+     */
+    public MarketSeries fromPricesWithSides(String epic, List<HistoricalPrice> prices, int timeframeMinutes,
+                                            Set<Instant> excludedMinutes, int maxMissingMinutesPerBucket) {
         for (HistoricalPrice price : prices) {
             validate(price);
         }
 
-        List<HistoricalPrice> completePrices = completeBuckets(prices, timeframeMinutes, excludedMinutes);
-        BarSeries mid = aggregate(epic, completePrices, timeframeMinutes, PriceSide.MID);
-        BarSeries bid = aggregate(epic, completePrices, timeframeMinutes, PriceSide.BID);
-        BarSeries ask = aggregate(epic, completePrices, timeframeMinutes, PriceSide.ASK);
+        var buckets = usableBuckets(prices, timeframeMinutes, excludedMinutes, maxMissingMinutesPerBucket);
+        BarSeries mid = aggregate(epic, buckets, timeframeMinutes, PriceSide.MID);
+        BarSeries bid = aggregate(epic, buckets, timeframeMinutes, PriceSide.BID);
+        BarSeries ask = aggregate(epic, buckets, timeframeMinutes, PriceSide.ASK);
         verifyMatchingEndTimes(mid, bid, ask);
 
+        int retainedMinutes = buckets.values().stream().mapToInt(List::size).sum();
         logger.info("Built market series {}: {} 1m bars aggregated to {} {}m bars",
-                epic, completePrices.size(), mid.getBarCount(), timeframeMinutes);
+                epic, retainedMinutes, mid.getBarCount(), timeframeMinutes);
 
         return new MarketSeries(mid, bid, ask);
     }
@@ -101,10 +113,15 @@ public class BarSeriesFactory {
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
-    private static List<HistoricalPrice> completeBuckets(List<HistoricalPrice> prices, int timeframeMinutes,
-                                                          Set<Instant> excludedMinutes) {
+    private static java.util.NavigableMap<Instant, List<HistoricalPrice>> usableBuckets(
+            List<HistoricalPrice> prices, int timeframeMinutes, Set<Instant> excludedMinutes,
+            int maxMissingMinutesPerBucket) {
         if (timeframeMinutes <= 0) {
             throw new IllegalArgumentException("timeframeMinutes must be positive");
+        }
+        if (maxMissingMinutesPerBucket < 0 || maxMissingMinutesPerBucket >= timeframeMinutes) {
+            throw new IllegalArgumentException(
+                    "maxMissingMinutesPerBucket must be between 0 and timeframeMinutes - 1");
         }
 
         Duration timeframe = Duration.ofMinutes(timeframeMinutes);
@@ -115,13 +132,15 @@ public class BarSeriesFactory {
                     .add(price);
         }
 
-        List<HistoricalPrice> complete = new ArrayList<>();
+        var usable = new java.util.TreeMap<Instant, List<HistoricalPrice>>();
         for (var entry : pricesByBucket.entrySet()) {
-            if (isComplete(entry.getKey(), entry.getValue(), timeframeMinutes, exclusions)) {
-                complete.addAll(entry.getValue());
+            if (isUsable(entry.getValue(), timeframeMinutes, exclusions, maxMissingMinutesPerBucket)) {
+                List<HistoricalPrice> ordered = new ArrayList<>(entry.getValue());
+                ordered.sort(Comparator.comparing(HistoricalPrice::getSnapshotTimeUtc));
+                usable.put(entry.getKey(), ordered);
             }
         }
-        return complete;
+        return usable;
     }
 
     private static Instant bucketEnd(Instant minuteEnd, Duration timeframe) {
@@ -132,8 +151,14 @@ public class BarSeriesFactory {
         return Instant.ofEpochSecond(bucketEndSeconds);
     }
 
-    private static boolean isComplete(Instant bucketEnd, List<HistoricalPrice> prices, int timeframeMinutes,
-                                      Set<Instant> excludedMinutes) {
+    /**
+     * An excluded minute always disqualifies the bucket: that minute's data failed the import
+     * audit, so the bar would be built on values known to be wrong. A merely absent minute is
+     * different — nothing is wrong with the data that is there — so up to
+     * {@code maxMissingMinutesPerBucket} of those are tolerated.
+     */
+    private static boolean isUsable(List<HistoricalPrice> prices, int timeframeMinutes,
+                                    Set<Instant> excludedMinutes, int maxMissingMinutesPerBucket) {
         Set<Instant> presentMinutes = new HashSet<>();
         for (HistoricalPrice price : prices) {
             Instant minute = price.getSnapshotTimeUtc();
@@ -142,34 +167,42 @@ public class BarSeriesFactory {
             }
             presentMinutes.add(minute);
         }
-        if (presentMinutes.size() != timeframeMinutes) {
-            return false;
-        }
-        for (int minuteOffset = 0; minuteOffset < timeframeMinutes; minuteOffset++) {
-            if (!presentMinutes.contains(bucketEnd.minus(Duration.ofMinutes(minuteOffset)))) {
-                return false;
-            }
-        }
-        return true;
+        return presentMinutes.size() >= timeframeMinutes - maxMissingMinutesPerBucket;
     }
 
-    private static BarSeries aggregate(String epic, List<HistoricalPrice> prices, int timeframeMinutes, PriceSide side) {
-        BarSeries oneMinute = new BaseBarSeriesBuilder().withName(seriesName(epic, side, 1)).build();
-        for (HistoricalPrice price : prices) {
-            oneMinute.barBuilder()
-                    .timePeriod(Duration.ofMinutes(1))
-                    .endTime(price.getSnapshotTimeUtc())
-                    .openPrice(side.open(price))
-                    .highPrice(side.high(price))
-                    .lowPrice(side.low(price))
-                    .closePrice(side.close(price))
-                    .volume(price.getLastTradedVolume())
+    /**
+     * Builds one bar per wall-clock bucket.
+     *
+     * <p>This deliberately does not use ta4j's {@code DurationBarAggregator}, which groups by
+     * accumulated duration: a bucket built from four of five minutes would fall one minute short
+     * and pull in the next bucket's first minute to make up the difference, silently shifting every
+     * subsequent bar off the timeframe grid.
+     */
+    private static BarSeries aggregate(String epic, java.util.NavigableMap<Instant, List<HistoricalPrice>> buckets,
+                                       int timeframeMinutes, PriceSide side) {
+        Duration timeframe = Duration.ofMinutes(timeframeMinutes);
+        BarSeries series = new BaseBarSeriesBuilder().withName(seriesName(epic, side, timeframeMinutes)).build();
+        for (var entry : buckets.entrySet()) {
+            List<HistoricalPrice> minutes = entry.getValue();
+            double high = Double.NEGATIVE_INFINITY;
+            double low = Double.POSITIVE_INFINITY;
+            long volume = 0;
+            for (HistoricalPrice price : minutes) {
+                high = Math.max(high, side.high(price));
+                low = Math.min(low, side.low(price));
+                volume += price.getLastTradedVolume();
+            }
+            series.barBuilder()
+                    .timePeriod(timeframe)
+                    .endTime(entry.getKey())
+                    .openPrice(side.open(minutes.getFirst()))
+                    .highPrice(high)
+                    .lowPrice(low)
+                    .closePrice(side.close(minutes.getLast()))
+                    .volume(volume)
                     .add();
         }
-
-        BaseBarSeriesAggregator aggregator = new BaseBarSeriesAggregator(
-                new DurationBarAggregator(Duration.ofMinutes(timeframeMinutes), true));
-        return aggregator.aggregate(oneMinute, seriesName(epic, side, timeframeMinutes));
+        return series;
     }
 
     private static String seriesName(String epic, PriceSide side, int timeframeMinutes) {

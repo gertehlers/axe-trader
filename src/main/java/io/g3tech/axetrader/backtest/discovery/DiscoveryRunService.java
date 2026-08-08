@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Supplier;
 
 /**
@@ -25,6 +26,13 @@ public final class DiscoveryRunService {
 
     private static final Logger logger = LoggerFactory.getLogger(DiscoveryRunService.class);
     private static final int SESSION_BOUNDARY_OCCURRENCES = 10;
+    /**
+     * Build a timeframe bucket even when one of its minutes is absent. Dropping the whole bucket
+     * for a single missing minute discarded 10,687 of 143,479 buckets over the development window,
+     * leaving a hole roughly every twelve bars that the extractor's contiguity check then treated
+     * as fatal. Backtests keep the strict default; only discovery opts in.
+     */
+    private static final int MAX_MISSING_MINUTES_PER_BUCKET = 1;
 
     /** Narrow seam over the price repository, so the service is testable without a database. */
     @FunctionalInterface
@@ -74,7 +82,8 @@ public final class DiscoveryRunService {
                             + "; check the epic and that the window has been imported");
         }
 
-        MarketSeries market = barSeriesFactory.fromPricesWithSides(epic, prices, backtest.getTimeframeMinutes());
+        MarketSeries market = barSeriesFactory.fromPricesWithSides(
+                epic, prices, backtest.getTimeframeMinutes(), Set.of(), MAX_MISSING_MINUTES_PER_BUCKET);
         int bars = market.mid().getBarCount();
         int required = minimumBars();
         if (bars < required) {

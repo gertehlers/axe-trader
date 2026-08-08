@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.ta4j.core.BarSeries;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -123,6 +124,63 @@ class BarSeriesFactoryTest {
         assertThat(series.mid().getBar(1).getEndTime()).isEqualTo(Instant.parse("2024-01-01T00:10:00Z"));
         assertThat(series.bid().getBar(0).getEndTime()).isEqualTo(series.mid().getBar(0).getEndTime());
         assertThat(series.ask().getBar(1).getEndTime()).isEqualTo(series.mid().getBar(1).getEndTime());
+    }
+
+    @Test
+    void keepsABucketMissingOneMinuteWhenToleranceAllowsIt() {
+        BarSeriesFactory factory = new BarSeriesFactory(null);
+
+        MarketSeries series = factory.fromPricesWithSides("US500", tenMinutesMissing(3), 5, Set.of(), 1);
+
+        assertThat(series.mid().getBarCount()).isEqualTo(2);
+        assertThat(series.mid().getBar(0).getEndTime()).isEqualTo(Instant.parse("2024-01-01T00:05:00Z"));
+        assertThat(series.mid().getBar(1).getEndTime()).isEqualTo(Instant.parse("2024-01-01T00:10:00Z"));
+    }
+
+    @Test
+    void doesNotLetAToleratedBucketBleedIntoTheNextOne() {
+        BarSeriesFactory factory = new BarSeriesFactory(null);
+
+        MarketSeries series = factory.fromPricesWithSides("US500", tenMinutesMissing(3), 5, Set.of(), 1);
+
+        // A 4-minute bucket must still span exactly one timeframe, not borrow the next bucket's
+        // first minute to make up the duration.
+        assertThat(series.mid().getBar(0).getBeginTime()).isEqualTo(Instant.parse("2024-01-01T00:00:00Z"));
+        assertThat(series.mid().getBar(0).getTimePeriod()).isEqualTo(Duration.ofMinutes(5));
+        assertThat(series.mid().getBar(1).getBeginTime()).isEqualTo(Instant.parse("2024-01-01T00:05:00Z"));
+    }
+
+    @Test
+    void stillDropsABucketMissingMoreMinutesThanToleranceAllows() {
+        BarSeriesFactory factory = new BarSeriesFactory(null);
+        List<HistoricalPrice> prices = tenMinutesMissing(3);
+        prices.removeIf(price -> price.getSnapshotTimeUtc().equals(Instant.parse("2024-01-01T00:04:00Z")));
+
+        MarketSeries series = factory.fromPricesWithSides("US500", prices, 5, Set.of(), 1);
+
+        assertThat(series.mid().getBarCount()).isEqualTo(1);
+        assertThat(series.mid().getBar(0).getEndTime()).isEqualTo(Instant.parse("2024-01-01T00:10:00Z"));
+    }
+
+    @Test
+    void defaultsToStrictBucketsSoBacktestResultsAreUnchanged() {
+        BarSeriesFactory factory = new BarSeriesFactory(null);
+
+        MarketSeries series = factory.fromPricesWithSides("US500", tenMinutesMissing(3), 5, Set.of());
+
+        assertThat(series.mid().getBarCount()).isEqualTo(1);
+        assertThat(series.mid().getBar(0).getEndTime()).isEqualTo(Instant.parse("2024-01-01T00:10:00Z"));
+    }
+
+    private static List<HistoricalPrice> tenMinutesMissing(int missingMinute) {
+        List<HistoricalPrice> prices = new ArrayList<>();
+        for (int minute = 1; minute <= 10; minute++) {
+            if (minute == missingMinute) {
+                continue;
+            }
+            prices.add(price("2024-01-01T00:%02d:00Z".formatted(minute), 99.0, 101.0));
+        }
+        return prices;
     }
 
     private static HistoricalPrice price(String timestamp, double bid, double ask) {

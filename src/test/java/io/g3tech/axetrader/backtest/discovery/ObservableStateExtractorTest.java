@@ -132,8 +132,18 @@ class ObservableStateExtractorTest {
     }
 
     @Test
-    void excludesBothDirectionsWhenRequiredHistoryContainsAnUnexplainedFiveMinuteGap() {
+    void toleratesASingleMissingBarInsideRequiredHistory() {
         Fixture fixture = gappedFixture();
+
+        ObservationBatch batch = extract(fixture, knownCalendar(), SIGNAL_INDEX);
+
+        assertThat(batch.exclusions()).isEmpty();
+        assertThat(batch.states()).hasSize(2);
+    }
+
+    @Test
+    void excludesBothDirectionsWhenRequiredHistoryContainsAGapLongerThanTolerance() {
+        Fixture fixture = gappedFixture(2);
 
         ObservationBatch batch = extract(fixture, knownCalendar(), SIGNAL_INDEX);
 
@@ -240,6 +250,11 @@ class ObservableStateExtractorTest {
     }
 
     private static Fixture gappedFixture() {
+        return gappedFixture(1);
+    }
+
+    /** Shifts every bar after index 150 forward, leaving {@code missingBars} absent bars there. */
+    private static Fixture gappedFixture(int missingBars) {
         BacktestProperties.Strategy config = config();
         BarSeries mid = new BaseBarSeriesBuilder().withName("gapped-mid").build();
         BarSeries bid = new BaseBarSeriesBuilder().withName("gapped-bid").build();
@@ -248,7 +263,7 @@ class ObservableStateExtractorTest {
         for (int i = 0; i < 240; i++) {
             double close = 100.0 + i * 0.05 + Math.sin(i * 0.37) * 2.0;
             double volume = 100.0 + (i % 17) * 7.0;
-            Duration gap = i > 150 ? Duration.ofMinutes(5) : Duration.ZERO;
+            Duration gap = i > 150 ? Duration.ofMinutes(5L * missingBars) : Duration.ZERO;
             addBar(mid, start.plus(gap), i, close, volume);
             addBar(bid, start.plus(gap), i, close - 0.25, volume);
             addBar(ask, start.plus(gap), i, close + 0.25, volume);

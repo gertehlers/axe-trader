@@ -40,6 +40,8 @@ public final class ObservableStateExtractor {
     private static final int MAX_LAG = 12;
     private static final int ATR_PERCENTILE_WINDOW = 100;
     private static final int TREND_SLOPE_LOOKBACK = 10;
+    /** Absent bars a warm-up window may span before the observation is refused. See isToleratedHole. */
+    private static final int MAX_TOLERATED_MISSING_BARS = 1;
     private static final List<String> PILLARS = List.of(
             "rsi_bb", "candle", "support_resistance", "structure", "volume_trend");
 
@@ -417,6 +419,7 @@ public final class ObservableStateExtractor {
             }
             Instant currentTime = mid.getEndTime();
             if (previousTime != null && !currentTime.equals(previousTime.plus(timeframe))
+                    && !isToleratedHole(previousTime, currentTime, timeframe)
                     && !isKnownSessionBoundary(calendar, previousTime, currentTime)) {
                 return "Unexplained data gap between " + previousTime + " and " + currentTime;
             }
@@ -430,6 +433,24 @@ public final class ObservableStateExtractor {
                 && actual.getTimePeriod().equals(timeframe)
                 && expected.getBeginTime().equals(actual.getBeginTime())
                 && expected.getEndTime().equals(actual.getEndTime());
+    }
+
+    /**
+     * Whether a break in the timeline is short enough to analyse across.
+     *
+     * <p>Demanding a perfectly spaced warm-up window made the extractor unusable on real history:
+     * the US500 5m series carries a discontinuity roughly every twelve bars, so one hole anywhere
+     * in the 224-bar window disqualified the observation and 96.9% of candidates were dropped.
+     *
+     * <p>This is a deliberate weakening. Indicators computed across a tolerated hole span slightly
+     * more wall-clock time than their period implies. Keeping the allowance to a single bar bounds
+     * that distortion; anything longer is still refused, because a real session break changes what
+     * the indicators mean rather than just thinning them.
+     */
+    private static boolean isToleratedHole(Instant previousTime, Instant currentTime, Duration timeframe) {
+        Duration elapsed = Duration.between(previousTime, currentTime);
+        return !elapsed.isNegative()
+                && elapsed.compareTo(timeframe.multipliedBy(MAX_TOLERATED_MISSING_BARS + 1L)) <= 0;
     }
 
     private static boolean isKnownSessionBoundary(
