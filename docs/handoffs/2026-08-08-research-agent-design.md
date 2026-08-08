@@ -2,7 +2,7 @@
 date: 2026-08-08
 status: open
 branch: feature/delta-price-import
-head: f30d903
+head: 22d2b4c
 next: Decide how to raise RUN-class yield — 17 of 35,826 observations clear the 0.8 composite cutoff, giving 8 zones per direction against MINIMUM_ZONES_PER_LEAF=10
 ---
 
@@ -121,7 +121,8 @@ owner review → `writing-plans`.
 
 ## Verify current state
 
-Run from `.worktrees/delta-price-import`. Observed 2026-08-08 at `f30d903`:
+Run from `.worktrees/delta-price-import`. Observed 2026-08-08 at `22d2b4c`, re-run after the
+previous handover commit and unchanged from it:
 
 ```
 ./mvnw test
@@ -144,6 +145,13 @@ The full discovery run, from a **clean tree** — the dirty-source gate refuses 
 java -Xmx6g -jar target/axe-trader-0.0.1-SNAPSHOT.jar --axe-trader.mode=discovery
 # exit 0 after 2748 s — "Discovery complete: 0 pattern(s) reported"
 ```
+
+That run was observed earlier in the session, at the tree that became `9cd50b1`, and is **not
+part of the latest evidence gather** — only `./mvnw test` and `./mvnw clean package` were re-run
+at `22d2b4c`. The one commit since, `f30d903`, changes `ForwardPathLabeller` to read the
+timeframe from the series instead of assuming five minutes; on a 5m series that is a no-op
+(same spacing, every horizon divisible by 5), so the counts above should still hold — but that
+is reasoning, not an observation. Re-run before trusting the numbers to the minute.
 
 No lint command is documented for this project and none was run.
 
