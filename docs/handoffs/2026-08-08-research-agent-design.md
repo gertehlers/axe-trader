@@ -2,16 +2,16 @@
 date: 2026-08-08
 status: open
 branch: feature/delta-price-import
-head: 0aeb81f
+head: e3b8139
 next: Decide whether to fix HistoricalSessionCalendar (Phase 1.5) — no discovery report can be non-empty until it lands; then Section 4
 ---
 
 # Axe-Trader Research Agent — design in progress
 
 A brainstorming session (`/superpowers:brainstorming`) turning a "Head Quantitative
-Researcher" charter into a durable research agent. **No code and no spec file have been
-written yet.** The output so far is four locked decisions and three approved design sections
-(1, 2 and 3), with Section 4 next.
+Researcher" charter into a durable research agent. Four locked decisions, three approved
+design sections (1, 2 and 3), and **Phase 1 built, spec'd and run for real**. Section 4 is
+next on paper, but a defect the first run exposed stands in front of it.
 
 > **Correction, 2026-08-08 (second session).** The first version of this document claimed
 > the clean price dataset "was never promoted" and that `TODO.md` was wrong about it. That
@@ -93,8 +93,22 @@ had invoked `/handover` instead of answering the first time). The `DISCOVERY` en
 - **Storage:** new tables inside `experiments/discovery.sqlite`, not a separate file, so a
   transition and the run justifying it commit in one transaction.
 
-**Not started:** Section 4 onward (the agent definition and its run loop, error handling,
-testing), the spec document, the implementation plan.
+**Done — Phase 1 spec'd, built and run, 2026-08-08.** Spec at
+`docs/superpowers/specs/2026-08-08-discovery-entry-point-design.md`; implementation across
+`42abb97`, `deab269`, `8de4940`, written test-first (264 → 294 tests, 0 failures).
+
+`--axe-trader.mode=discovery` now works end to end: `DiscoveryRunner` +
+`DiscoveryConfiguration` + `DiscoveryRunService` + `DiscoveryProperties`, with
+`DiscoveryInputDigest` for the logical content hash and `SourceProvenance` for the commit and
+dirty-tree gate. `OfflineMode` makes discovery headless — the first run hung forever because
+the servlet container's non-daemon threads outlive the runner.
+
+Both artifacts now exist on disk for the first time: `experiments/discovery.sqlite` (118 MB)
+and `dashboard/discovery-report.json`. **The report is well-formed with correct provenance but
+empty of findings** — zero patterns, zero examples. See the session-calendar landmine.
+
+**Not started:** Section 4 (the agent definition and its run loop, error handling, testing),
+its spec, and the implementation plan.
 
 **The dataset, for reference.** Section 2 assumed a 2024-onward dataset and proposed a
 two-year development window of 2024-01-01 → 2026-01-01, holding the tail in reserve. Working
@@ -112,16 +126,20 @@ turns into an enforced reserve.
 
 ## Next action
 
-Design **Section 4** — the agent definition itself, its run loop, error handling, and how
-any of it gets tested. Then the brainstorming skill's flow: finish sections → write the spec
-to `docs/superpowers/specs/2026-08-08-<topic>-design.md` → commit → self-review → owner
-reviews → invoke `writing-plans`. **Do not write implementation code before the owner
-approves the spec** — the only code written so far is the one-word `main` build fix, which
-was a prerequisite, not part of the design.
+**Decide on the session-calendar defect first — it blocks everything downstream.** The whole
+point of "B with a real run first" was to design the ledger against observed output, and the
+observed output is empty. Section 4 and the ledger schema cannot be designed against a report
+with zero patterns, so fixing `HistoricalSessionCalendar` (call it Phase 1.5) has to come
+first or the sequencing argument collapses. It needs an owner decision because it changes
+discovery *analysis*, which the Phase 1 spec explicitly excluded. The evidence and the
+proposed minimum-gap fix are in the landmine below.
 
-Two open threads to fold into Section 4 or the spec: the model tier the agent runs at (still
-undiscussed), and the fact that Phase 1 must supply a runner because `AxeTraderMode` is inert
-today (see the dormancy landmine).
+Then design **Section 4** — the agent definition, its run loop, error handling, testing —
+and follow the brainstorming flow: finish sections → spec → commit → self-review → owner
+reviews → `writing-plans`.
+
+Two open threads to fold into Section 4: the model tier the agent runs at (still undiscussed),
+and `AxeTraderRunner`'s dormancy, which Phase 1 deliberately did not repair.
 
 ## Verify current state
 
@@ -132,7 +150,13 @@ Observed 2026-08-08 at `82af78f` on `feature/delta-price-import`:
 
 ```
 ./mvnw test
-# exit 0 — Tests run: 264, Failures: 0, Errors: 0, Skipped: 3
+# exit 0 — Tests run: 294, Failures: 0, Errors: 0, Skipped: 3
+```
+
+```
+# The full discovery run, from a CLEAN tree — the dirty-source gate refuses otherwise.
+java -Xmx4g -jar target/axe-trader-0.0.1-SNAPSHOT.jar --axe-trader.mode=discovery
+# exit 0 after 130s — "Discovery complete: 0 pattern(s) reported"
 ```
 
 ```
