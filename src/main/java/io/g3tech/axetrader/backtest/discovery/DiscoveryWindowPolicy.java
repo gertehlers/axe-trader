@@ -14,5 +14,11 @@ public final class DiscoveryWindowPolicy {
         if (from.isBefore(OOS_TO) && OOS_FROM.isBefore(to)) {
             throw new IllegalArgumentException("Development window overlaps protected OOS period");
         }
+        // Everything from OOS_TO onward is held back as an untouched reserve for a future final
+        // validation. The overlap check above guards only the band and lets tail windows through.
+        if (to.isAfter(OOS_FROM)) {
+            throw new IllegalArgumentException(
+                    "Development window reaches into the reserved tail; it must end at or before " + OOS_FROM);
+        }
     }
 }

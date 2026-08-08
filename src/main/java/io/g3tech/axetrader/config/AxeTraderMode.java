@@ -3,7 +3,8 @@ package io.g3tech.axetrader.config;
 public enum AxeTraderMode {
     BACKTEST,
     MONITOR,
-    TRADE;
+    TRADE,
+    DISCOVERY;
 
     public static AxeTraderMode from(String value) {
         if (value == null || value.isBlank()) {

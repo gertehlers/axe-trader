@@ -22,8 +22,8 @@ class DiscoveryWindowPolicyTest {
                 Instant.parse("2026-01-01T00:00:00Z"))).doesNotThrowAnyException();
 
         assertThatCode(() -> policy.requireDevelopmentWindow(
-                Instant.parse("2026-05-02T00:00:00Z"),
-                Instant.parse("2026-06-01T00:00:00Z"))).doesNotThrowAnyException();
+                Instant.parse("2024-01-01T00:00:00Z"),
+                Instant.parse("2026-01-01T00:00:00Z"))).doesNotThrowAnyException();
     }
 
     @Test
@@ -33,5 +33,23 @@ class DiscoveryWindowPolicyTest {
                 Instant.parse("2026-02-01T00:00:00Z")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("protected OOS");
+    }
+
+    @Test
+    void rejectsDevelopmentWindowsThatReachIntoTheReservedTail() {
+        assertThatThrownBy(() -> policy.requireDevelopmentWindow(
+                Instant.parse("2026-05-02T00:00:00Z"),
+                Instant.parse("2026-06-01T00:00:00Z")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("reserved");
+    }
+
+    @Test
+    void rejectsDevelopmentWindowsThatExtendPastTheDevelopmentBoundaryWithoutOverlappingTheBand() {
+        assertThatThrownBy(() -> policy.requireDevelopmentWindow(
+                Instant.parse("2026-06-01T00:00:00Z"),
+                Instant.parse("2026-08-01T00:00:00Z")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("reserved");
     }
 }
