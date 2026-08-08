@@ -169,6 +169,61 @@ class ForwardPathLabellerTest {
         };
     }
 
+    @Test
+    void labelsAFifteenMinuteSeriesRatherThanAssumingFiveMinuteBars() {
+        MarketSeries market = flatMarketOfTimeframe(20, 15);
+
+        ObservableState state = state(Direction.LONG, 0, 1, 2.0);
+        ForwardPathLabel label = new ForwardPathLabeller().label(
+                state.id().direction(), state.entryIndex(), state.entryAtr(), market, closeAt(market, 13));
+
+        assertThat(label.status()).isEqualTo(LabelStatus.TRADING_CLOSE);
+        assertThat(label.exitPath()).hasSize(12);
+        assertThat(label.eligibleForDiscovery()).isTrue();
+    }
+
+    @Test
+    void keysHorizonReturnsToTheSeriesTimeframeAndSkipsUnreachableHorizons() {
+        MarketSeries market = flatMarketOfTimeframe(20, 15);
+
+        ObservableState state = state(Direction.LONG, 0, 1, 2.0);
+        ForwardPathLabel label = new ForwardPathLabeller().label(
+                state.id().direction(), state.entryIndex(), state.entryAtr(), market, closeAt(market, 13));
+
+        // A 5-minute horizon cannot be read off 15-minute bars, so it must be absent rather than
+        // silently answered from the wrong bar.
+        assertThat(label.horizonReturnsPoints()).doesNotContainKey(5);
+        assertThat(label.horizonReturnsPoints()).containsKeys(15, 30, 60, 120);
+    }
+
+    private static MarketSeries flatMarketOfTimeframe(int count, int timeframeMinutes) {
+        BarSeries mid = new BaseBarSeriesBuilder().withName("mid").build();
+        BarSeries bid = new BaseBarSeriesBuilder().withName("bid").build();
+        BarSeries ask = new BaseBarSeriesBuilder().withName("ask").build();
+        Instant start = Instant.parse("2026-01-05T00:00:00Z");
+        Duration timeframe = Duration.ofMinutes(timeframeMinutes);
+        for (int index = 0; index < count; index++) {
+            Instant end = start.plus(timeframe.multipliedBy(index + 1L));
+            addOfTimeframe(mid, end, timeframe, 100.5, 101.0, 100.0);
+            addOfTimeframe(bid, end, timeframe, 100.0, 100.0, 100.0);
+            addOfTimeframe(ask, end, timeframe, 101.0, 101.0, 101.0);
+        }
+        return new MarketSeries(mid, bid, ask);
+    }
+
+    private static void addOfTimeframe(BarSeries series, Instant end, Duration timeframe,
+                                       double close, double high, double low) {
+        series.barBuilder()
+                .timePeriod(timeframe)
+                .endTime(end)
+                .openPrice(close)
+                .highPrice(high)
+                .lowPrice(low)
+                .closePrice(close)
+                .volume(1)
+                .add();
+    }
+
     private static MarketSeries flatMarket(int count) {
         double[] close = new double[count];
         double[] high = new double[count];

@@ -25,7 +25,6 @@ import java.util.Optional;
 public final class ForwardPathLabeller {
 
     private static final int MAX_HOLDING_BARS = 48;
-    private static final Duration FIVE_MINUTES = Duration.ofMinutes(5);
     private static final int[] HORIZON_MINUTES = {5, 15, 30, 60, 120, 240};
 
     public ForwardPathLabel label(
@@ -46,27 +45,30 @@ public final class ForwardPathLabeller {
         }
 
         Bar entryBar = market.mid().getBar(entryIndex);
+        // Read the timeframe off the series rather than assuming one: the same labeller must work
+        // for 5m, 15m or anything else the caller aggregated to.
+        Duration timeframe = entryBar.getTimePeriod();
         Instant entryTime = entryBar.getEndTime();
         double entryPrice = market.entryPrice(direction, entryIndex);
         Optional<SessionBoundary> boundary = calendar.boundaryAfter(entryTime);
         if (boundary.isEmpty()) {
-            return incomplete(entryPrice, entryTime, List.of(), direction, entryAtr);
+            return incomplete(entryPrice, entryTime, List.of(), direction, entryAtr, timeframe);
         }
 
         int finalSessionIndex = indexAt(market.mid(), boundary.get().finalExecutableBar());
         if (finalSessionIndex < entryIndex) {
-            return incomplete(entryPrice, entryTime, List.of(), direction, entryAtr);
+            return incomplete(entryPrice, entryTime, List.of(), direction, entryAtr, timeframe);
         }
         int finalIndex = Math.min(entryIndex + MAX_HOLDING_BARS, finalSessionIndex);
         List<PathPoint> path = new ArrayList<>();
         Instant previousTime = entryTime;
         for (int index = entryIndex + 1; index <= finalIndex; index++) {
             if (!hasAlignedBar(market, index)) {
-                return incomplete(entryPrice, entryTime, path, direction, entryAtr);
+                return incomplete(entryPrice, entryTime, path, direction, entryAtr, timeframe);
             }
             Bar exit = market.exitBar(direction, index);
-            if (!exit.getEndTime().equals(previousTime.plus(FIVE_MINUTES))) {
-                return incomplete(entryPrice, entryTime, path, direction, entryAtr);
+            if (!exit.getEndTime().equals(previousTime.plus(timeframe))) {
+                return incomplete(entryPrice, entryTime, path, direction, entryAtr, timeframe);
             }
             path.add(new PathPoint(
                     index,
@@ -81,7 +83,7 @@ public final class ForwardPathLabeller {
         LabelStatus status = finalIndex == entryIndex + MAX_HOLDING_BARS
                 ? LabelStatus.COMPLETE_48_BARS
                 : LabelStatus.TRADING_CLOSE;
-        return completed(status, entryPrice, entryTime, path, direction, entryAtr);
+        return completed(status, entryPrice, entryTime, path, direction, entryAtr, timeframe);
     }
 
     private static ForwardPathLabel noExecutableNextBar() {
@@ -97,8 +99,9 @@ public final class ForwardPathLabeller {
             Instant entryTime,
             List<PathPoint> path,
             Direction direction,
-            double atr) {
-        return completed(LabelStatus.INCOMPLETE_GAP, entryPrice, entryTime, path, direction, atr);
+            double atr,
+            Duration timeframe) {
+        return completed(LabelStatus.INCOMPLETE_GAP, entryPrice, entryTime, path, direction, atr, timeframe);
     }
 
     private static ForwardPathLabel completed(
@@ -107,7 +110,8 @@ public final class ForwardPathLabeller {
             Instant entryTime,
             List<PathPoint> path,
             Direction direction,
-            double atr) {
+            double atr,
+            Duration timeframe) {
         double mfe = 0.0;
         double mae = 0.0;
         int mfeTime = 0;
@@ -131,7 +135,7 @@ public final class ForwardPathLabeller {
             totalMovement += Math.abs(point.closePrice() - previousClose);
             previousClose = point.closePrice();
         }
-        Map<Integer, Double> horizonPoints = horizonReturns(path, entryPrice, direction);
+        Map<Integer, Double> horizonPoints = horizonReturns(path, entryPrice, direction, timeframe);
         Map<Integer, Double> horizonAtr = normalised(horizonPoints, atr);
         double finalReturn = path.isEmpty() ? 0.0 : returnPoints(path.getLast().closePrice(), entryPrice, direction);
         ForwardPathLabel.ExcursionOrder order = excursionOrder(mfeTime, maeTime);
@@ -153,12 +157,20 @@ public final class ForwardPathLabeller {
                 maeTime);
     }
 
+    /**
+     * A horizon shorter than one bar, or not a whole number of bars, cannot be read off this series
+     * and is omitted rather than answered from the wrong bar. On 15m bars that drops the 5m horizon.
+     */
     private static Map<Integer, Double> horizonReturns(
-            List<PathPoint> path, double entryPrice, Direction direction) {
+            List<PathPoint> path, double entryPrice, Direction direction, Duration timeframe) {
         Map<Integer, Double> returns = new LinkedHashMap<>();
+        long timeframeMinutes = timeframe.toMinutes();
         for (int minutes : HORIZON_MINUTES) {
-            int offset = minutes / 5;
-            if (path.size() >= offset) {
+            if (timeframeMinutes <= 0 || minutes % timeframeMinutes != 0) {
+                continue;
+            }
+            int offset = (int) (minutes / timeframeMinutes);
+            if (offset > 0 && path.size() >= offset) {
                 returns.put(minutes, returnPoints(path.get(offset - 1).closePrice(), entryPrice, direction));
             }
         }
@@ -230,9 +242,13 @@ public final class ForwardPathLabeller {
         return aligned(mid, market.bid().getBar(index)) && aligned(mid, market.ask().getBar(index));
     }
 
+    /**
+     * Mid, bid and ask must describe the same bar. The timeframe itself is whatever the series was
+     * built at — this labeller previously demanded five minutes, which silently rejected every bar
+     * of any other timeframe as unexecutable.
+     */
     private static boolean aligned(Bar expected, Bar actual) {
-        return expected.getTimePeriod().equals(FIVE_MINUTES)
-                && actual.getTimePeriod().equals(FIVE_MINUTES)
+        return expected.getTimePeriod().equals(actual.getTimePeriod())
                 && expected.getBeginTime().equals(actual.getBeginTime())
                 && expected.getEndTime().equals(actual.getEndTime());
     }
