@@ -3,7 +3,7 @@ date: 2026-08-08
 status: open
 branch: feature/delta-price-import
 head: e3b8139
-next: Decide whether to fix HistoricalSessionCalendar (Phase 1.5) — no discovery report can be non-empty until it lands; then Section 4
+next: Owner decision on the 224-bar contiguity constraint (completeBuckets drops 7.4% of buckets) — the empty report cannot be fixed without it; then Section 4
 ---
 
 # Axe-Trader Research Agent — design in progress
@@ -253,8 +253,36 @@ artifact exists on disk — no `experiments/discovery.sqlite`, no
 `dashboard/discovery-report.json`. The JSON contract the agent is meant to read is
 currently produced only by test fixtures.
 
-**`HistoricalSessionCalendar` treats every missing minute as a session boundary, which
-excludes ~96% of observations on real data.** `gapsIn` registers *any* gap longer than one
+**The real blocker is 224-bar contiguity against a series with 10,687 holes — not the session
+calendar.** The calendar defect below is real and now fixed, but fixing it moved observations
+only 8,266 → 9,156 of 265,584. The dominant constraint is elsewhere, and it is structural:
+
+- `BarSeriesFactory.completeBuckets` **drops any 5-minute bucket missing even one minute**.
+  Over the window that discards **10,687 of 143,479 buckets (7.4%)**, leaving a discontinuity
+  roughly every 12 bars in the 132,792-bar series.
+- `ObservableStateExtractor.timelineIssue` requires the **entire 224-bar indicator warm-up
+  window** (`requiredHistory` = 223, driven by `trend-ema-period: 200`) to be perfectly
+  spaced, allowing only gaps the calendar recognises as known session boundaries. One hole
+  anywhere in those 18.6 hours disqualifies the observation.
+- Consequence: only **135 clean runs of ≥225 bars exist**, giving **6,400 eligible bar
+  positions out of 132,792**. That is a hard ceiling no calendar change can raise. The
+  post-fix run reached 9,156 observations, already at that order.
+- `ForwardPathLabeller` then demands **48 further consecutive bars at exactly 5-minute
+  spacing** — and hardcodes `FIVE_MINUTES` regardless of `timeframeMinutes`, so any other
+  timeframe would fail outright. **All 9,156 labels came back `INCOMPLETE_GAP` with every
+  metric zero.**
+- With all metrics tied, every percentile rank collapses to a constant, the composite never
+  approaches the 0.8 `RUN` cutoff, so **zero opportunity zones and zero candidate rules**.
+  That is the whole explanation for the empty report — the zones were never a separate
+  problem.
+
+Measured remedy for the binding constraint: tolerating buckets with **≥4 of 5 minutes** takes
+eligible positions from 6,400 to **14,108** (2.2×). Alternatives are lowering
+`trend-ema-period` to shrink the 224-bar requirement, or making `timelineIssue` tolerant of
+short holes. All three change what discovery computes and need an owner decision.
+
+**`HistoricalSessionCalendar` treated every missing minute as a session boundary — FIXED
+2026-08-08.** `gapsIn` registers *any* gap longer than one
 minute as a boundary candidate. Real US500 history is full of single absent minutes — over
 `2024-01-01 → 2026-01-01` there are 11,573 gaps, of which **11,055 are 2–6 minute intraday
 holes** (8,387 of them exactly 2 minutes). Each gets a `GapSignature` of
@@ -267,12 +295,17 @@ Measured, not inferred: only **449 of 11,573 gaps (3.9%)** have a signature recu
 times over the full two years. The genuine daily boundary — the 61–62 minute gaps, ~283 of
 them — is drowned out.
 
-Both runs confirm it, so this is not a small-window artifact:
+Three runs, all measured:
 
 | Run | Bars | Observations kept | `UNKNOWN_SESSION` | Zones | Rules |
 | --- | --- | --- | --- | --- | --- |
-| 1 month (2024-01) | 5,307 | 0 | 10,166 of 10,614 | 0 | 0 |
-| 24 months (full) | 132,792 | 8,266 (3.1%) | 256,870 (96.9%) | 0 | 0 |
+| 1 month, before fix | 5,307 | 0 | 10,166 of 10,614 | 0 | 0 |
+| 24 months, before fix | 132,792 | 8,266 (3.1%) | 256,870 | 0 | 0 |
+| 24 months, **after** fix | 132,792 | 9,156 (3.4%) | 255,980 | 0 | 0 |
+
+The fix works on its own terms — replicating `boundaryAfter` over every bar shows **99,264 of
+132,792 bars (74.8%) now resolve to a known boundary**, against 3.9% of gaps having a usable
+signature before. It simply is not the binding constraint; see the landmine above.
 
 The full run took **130 s** and completed with exit 0 under `-Xmx4g` with no memory pressure,
 which settles the spec's runtime risk — the pipeline scales fine; the output is empty for the
