@@ -17,8 +17,21 @@ import java.util.TreeMap;
 
 public final class HistoricalSessionCalendar implements TradingSessionCalendar {
 
-    private static final Duration ONE_MINUTE = Duration.ofMinutes(1);
     private static final int MINIMUM_SESSION_BOUNDARY_OCCURRENCES = 10;
+
+    /**
+     * Shortest break that can plausibly be a trading-session boundary.
+     *
+     * <p>Real minute history is full of single absent minutes — illiquid minutes with no ticks, and
+     * minutes the import's audit rejected. Treating each as a boundary candidate is what made this
+     * calendar useless on real data: over 2024-01-01 to 2026-01-01 the US500 series has 11,573 gaps
+     * of which 11,055 are 2-6 minutes, each producing a one-off {@code GapSignature} that never
+     * reaches the occurrence threshold. Since {@link #boundaryAfter} takes the nearest gap at or
+     * after a bar, almost every bar resolved to one of those unknown micro-holes and its
+     * observation was discarded. Requiring a real break first raises the share of gaps with a
+     * recurring signature from 3.9% to 76%.
+     */
+    private static final Duration MINIMUM_SESSION_GAP = Duration.ofMinutes(20);
 
     private final Set<Instant> availableBarTimes;
     private final NavigableMap<Instant, ObservedGap> gapsByFinalBar;
@@ -82,7 +95,7 @@ public final class HistoricalSessionCalendar implements TradingSessionCalendar {
         for (int index = 1; index < times.size(); index++) {
             Instant previous = times.get(index - 1);
             Instant next = times.get(index);
-            if (Duration.between(previous, next).compareTo(ONE_MINUTE) > 0) {
+            if (Duration.between(previous, next).compareTo(MINIMUM_SESSION_GAP) >= 0) {
                 gaps.add(ObservedGap.from(previous, next));
             }
         }

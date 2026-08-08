@@ -39,6 +39,32 @@ class HistoricalSessionCalendarTest {
                 .isInstanceOf(UnknownSessionBoundaryException.class);
     }
 
+    @Test
+    void ignoresASingleMissingMinuteRatherThanTreatingItAsASessionBoundary() {
+        HistoricalSessionCalendar calendar = HistoricalSessionCalendar.fit(oneMinuteTimesWithMicroHole(), 10);
+
+        // 18:30 precedes a one-minute hole at 19:00 and the recurring 21:59 close. A single absent
+        // minute is missing data, not a session boundary, so the real close must still be found.
+        assertThat(calendar.boundaryAfter(Instant.parse("2024-12-02T18:30:00Z")))
+                .get()
+                .extracting(SessionBoundary::finalExecutableBar)
+                .isEqualTo(Instant.parse("2024-12-02T21:59:00Z"));
+    }
+
+    @Test
+    void stillReportsMinutesToCloseAcrossASingleMissingMinute() {
+        HistoricalSessionCalendar calendar = HistoricalSessionCalendar.fit(oneMinuteTimesWithMicroHole(), 10);
+
+        // Measured from before the hole: 18:30 to the 21:59 close is 209 minutes.
+        assertThat(calendar.minutesToClose(Instant.parse("2024-12-02T18:30:00Z"))).isEqualTo(209);
+    }
+
+    private static List<Instant> oneMinuteTimesWithMicroHole() {
+        List<Instant> times = new ArrayList<>(oneMinuteTimes());
+        times.remove(Instant.parse("2024-12-02T19:00:00Z"));
+        return times;
+    }
+
     private static List<Instant> oneMinuteTimes() {
         List<Instant> times = new ArrayList<>();
         LocalDate firstMaintenanceMonday = LocalDate.parse("2024-12-02");
