@@ -42,6 +42,15 @@ public class AxeTraderApplication {
 				return;
 			}
 
+			if (OfflineMode.isHeadless(event.getEnvironment())) {
+				// Discovery reads the real history database, so only the web server and the
+				// devtools restart loop are disabled — not the datasource or Flyway.
+				event.getEnvironment().getPropertySources().addFirst(new MapPropertySource(
+						"discoveryRuntimeIsolation",
+						Map.of("spring.devtools.restart.enabled", "false")));
+				event.getSpringApplication().setWebApplicationType(WebApplicationType.NONE);
+			}
+
 			try {
 				// Restore the SQLite history only for normal application startup, after all
 				// Spring configuration sources have had a chance to opt into local import.
