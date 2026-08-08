@@ -2,167 +2,135 @@
 date: 2026-08-08
 status: open
 branch: feature/delta-price-import
-head: e3b8139
-next: Owner decision on the 224-bar contiguity constraint (completeBuckets drops 7.4% of buckets) — the empty report cannot be fixed without it; then Section 4
+head: f30d903
+next: Decide how to raise RUN-class yield — 17 of 35,826 observations clear the 0.8 composite cutoff, giving 8 zones per direction against MINIMUM_ZONES_PER_LEAF=10
 ---
 
-# Axe-Trader Research Agent — design in progress
+# Axe-Trader Research Agent — Phase 1 built and running
 
 A brainstorming session (`/superpowers:brainstorming`) turning a "Head Quantitative
-Researcher" charter into a durable research agent. Four locked decisions, three approved
-design sections (1, 2 and 3), and **Phase 1 built, spec'd and run for real**. Section 4 is
-next on paper, but a defect the first run exposed stands in front of it.
+Researcher" charter into a durable research agent. Four decisions locked, design Sections 1–3
+approved, and **Phase 1 spec'd, implemented and run against the real two-year dataset**.
 
-> **Correction, 2026-08-08 (second session).** The first version of this document claimed
-> the clean price dataset "was never promoted" and that `TODO.md` was wrong about it. That
-> was a misreading, and every conclusion drawn from it — including the doubt cast on
-> Section 2 — was unfounded. `data/*.sqlite` is gitignored (`.gitignore:6`), so the clean
-> database was never meant to travel through git; a checkout that lacks it proves nothing.
-> The promotion did happen, exactly as `TODO.md` records. The work has since moved to the
-> worktree that holds the data. Details in the first landmine below.
+The discovery pipeline now works end to end for the first time. It still emits **zero candidate
+rules**, but for a statistical reason rather than a defect — see "Where this stands".
+
+> **Work happens in `.worktrees/delta-price-import`, not `main`.** The clean dataset is
+> gitignored and exists per checkout. See the first landmine before moving anywhere else.
 
 ## Where this stands
 
-**Done — four decisions locked by the owner:**
+### Locked by the owner
 
-1. **Build it, don't be it.** Produce a durable, reusable research agent rather than a
-   one-off analysis.
-2. **Full charter as written.** All seven charter responsibilities (analyse results,
-   generate hypotheses, suggest filters, study exits, study missed opportunities, hindsight
-   research, detect overfitting) belong to the agent. The owner chose this over a narrower
-   "feature proposer + report reader" remit after being shown that `ShallowRuleMiner`
-   already implements much of it. One constraint was added and accepted: numeric claims
-   must come from the backtest engine, not the agent's own arithmetic.
-3. **Persistent hypothesis ledger**, not one-shot reports — status tracked across runs so
-   falsified ideas are not re-proposed.
-4. **Agent triggers its own runs** via a new CLI entry point.
+1. **Build it, don't be it** — a durable, reusable research agent, not a one-off analysis.
+2. **Full charter**, all seven responsibilities, with one added constraint: numeric claims must
+   come from the backtest engine, never the agent's own arithmetic.
+3. **Persistent hypothesis ledger**, so falsified ideas are not re-proposed.
+4. **Agent triggers its own runs** via a CLI entry point.
 
-**Done — approach chosen:** "B with a real run first". Build the entry point, produce one
-real discovery report, then design the ledger against observed output rather than guesses.
+Approach: **"B with a real run first"** — build the entry point, produce a real report, then
+design the ledger against observed output rather than guesses.
 
-**Done — Section 1 approved.** Architecture and the three-phase split, including the specific
-decision to add `DISCOVERY` as a fourth `AxeTraderMode` value rather than a separate CLI
-concern.
+### Section 1 — approved
 
-**Done — Section 2 approved 2026-08-08** (re-presented after the retraction below; the owner
-had invoked `/handover` instead of answering the first time). The `DISCOVERY` entry point:
+Architecture and the three-phase split, including `DISCOVERY` as a fourth `AxeTraderMode`
+value rather than a separate CLI concern.
 
-- **Trigger:** `--axe-trader.mode=discovery` plus a new `DiscoveryRunner implements
-  ApplicationRunner, ExitCodeGenerator`, gated by `@ConditionalOnProperty`, modelled on
-  `HistoryImportRunner`. `AxeTraderMode.from` needs no change — `"discovery"` already parses,
-  and `isLiveMarketMode()` returns false so the live runner stays off.
-- **Window:** development is `2024-01-01 → 2026-01-01` (24 months). `DiscoveryWindowPolicy`
-  gets **extended to also reject any window touching 2026-05-02 onward**, making the tail an
-  enforced reserve rather than a convention. See the window landmine below for why this is
-  needed.
-- **Request population:** nine fields mechanical from `BacktestProperties` and the window;
-  `market` from `HistoricalPriceRepository.findByEpicAndSnapshotTimeUtcBetweenOrderBy
-  SnapshotTimeUtcAsc` → `BarSeriesFactory.fromPricesWithSides`, deliberately bypassing
-  `BacktestProperties.limit` because discovery is window-bounded, not row-bounded;
-  `persistencePath`/`reportPath` left null so the record supplies its own defaults.
-- **Provenance:** `sourceCommit` from `git rev-parse HEAD`. `inputDataHash` is a **logical
-  content digest** — row count, min/max timestamp, and a hash of the ordered
-  `(snapshot_time_utc, OHLC)` tuples in the window — **not** the SQLite file hash.
-- **Failure behaviour:** fail before the pipeline starts, exit 1 via `ExitCodeGenerator`.
-  Reject a protected-window overlap, an empty or short series, and a dirty tree — where
-  "dirty" means `src/` or `application.yaml`, ignoring `output/` because `./mvnw test`
-  rewrites tracked files there. Record the full `git status` string in the report regardless.
-  Do not re-implement one-shot protection; `DiscoveryStore.window_spent` already has it.
+### Section 2 — approved, and built
 
-**Done — Section 3 approved 2026-08-08.** The hypothesis ledger:
+The `DISCOVERY` entry point. Trigger is `--axe-trader.mode=discovery` with a
+`DiscoveryRunner implements ApplicationRunner, ExitCodeGenerator` gated by
+`@ConditionalOnProperty`, modelled on `HistoryImportRunner`. Development window
+`2024-01-01 → 2026-01-01`, with `DiscoveryWindowPolicy` extended so everything from
+`2026-05-02` onward is an enforced reserve. `inputDataHash` is a logical content digest, not a
+SQLite file hash. A dirty `src/` or `application.yaml` refuses the run; `output/` is ignored.
+All refusals happen before the pipeline starts, exit 1 via `ExitCodeGenerator`.
 
-- **Two levels of identity.** Candidate identity already exists — `CandidateRule.create` sets
-  `id = sha256(canonicalJson(direction, sortedClauses))`. The ledger adds a coarser
-  **hypothesis key** over `(direction, sorted [(feature, operator)])` with **thresholds
-  excluded**.
-- **Why the coarser key is mandatory.** `ShallowRuleMiner` takes thresholds from
-  `ConditionalSliceAnalyzer.thresholds(scores, feature)` — they are *derived from the data*.
-  A window shifted by a month re-mints the same idea at `rsi14 < 24.7` instead of
-  `rsi14 < 25.1`: different canonical JSON, different sha256, different `id`. Exact-id dedup
-  therefore **cannot** satisfy decision 3, because it waves through unlimited near-misses of
-  an already-falsified idea. Threshold bucketing by quantile is the principled refinement and
-  is deferred until real feature distributions exist; starting coarse over-suppresses, which
-  is the visible and correctable failure mode.
-- **Lifecycle:** `OPEN → SUPPORTED | FALSIFIED`, plus `PROMOTED` and `SUPERSEDED`. Every
-  transition must cite a `DiscoveryRun.runKey()`, the triggering candidate id, and the
-  statistic. This is what structurally enforces the locked constraint that numeric claims come
-  from the backtest engine rather than the agent's own arithmetic.
-- **Suppression is not deletion.** A candidate whose hypothesis key is `FALSIFIED` is withheld
-  from the proposal list but recorded as a *sighting*. Repeated sightings of a dead hypothesis
-  are themselves signal about the feature set.
-- **Storage:** new tables inside `experiments/discovery.sqlite`, not a separate file, so a
-  transition and the run justifying it commit in one transaction.
+### Section 3 — approved, not built
 
-**Done — Phase 1 spec'd, built and run, 2026-08-08.** Spec at
-`docs/superpowers/specs/2026-08-08-discovery-entry-point-design.md`; implementation across
-`42abb97`, `deab269`, `8de4940`, written test-first (264 → 294 tests, 0 failures).
+The hypothesis ledger. Candidate identity already exists as `CandidateRule`'s content-addressed
+sha256; the ledger adds a coarser **hypothesis key** over `(direction, sorted [(feature,
+operator)])` with thresholds excluded — mandatory, because `ShallowRuleMiner` derives thresholds
+from the data, so a shifted window re-mints the same idea at a different hash and exact dedup
+would wave through unlimited near-misses of a falsified idea. Lifecycle
+`OPEN → SUPPORTED | FALSIFIED` plus `PROMOTED` and `SUPERSEDED`, every transition citing a
+`runKey`, a candidate id and a statistic. Falsified hypotheses are suppressed from proposals but
+recorded as sightings. Tables live in `experiments/discovery.sqlite` so a transition and its
+evidence commit together.
 
-`--axe-trader.mode=discovery` now works end to end: `DiscoveryRunner` +
-`DiscoveryConfiguration` + `DiscoveryRunService` + `DiscoveryProperties`, with
-`DiscoveryInputDigest` for the logical content hash and `SourceProvenance` for the commit and
-dirty-tree gate. `OfflineMode` makes discovery headless — the first run hung forever because
-the servlet container's non-daemon threads outlive the runner.
+### Phase 1 — built, and the pipeline now runs
 
-Both artifacts now exist on disk for the first time: `experiments/discovery.sqlite` (118 MB)
-and `dashboard/discovery-report.json`. **The report is well-formed with correct provenance but
-empty of findings** — zero patterns, zero examples. See the session-calendar landmine.
+Spec: `docs/superpowers/specs/2026-08-08-discovery-entry-point-design.md`. Implementation was
+test-first throughout, 233 → 304 tests.
 
-**Not started:** Section 4 (the agent definition and its run loop, error handling, testing),
-its spec, and the implementation plan.
+Six defects were found and fixed by actually running it. All six were invisible to the existing
+tests, which used synthetic contiguous bars:
 
-**The dataset, for reference.** Section 2 assumed a 2024-onward dataset and proposed a
-two-year development window of 2024-01-01 → 2026-01-01, holding the tail in reserve. Working
-in this worktree, that is exactly what is on disk:
+| Defect | Fix |
+| --- | --- |
+| `./mvnw clean package` failed — `main` was package-private | `0aeb81f` |
+| Run hung forever; servlet threads outlive the runner | `8de4940` (`OfflineMode`) |
+| Session calendar treated every missing minute as a boundary | `330eb9b` |
+| A bucket missing one minute was dropped, holing the series | `8cf693e` |
+| 224-bar warm-up demanded perfect spacing | `8cf693e` |
+| Session close looked up by exact match on a 5m grid | `9cd50b1` |
+| `ForwardPathLabeller` hardcoded 5-minute bars | `f30d903` |
 
-| Checkout | Rows | Range |
-| --- | --- | --- |
-| `.worktrees/delta-price-import` (**here**) | 917,650 | 2024-01-01T23:01Z → 2026-08-06T19:55Z |
-| `.worktrees/clean-local-price-history` | 912,132 | 2024-01-01T23:01Z → 2026-08-02T22:52Z |
-| `main` checkout, and the committed `.gz` on every branch | 500,000 | 2024-12-04T23:20Z → 2026-05-01T08:25Z |
+**Progress across the three full runs**, all measured:
 
-With `DiscoveryWindowPolicy`'s protected window at 2026-01-01 → 2026-05-02, this worktree
-gives a full two-year development window plus a 2026-05-02 → 2026-08-06 tail that Section 2
-turns into an enforced reserve.
+| | First run | After calendar fix | After all fixes |
+| --- | --- | --- | --- |
+| Bars | 132,792 | 132,792 | 139,539 |
+| Observations | 8,266 | 9,156 | **35,826** |
+| Usable labels | 0 | 0 | **27,400** |
+| `INCOMPLETE_GAP` | 8,266 (100%) | 9,156 (100%) | 8,426 (24%) |
+| Opportunity zones | 0 | 0 | **16** |
+| Candidate rules | 0 | 0 | 0 |
+| Runtime | 130 s | 211 s | **2,748 s** |
+
+Labels now break down as 19,692 `TRADING_CLOSE`, 7,708 `COMPLETE_48_BARS`, 8,426
+`INCOMPLETE_GAP`. `dashboard/discovery-report.json` carries 4 examples and 0 patterns.
+
+**Why rules are still zero — this is a guard, not a bug.**
+`ShallowRuleMiner.MINIMUM_ZONES_PER_LEAF = 10`, and there are 8 zones per direction (16 total,
+LONG 8 / SHORT 8). No leaf can reach the independence threshold, so the false-discovery control
+correctly refuses to emit anything. Upstream of that, only **17 of 35,826** observations are
+classed `RUN` — `OpportunityScorerV1` needs a composite ≥ 0.8, the mean of five percentile
+ranks. The remaining gap is statistical power, not plumbing.
+
+### Not started
+
+Section 4 (the agent definition, its run loop, error handling, testing), its spec, and the
+implementation plan. The ledger from Section 3 is designed but unbuilt.
 
 ## Next action
 
-**Decide on the session-calendar defect first — it blocks everything downstream.** The whole
-point of "B with a real run first" was to design the ledger against observed output, and the
-observed output is empty. Section 4 and the ledger schema cannot be designed against a report
-with zero patterns, so fixing `HistoricalSessionCalendar` (call it Phase 1.5) has to come
-first or the sequencing argument collapses. It needs an owner decision because it changes
-discovery *analysis*, which the Phase 1 spec explicitly excluded. The evidence and the
-proposed minimum-gap fix are in the landmine below.
+Decide how to raise `RUN`-class yield, because nothing downstream can proceed without it. Two
+levers, and they need the owner because both change what discovery computes:
 
-Then design **Section 4** — the agent definition, its run loop, error handling, testing —
-and follow the brainstorming flow: finish sections → spec → commit → self-review → owner
-reviews → `writing-plans`.
+- **The `RUN` cutoff.** `OpportunityScorerV1.RUN_CUTOFF = 0.8` over a mean of five percentile
+  ranks. Note `netMfe` (higher better) and `twoSidedExcursion` = mfe+|mae| (higher worse) are
+  positively correlated in raw value, so their ranks are anti-correlated and the composite is
+  structurally pulled toward the middle. Whether 0.8 is reachable in principle is worth
+  checking before tuning it.
+- **`MINIMUM_ZONES_PER_LEAF = 10`** against 8 zones per direction. Lowering it weakens the
+  false-discovery control that exists to stop the miner inventing patterns.
 
-Two open threads to fold into Section 4: the model tier the agent runs at (still undiscussed),
-and `AxeTraderRunner`'s dormancy, which Phase 1 deliberately did not repair.
+Then Section 4, and the brainstorming flow: finish sections → spec → commit → self-review →
+owner review → `writing-plans`.
 
 ## Verify current state
 
-Run these **from `.worktrees/delta-price-import`**, not from `main` — the dataset check gives
-a different answer per checkout, and that difference is the point.
-
-Observed 2026-08-08 at `82af78f` on `feature/delta-price-import`:
+Run from `.worktrees/delta-price-import`. Observed 2026-08-08 at `f30d903`:
 
 ```
 ./mvnw test
-# exit 0 — Tests run: 294, Failures: 0, Errors: 0, Skipped: 3
-```
-
-```
-# The full discovery run, from a CLEAN tree — the dirty-source gate refuses otherwise.
-java -Xmx4g -jar target/axe-trader-0.0.1-SNAPSHOT.jar --axe-trader.mode=discovery
-# exit 0 after 130s — "Discovery complete: 0 pattern(s) reported"
+# exit 0 — Tests run: 304, Failures: 0, Errors: 0, Skipped: 3
 ```
 
 ```
 ./mvnw clean package -DskipTests
-# exit 0 since 0aeb81f — 84M jar, Start-Class: io.g3tech.axetrader.AxeTraderApplication
-# (still exit 1 on main, which does not have the fix)
+# exit 0 — repackaged jar, Start-Class io.g3tech.axetrader.AxeTraderApplication
 ```
 
 ```
@@ -170,208 +138,90 @@ sqlite3 data/axe-trader.sqlite "SELECT COUNT(*), MIN(snapshot_time_utc), MAX(sna
 # 917650|2024-01-01T23:01:00Z|2026-08-06T19:55:00Z
 ```
 
-The 264-test count is this branch's (31 history/import tests above `main`'s 233); the build
-failure and the dataset are both worktree-local facts. No lint command is documented for this
-project and none was run.
+The full discovery run, from a **clean tree** — the dirty-source gate refuses otherwise:
+
+```
+java -Xmx6g -jar target/axe-trader-0.0.1-SNAPSHOT.jar --axe-trader.mode=discovery
+# exit 0 after 2748 s — "Discovery complete: 0 pattern(s) reported"
+```
+
+No lint command is documented for this project and none was run.
 
 ## Landmines
 
-**The clean dataset is real, and it does not live in git — work in a checkout that has it.**
-`data/*.sqlite` is gitignored (`.gitignore:6`); only `data/axe-trader.sqlite.gz` is tracked,
-and `TODO.md` says in as many words that the committed snapshot "is deliberately still the
-legacy one." So the clean database exists **per working checkout**, not per branch, and
-finding a legacy 500,000-row database in some other checkout is not evidence that anything
-failed. It only means that checkout never ran the import.
+**The clean dataset is gitignored and lives per working checkout.** `data/*.sqlite` is excluded
+by `.gitignore:6`; only `data/axe-trader.sqlite.gz` is tracked, and `TODO.md` states outright
+that the committed snapshot is deliberately still the legacy one. So finding a 500,000-row
+database in another checkout is **not** evidence that anything failed — it means that checkout
+never ran the import. This worktree holds 917,650 rows over `2024-01-01 → 2026-08-06`; `main`
+and `.worktrees/reusable-history-reingestion` hold the legacy 500,000 ending 2026-05-01.
+Switching checkouts silently swaps a two-year dataset for a thirteen-month one, and only
+`HistoryCursorReader` fails closed on it — the backtest and discovery paths just run on less
+data. *An earlier version of this document reported the promotion as never having happened and
+`TODO.md` as stale about it. Both claims were wrong.*
 
-The promotion recorded in `TODO.md` did happen. This worktree holds 917,650 rows spanning
-2024-01-01T23:01Z → 2026-08-06T19:55Z, plus the `price_exclusion` and six `history_import_*`
-tables the legacy database lacks. Switching to a checkout without them — `main`, or
-`.worktrees/reusable-history-reingestion` — silently swaps a two-year dataset for a
-thirteen-month one. `HistoryCursorReader` at least fails closed on the legacy database's
-non-canonical `2024-12-04T23:20Z` minute format rather than mis-ordering `MAX()`; the
-backtest and discovery paths have no such guard and will simply run on less data.
+**A full discovery run now takes 46 minutes**, up from 130 s, because the labeller finally walks
+real forward paths and `ShallowRuleMiner` does real work. It peaked around 3.4 GB against
+`-Xmx6g`. Budget for that before iterating, and do not assume a run that has been quiet for
+twenty minutes has hung — check `ps -p <pid> -o %cpu=,rss=`, not `ps -e -p <pid>`, which
+silently ignores `-p` and reports an unrelated process.
 
-*An earlier version of this document read this situation backwards and reported the
-promotion as never having happened and `TODO.md` as "badly stale on the dataset." Both
-claims were wrong.*
+**`./mvnw test` dirties the working tree** — it rewrites tracked `output/charts/chart.html` and
+`output/charts/runner-results.html`. This blocks a discovery run, because the dirty-source gate
+refuses when `src/` or `application.yaml` differ; `output/` is deliberately excluded, but
+`git restore output/charts/` is still needed to keep the tree clean for commits.
 
-**~~`./mvnw clean package` fails~~ — FIXED 2026-08-08 in `0aeb81f` on this branch.**
-`AxeTraderApplication.java:21` declared `static void main` (package-private), so Spring
-Boot's `repackage` goal could not find an entry point and produced no runnable jar. `public`
-had been dropped incidentally in `b1c26ee`. Restored; the build now exits 0 and yields an 84M
-jar with `Start-Class: io.g3tech.axetrader.AxeTraderApplication`, suite unchanged at 264/3.
-**`main` still carries the bug** — it is fixed only here until this branch merges.
+**Deleting `experiments/discovery.sqlite` resets the one-shot OOS protection.** `window_spent`
+lives in that file, so removing it to "start clean" hands back a budget that is meant to be
+unrecoverable. Section 3 puts the hypothesis ledger in the same file, raising the cost further.
+The file is currently 504 MB.
 
-**The `AxeTraderMode` switch is dormant — adding `DISCOVERY` to the enum does nothing on its
-own.** `AxeTraderMode` is referenced in exactly one place, `AxeTraderRunner`, and
-`AxeTraderRunner.run()`, `.ping()` and `.close()` are never called from anywhere in
-`src/main` — nothing wires that `@Service` to startup. `BacktestRunner` is not invoked at
-startup either. The only thing that actually drives behaviour on boot is
-`HistoryImportRunner` via `@ConditionalOnProperty` + `ApplicationRunner`.
+**`AxeTraderMode` is inert outside discovery.** It is referenced only by `AxeTraderRunner`,
+whose `run()`, `ping()` and `close()` are never called from anywhere in `src/main`. So
+`./mvnw spring-boot:run` performs no backtest despite `CLAUDE.md` saying it does, and MONITOR
+mode "not working end-to-end" in `TODO.md` is this same dormancy rather than a separate bug.
+Phase 1 deliberately did not repair it.
 
-Two consequences. `CLAUDE.md` is wrong that `./mvnw spring-boot:run` runs a backtest — it
-runs nothing. And MONITOR mode "not working end-to-end", still open in `TODO.md`, is this
-same dormancy rather than an independent bug. Phase 1 must supply the runner that reads the
-mode; the enum constant alone is inert.
+**`main` still cannot build.** The `public static void main` fix is only on this branch.
 
-**`./mvnw test` dirties the working tree.** In this worktree it rewrites two tracked files,
-`output/charts/chart.html` and `output/charts/runner-results.html`. This matters more than it
-looks: Section 2 proposes that a discovery run record `sourceCommit` and fail closed on a
-dirty tree, and running the test suite would trip that check on an otherwise clean checkout.
-`git restore output/charts/` clears it.
+**SHA-256 of a live SQLite file is not a stable content identifier** — opening a database
+rewrites bytes, which is why the clean dataset hashes `138ef7b2…` against `TODO.md`'s recorded
+`e19cbb90…` while being logically identical. Use `DiscoveryInputDigest` for content identity.
 
-**`DiscoveryWindowPolicy` protects only the middle band, not the tail.** The guard is
-`if (from.isBefore(OOS_TO) && OOS_FROM.isBefore(to)) throw` — it rejects overlap with
-`2026-01-01 → 2026-05-02` and nothing else. A window lying entirely *after* the protected
-band passes validation happily, so the ~3 months out to `2026-08-06` that the delta import
-added are unprotected by default. Section 2 closes this by extending the policy; until that
-lands, do not assume the tail is safe just because a window validated.
-
-**SHA-256 of a live SQLite file is not a stable content identifier.** The dataset in
-`.worktrees/clean-local-price-history` matches `TODO.md`'s row count and time range exactly
-(912,132 rows, 2024-01-01T23:01Z → 2026-08-02T22:52Z) but hashes to `138ef7b2…` rather than
-the recorded `e19cbb90…`. Opening a SQLite database can change its bytes, so a drifted hash
-over an otherwise-matching database is expected, not corruption. Section 2's proposal to use
-the file hash as `DiscoveryRequest.inputDataHash` should be reconsidered in favour of a
-digest over logical content — row count, min/max timestamp, and a hash of the ordered rows.
-
-**`TODO.md` is stale on the discovery work** — this one is real, unlike the dataset claim
-retracted above. It describes the empirical path-first discovery as active with Task 3 in
-progress, Tasks 5–12 unstarted, and four uncommitted tests to preserve in a worktree at
-`.worktrees/empirical-path-first-discovery`. In fact the work is complete and merged — 46
-files under `src/main/java/io/g3tech/axetrader/backtest/discovery/`, present on `main` and
-here, with `94d9759 feat(discovery): add task 10 and 11 dashboard integration` as the most
-recent commit touching it. That worktree no longer exists; `git worktree list` shows four
-(`main` plus `clean-local-price-history`, `delta-price-import`,
-`reusable-history-reingestion`), and the branch survives as
-`remotes/origin/feature/empirical-path-first-discovery`.
-
-**The discovery pipeline has never run outside tests.** `DiscoveryPipeline` is referenced
-only by `DiscoveryPipelineTest` and `EmpiricalDiscoveryHarnessTest`. There is no
-`CommandLineRunner` for it, no `DISCOVERY` value in `AxeTraderMode`, and neither default
-artifact exists on disk — no `experiments/discovery.sqlite`, no
-`dashboard/discovery-report.json`. The JSON contract the agent is meant to read is
-currently produced only by test fixtures.
-
-**The real blocker is 224-bar contiguity against a series with 10,687 holes — not the session
-calendar.** The calendar defect below is real and now fixed, but fixing it moved observations
-only 8,266 → 9,156 of 265,584. The dominant constraint is elsewhere, and it is structural:
-
-- `BarSeriesFactory.completeBuckets` **drops any 5-minute bucket missing even one minute**.
-  Over the window that discards **10,687 of 143,479 buckets (7.4%)**, leaving a discontinuity
-  roughly every 12 bars in the 132,792-bar series.
-- `ObservableStateExtractor.timelineIssue` requires the **entire 224-bar indicator warm-up
-  window** (`requiredHistory` = 223, driven by `trend-ema-period: 200`) to be perfectly
-  spaced, allowing only gaps the calendar recognises as known session boundaries. One hole
-  anywhere in those 18.6 hours disqualifies the observation.
-- Consequence: only **135 clean runs of ≥225 bars exist**, giving **6,400 eligible bar
-  positions out of 132,792**. That is a hard ceiling no calendar change can raise. The
-  post-fix run reached 9,156 observations, already at that order.
-- `ForwardPathLabeller` then demands **48 further consecutive bars at exactly 5-minute
-  spacing** — and hardcodes `FIVE_MINUTES` regardless of `timeframeMinutes`, so any other
-  timeframe would fail outright. **All 9,156 labels came back `INCOMPLETE_GAP` with every
-  metric zero.**
-- With all metrics tied, every percentile rank collapses to a constant, the composite never
-  approaches the 0.8 `RUN` cutoff, so **zero opportunity zones and zero candidate rules**.
-  That is the whole explanation for the empty report — the zones were never a separate
-  problem.
-
-Measured remedy for the binding constraint: tolerating buckets with **≥4 of 5 minutes** takes
-eligible positions from 6,400 to **14,108** (2.2×). Alternatives are lowering
-`trend-ema-period` to shrink the 224-bar requirement, or making `timelineIssue` tolerant of
-short holes. All three change what discovery computes and need an owner decision.
-
-**`HistoricalSessionCalendar` treated every missing minute as a session boundary — FIXED
-2026-08-08.** `gapsIn` registers *any* gap longer than one
-minute as a boundary candidate. Real US500 history is full of single absent minutes — over
-`2024-01-01 → 2026-01-01` there are 11,573 gaps, of which **11,055 are 2–6 minute intraday
-holes** (8,387 of them exactly 2 minutes). Each gets a `GapSignature` of
-`(weekday, previous minute-of-day, next minute-of-day, duration)` that occurs once or twice
-ever, so it falls under the 10-occurrence threshold and is marked unknown. Because
-`boundaryAfter` returns the *ceiling* entry, nearly every bar's nearest boundary is one of
-these one-off micro-holes, and the extractor drops the observation as `UNKNOWN_SESSION`.
-
-Measured, not inferred: only **449 of 11,573 gaps (3.9%)** have a signature recurring ≥10
-times over the full two years. The genuine daily boundary — the 61–62 minute gaps, ~283 of
-them — is drowned out.
-
-Three runs, all measured:
-
-| Run | Bars | Observations kept | `UNKNOWN_SESSION` | Zones | Rules |
-| --- | --- | --- | --- | --- | --- |
-| 1 month, before fix | 5,307 | 0 | 10,166 of 10,614 | 0 | 0 |
-| 24 months, before fix | 132,792 | 8,266 (3.1%) | 256,870 | 0 | 0 |
-| 24 months, **after** fix | 132,792 | 9,156 (3.4%) | 255,980 | 0 | 0 |
-
-The fix works on its own terms — replicating `boundaryAfter` over every bar shows **99,264 of
-132,792 bars (74.8%) now resolve to a known boundary**, against 3.9% of gaps having a usable
-signature before. It simply is not the binding constraint; see the landmine above.
-
-The full run took **130 s** and completed with exit 0 under `-Xmx4g` with no memory pressure,
-which settles the spec's runtime risk — the pipeline scales fine; the output is empty for the
-session-calendar reason above, not a resource one. `dashboard/discovery-report.json` is
-written and well-formed with correct provenance, but carries zero patterns, zero monthly
-results and zero examples. Note the surviving 8,266 observations still yielded **zero
-opportunity zones**, so whether fixing the calendar is sufficient on its own is unverified.
-
-Requiring a minimum gap length before a boundary counts fixes it. Measured over the same
-window: at ≥20 minutes, 438 gaps collapse to 84 signatures with **332 (76%) qualifying**,
-versus 3.9% today. This is a change to discovery *analysis*, deliberately outside the Phase 1
-spec's scope, so it was left unmade — but no discovery run can produce a non-empty report
-until it lands.
-
-**Deleting `experiments/discovery.sqlite` silently resets the one-shot OOS protection.**
-`window_spent` lives in that file, so removing it to "start clean" hands back a budget that
-is supposed to be unrecoverable. Pre-existing hazard, not introduced by this design — but
-Section 3 puts the hypothesis ledger in the same file, which raises the cost of losing it.
-
-**One-shot OOS protection already exists — do not rebuild it.** `DiscoveryStore` has a
-`window_spent` table that raises `Discovery window is already spent` on a repeat insert;
-`FinalValidationService` owns the protected window itself and only accepts an
-already-persisted frozen candidate; `DiscoveryWindowPolicy.requireDevelopmentWindow`
-rejects any overlap with 2026-01-01 → 2026-05-02. An earlier version of the approach
-comparison wrongly claimed budget enforcement still needed building.
+**`TODO.md` is stale on the discovery work.** It lists the empirical path-first discovery as
+in-progress with Tasks 5–12 unstarted and a worktree that no longer exists. The work is merged;
+46 files sit under `src/main/java/io/g3tech/axetrader/backtest/discovery/`.
 
 ## Open questions
 
-- ~~**Does the clean dataset get promoted into `main` before Phase 1?**~~ **Settled
-  2026-08-08:** the question rested on the misreading retracted above. The owner directed the
-  work into `.worktrees/delta-price-import`, which already holds the 917,650-row dataset, and
-  `main` was merged in so the handover travels with it. No promotion is needed, and none
-  would help — the database is gitignored and does not move between checkouts via git.
-- ~~**Is the missing `public static void main` a deliberate Java 21 choice or a
-  regression?**~~ **Answered 2026-08-08: regression.** `git log -L 21,21:…` shows the
-  signature was `public static void main` from the first commit (`8613142`) until `b1c26ee`
-  ("Introduce Capital.com API and WebSocket integration…") silently dropped `public`. Nothing
-  in that commit concerns main-method style. Restoring `public` is a one-word fix, and Phase 1
-  needs it.
-- ~~**Section 2 approval**~~ **Granted 2026-08-08**, with all three open choices resolved as
-  recommended: enforced tail reserve, logical content digest, fail-on-source-dirt. Terms are
-  recorded under "Where this stands" above.
-- **Which model tier runs the agent** — the ladder in `~/.claude/CLAUDE.md` puts design
-  judgement at opus and hardest reasoning at fable. Not yet discussed.
+- **How to raise `RUN`-class yield** — the `RUN_CUTOFF` and `MINIMUM_ZONES_PER_LEAF` levers
+  above. This is the blocking decision; see "Next action".
+- **Does the 46-minute runtime need addressing before iterating?** Tolerable once, painful as a
+  loop. Not investigated — no profiling was done, so where the time goes is unverified.
+- **Which model tier runs the agent.** The ladder in `~/.claude/CLAUDE.md` puts design judgement
+  at opus and hardest reasoning at fable. Still undiscussed.
+- **Does `feature/delta-price-import` merge to `main`?** It is 15 commits ahead and carries the
+  build fix, the whole import subsystem and all of Phase 1. Merging would not move the database.
 
 ## Files that matter
 
-- `docs/superpowers/specs/2026-07-27-empirical-path-first-strategy-discovery-design.md` —
-  the approved design the merged discovery pipeline implements; overlaps the charter's §6
-  and §7 heavily.
-- `src/main/java/io/g3tech/axetrader/backtest/discovery/` — 46 files, the machinery the
-  agent will drive. `ShallowRuleMiner`, `ExitPolicyGenerator`, `OpportunityZoneBuilder`,
-  `ForwardPathLabeller`, `PromotionGate`, `FinalOosGate`, `DiscoveryStore`.
-- `src/main/java/io/g3tech/axetrader/backtest/discovery/DiscoveryRequest.java` — the
-  eleven-field input Phase 1 must populate; defines both default artifact paths.
-- `src/main/java/io/g3tech/axetrader/backtest/discovery/DiscoveryWindowPolicy.java` — the
-  protected OOS window constants that constrain every window choice.
-- `src/main/java/io/g3tech/axetrader/config/AxeTraderMode.java` — gains a `DISCOVERY` value
-  in Phase 1.
-- `src/main/java/io/g3tech/axetrader/history/HistoryImportRunner.java` — the
-  `CommandLineRunner` pattern Phase 1's runner should follow.
-- `src/main/java/io/g3tech/axetrader/AxeTraderApplication.java` — line 21, the
-  package-private `main` behind the build failure.
-- `TODO.md` — accurate on the dataset (including the deliberately-legacy `.gz`); stale on
-  discovery status, which it still lists as in-progress. Needs correcting there only.
-- `docs/local-price-history.md` — the import/top-up runbook, and the authority on how the
-  clean dataset is produced and refreshed in a checkout.
-- `docs/d1-price-history-import-progress.md` — untracked in `main`, and describes the retired
-  D1 workflow that `TODO.md` supersedes.
+- `docs/superpowers/specs/2026-08-08-discovery-entry-point-design.md` — the approved Phase 1
+  spec this implements.
+- `src/main/java/io/g3tech/axetrader/backtest/discovery/DiscoveryRunService.java` — builds the
+  request; holds the bucket-tolerance opt-in and every pre-flight refusal.
+- `src/main/java/io/g3tech/axetrader/backtest/discovery/DiscoveryConfiguration.java` — the only
+  place discovery beans are wired; gated on the mode property.
+- `src/main/java/io/g3tech/axetrader/backtest/discovery/analysis/OpportunityScorerV1.java` —
+  `RUN_CUTOFF = 0.8`; the first lever in the next action.
+- `src/main/java/io/g3tech/axetrader/backtest/discovery/analysis/ShallowRuleMiner.java` —
+  `MINIMUM_ZONES_PER_LEAF = 10`; the second lever.
+- `src/main/java/io/g3tech/axetrader/backtest/discovery/ForwardPathLabeller.java` — boundary
+  resolution and timeframe derivation, both fixed today.
+- `src/main/java/io/g3tech/axetrader/backtest/series/BarSeriesFactory.java` — wall-clock bucket
+  aggregation and `maxMissingMinutesPerBucket`; strict by default so backtests are unchanged.
+- `src/main/java/io/g3tech/axetrader/backtest/discovery/ObservableStateExtractor.java` —
+  `MAX_TOLERATED_MISSING_BARS`, and `requiredHistory` driven by `trend-ema-period: 200`.
+- `src/main/java/io/g3tech/axetrader/backtest/discovery/session/HistoricalSessionCalendar.java`
+  — `MINIMUM_SESSION_GAP = 20 minutes`.
+- `src/main/java/io/g3tech/axetrader/OfflineMode.java` — which modes run headless.
+- `TODO.md` — accurate on the dataset, stale on discovery status.
