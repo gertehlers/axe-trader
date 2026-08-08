@@ -194,13 +194,32 @@ public final class ForwardPathLabeller {
                 : ForwardPathLabel.ExcursionOrder.MAE_THEN_MFE;
     }
 
+    /**
+     * The last bar that closes at or before {@code time}, or -1 if none does.
+     *
+     * <p>A session boundary is a one-minute timestamp — 20:59, say — so on any timeframe coarser
+     * than a minute it almost never equals a bar's end time: over the development window only 34 of
+     * 438 US500 boundaries land on the 5-minute grid. Demanding an exact match therefore found
+     * nothing and abandoned the forward path, which is why every label came back
+     * {@code INCOMPLETE_GAP}. The last bar closing at or before the boundary is the last one that
+     * could actually be traded in that session.
+     *
+     * <p>Binary search rather than a scan: this runs once per observation over a six-figure series.
+     */
     private static int indexAt(BarSeries series, Instant time) {
-        for (int index = series.getBeginIndex(); index <= series.getEndIndex(); index++) {
-            if (series.getBar(index).getEndTime().equals(time)) {
-                return index;
+        int low = series.getBeginIndex();
+        int high = series.getEndIndex();
+        int found = -1;
+        while (low <= high) {
+            int middle = (low + high) >>> 1;
+            if (series.getBar(middle).getEndTime().isAfter(time)) {
+                high = middle - 1;
+            } else {
+                found = middle;
+                low = middle + 1;
             }
         }
-        return -1;
+        return found;
     }
 
     private static boolean hasAlignedBar(MarketSeries market, int index) {

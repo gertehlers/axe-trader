@@ -107,6 +107,37 @@ class ForwardPathLabellerTest {
     }
 
     @Test
+    void snapsASessionCloseThatFallsBetweenBarsToTheLastExecutableBar() {
+        MarketSeries market = flatMarket(20);
+        // A broker close is a one-minute timestamp such as 20:59 and so almost never lands on the
+        // 5-minute grid. Looking for an exact match finds nothing and abandons the whole path.
+        Instant offGrid = market.mid().getBar(13).getEndTime().minus(Duration.ofMinutes(1));
+
+        ObservableState state = state(Direction.LONG, 0, 1, 2.0);
+        ForwardPathLabel label = new ForwardPathLabeller().label(
+                state.id().direction(), state.entryIndex(), state.entryAtr(), market, closeAtInstant(offGrid));
+
+        assertThat(label.status()).isEqualTo(LabelStatus.TRADING_CLOSE);
+        assertThat(label.exitPath()).hasSize(11);
+        assertThat(label.exitPath().getLast().index()).isEqualTo(12);
+        assertThat(label.eligibleForDiscovery()).isTrue();
+    }
+
+    private static TradingSessionCalendar closeAtInstant(Instant finalTime) {
+        return new TradingSessionCalendar() {
+            @Override
+            public Optional<SessionBoundary> boundaryAfter(Instant barTime) {
+                return Optional.of(new SessionBoundary(finalTime, finalTime.plus(Duration.ofHours(1))));
+            }
+
+            @Override
+            public int minutesToClose(Instant barTime) {
+                return (int) Duration.between(barTime, finalTime).toMinutes();
+            }
+        };
+    }
+
+    @Test
     void marksAnUnavailableEntryBarAsNotExecutable() {
         MarketSeries market = flatMarket(1);
 
