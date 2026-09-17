@@ -57,13 +57,13 @@ NATURALGAS, GOLD, SILVER, US100, DE40, UK100, J225, EURUSD, GBPUSD, USDJPY, BTCU
 
 | ID | Problem (see learnings §4) | Required behaviour |
 |----|---------------------------|--------------------|
-| I1 | Missing minutes inside a page recorded as session closures (D1) | A minute missing inside a window that returned other data is recorded as a **gap** with its own type. Only a whole requested window with no data may be a closure. Existing closure rows are reclassified by a one-off migration using the same rule. |
-| I2 | Every 404 treated as closure (D2) | Unknown epic → fail the run with a clear error before staging. Seeding runs a **history-start probe** that finds the first available minute; the seed window starts there. A 404 inside an otherwise-populated range is a gap, not a closure. |
-| I3 | Zero-minute update fails (D3) | "Nothing new" (weekend/holiday) exits 0 as `already current` and deletes its staging file. |
-| I4 | Late/revised bars never fetched (D4) | Update window ends 2 minutes before now and re-fetches the last 60 stored minutes; a changed bar replaces the stored one and is logged as a revision. |
-| I5 | No re-auth on expired session (D5) | On 401/403: create a new session once and retry the request. A failed update resumes its existing staging file on the next run instead of starting a new one. |
-| I6 | Unique index not in Flyway; two timestamp formats (D7, D8) | Flyway migration adds the unique index `(source, epic, resolution, snapshot_time_utc)` and ledger tables. One canonical timestamp format `YYYY-MM-DDTHH:MM:SSZ` for every writer. |
-| I7 | Bar time semantics unverified (E11) | Fetch one raw payload, compare `snapshotTimeUTC` with the candle it describes, document whether it is bar open or close in `docs/local-price-history.md`, and add a test pinning the convention. |
+| I1 | Missing minutes inside a page recorded as session closures (learnings D1) | A minute missing inside a window that returned other data is recorded as a **gap** with its own type. Only a whole requested window with no data may be a closure. Existing closure rows are reclassified by a one-off migration using the same rule. |
+| I2 | Every 404 treated as closure (learnings D2) | Unknown epic → fail the run with a clear error before staging. Seeding runs a **history-start probe** that finds the first available minute; the seed window starts there. A 404 inside an otherwise-populated range is a gap, not a closure. |
+| I3 | Zero-minute update fails (learnings D3) | "Nothing new" (weekend/holiday) exits 0 as `already current` and deletes its staging file. |
+| I4 | Late/revised bars never fetched (learnings D4) | Update window ends 2 minutes before now and re-fetches the last 60 stored minutes; a changed bar replaces the stored one and is logged as a revision. |
+| I5 | No re-auth on expired session (learnings D5) | On 401/403: create a new session once and retry the request. A failed update resumes its existing staging file on the next run instead of starting a new one. |
+| I6 | Unique index not in Flyway; two timestamp formats (learnings D7, D8) | Flyway migration adds the unique index `(source, epic, resolution, snapshot_time_utc)` and ledger tables. One canonical timestamp format `YYYY-MM-DDTHH:MM:SSZ` for every writer. |
+| I7 | Bar time semantics unverified (learnings E11) | Fetch one raw payload, compare `snapshotTimeUTC` with the candle it describes, document whether it is bar open or close in `docs/local-price-history.md`, and add a test pinning the convention. |
 
 Out of scope for step 1: MONITOR mode, WebSocket client (not needed for research; revisit in step 6).
 
@@ -146,7 +146,11 @@ Front matter: `id, title, source (owner-comment | screen | prior-lead | literatu
 (named up front), timeframe, status, created`. Body written **before** any run: plain-language idea,
 exact rule, pass/fail criteria. Appended per run: run id, commit, data range, gate, result with CI.
 
-Status flow: `proposed → in-development → frozen → holdout-passed → demo-passed` or `rejected`.
+Front matter also records `parent` (for child hypotheses) and `trial_count` (cumulative, §6.2.3).
+
+Status flow: `proposed → in-development → frozen → holdout-passed → demo-passed`, or a diagnosis
+status from §6.2.3 (`inconclusive`, `rejected: no signal`, `uneconomic`, `exit-problem`,
+`regime-dependent`).
 `research/ledger/INDEX.md` lists every hypothesis and the running count of hypotheses and variants
 tried.
 
@@ -196,15 +200,71 @@ on per-trade chart cards, and return to the owner before building further.
 ### 6.1 Research program (order)
 1. **Cost reality check:** per instrument × timeframe (5m, 15m, 1h, 4h, 1d), median spread + financing
    vs median bar range and ATR. Output ranks where edges must clear the lowest cost hurdle. Decides
-   which instruments/timeframes enter step 3–4 research.
-2. **Placebo baselines:** random entries with the same exits/sizing (many seeds) and buy-and-hold per
+   which instruments/timeframes enter research.
+2. **First hypothesis batch** from the known-effects list and the exploration tables (§6.2.1).
+3. **Placebo baselines:** random entries with the same exits/sizing (≥200 seeds) and buy-and-hold per
    instrument. Every result page shows them; an edge must beat random by more than its CI.
-3. **Prior leads re-tested as ordinary hypotheses:** momentum @ 10m (US500), MA 7/14 + RSI(7).
-4. **Canonical families, one pre-specified hypothesis each:** trend following (4h, daily); opening-range
-   breakout on index sessions; London/NY-open behaviour on FX and gold; range mean reversion on FX.
-5. Owner comments from review pages feed new hypotheses throughout.
+4. **Prior leads + best batch candidates** — momentum @ 10m (US500), MA 7/14 + RSI(7), and the top
+   candidates from step 2 — go through diagnosis (§6.2.3) and the gates (§4.2). Canonical families
+   expected in the batch: trend following (4h, daily); opening-range breakout on index sessions;
+   London/NY-open behaviour on FX and gold; range mean reversion on FX.
+5. **Parameter surfaces** (§6.2.2) per family that shows signal in diagnosis layer 1.
+6. Owner comments from review pages feed new hypotheses throughout.
 
-### 6.2 Path to money (after a G2 pass)
+### 6.2 Hypothesis generation, parameter surfaces and diagnosis
+
+**Principle:** certainty is impossible; both error types are controlled and every verdict carries a
+reason. Where the data cannot decide, the verdict is `inconclusive`, never `rejected`.
+
+#### 6.2.1 Sources (every hypothesis records one in the ledger `source` field)
+1. `known-effect` — documented effects with an economic reason and an identifiable losing side
+   (e.g. daily time-series momentum, index overnight/open return concentration, turn-of-month, London
+   4pm FX fix, Wednesday EIA inventory reaction in oil, opening-range breakout, Asian-session FX
+   ranges). Claude compiles `research/sources/known-effects.md` per instrument with citation and
+   rationale before the first batch.
+2. `published-strategy` — expert/published strategies, preferring ones with independent replications.
+   Treated as candidates only; no privilege.
+3. `exploration` — descriptive "what tends to happen after X" tables per instrument on development data
+   only: forward returns (mean, dispersion, count) conditioned on hour/weekday/session, prior move
+   size, gaps, volatility regime, distance from MA, RSI level, and cross-instrument moves (Brent vs WTI,
+   US500 vs US100, gold vs USD pairs, BTC vs ETH). A cell becomes a candidate only if it stands outside
+   the distribution of the same table computed on ≥200 shuffled/placebo datasets.
+4. `owner-comment` — from review pages (§5.3).
+5. `structured-brainstorm` — per-instrument prompts: forced flows (fixes, rebalances, expiries, rolls),
+   cross-instrument relations, regime behaviour, scheduled events. Event-based hypotheses need an
+   economic-calendar dataset; sourcing it is a small task added to step 5 when the first such hypothesis
+   is proposed.
+
+#### 6.2.2 Parameter surfaces (the "big table")
+A hypothesis family may be evaluated over a declared grid (instrument × timeframe × holding style ×
+indicator lengths/levels × exit params). Rules:
+1. **Development data only** (2024-01-01 → 2026-07-31).
+2. **Plateau, not peak:** a configuration is a candidate only if ≥70% of its immediate grid neighbours
+   are also net-positive after costs (and, where declared, related instruments agree). Isolated peaks
+   are recorded as noise.
+3. **Placebo grid:** the identical grid is run on ≥200 placebo datasets (random entries with the same
+   exits/sizing, and shuffled-return series). The best real configuration must exceed the 95th
+   percentile of the best-placebo distribution, else the surface is `rejected: no better than chance`.
+4. Survivors become ledger hypotheses with the grid size recorded as their trial count, then pass G1–G3
+   as normal.
+
+#### 6.2.3 Diagnosis before any verdict
+Each failed or marginal hypothesis is decomposed; the first failing layer sets the status:
+
+| Layer | Test | Status if it fails | Allowed follow-up |
+|-------|------|--------------------|-------------------|
+| 0 Power | Before testing: trades needed to detect the hypothesised edge at 80% power; available trades counted | `inconclusive` | Park until more data exists |
+| 1 Signal | Exit-free: forward-return curve and MFE/MAE after signal vs random entries at matched times, across the declared parameter neighbourhood | `rejected: no signal` | None |
+| 2 Economics | Mean favourable move vs spread + financing | `uneconomic` | Child hypothesis on a longer timeframe or lower-cost instrument |
+| 3 Exits | Declared exits vs fixed-time, trailing and fixed-R alternatives | `exit-problem` | Child hypothesis changing exits only |
+| 4 Stability | Per quarter and per volatility regime | `regime-dependent` | Child hypothesis with a regime filter that must justify itself |
+
+- A **child hypothesis** links to its parent and **inherits the parent's trial count plus one**; the
+  Bonferroni adjustment in G1 uses the cumulative count, so repeated knob-turning raises the bar.
+- `rejected` and `inconclusive` entries keep their diagnosis and may be reopened with new data, which
+  resets nothing about their trial count.
+
+### 6.3 Path to money (after a G2 pass)
 - Risk controls: 1% risk per trade; daily loss stop (default 3%); drawdown circuit breaker (default 15%);
   max concurrent positions and a correlated-exposure cap (e.g. not long both OIL_BRENT and OIL_CRUDE);
   manual kill switch.
@@ -221,5 +281,5 @@ learnings doc stays as history. The deployed Cloudflare dashboard Worker/D1 are 
 owner decides to delete them (outward-facing; needs explicit approval).
 
 ## 8. Out of scope
-MONITOR mode, live order execution, ML models, instruments beyond the 15 listed, optimisation over
-large parameter grids.
+MONITOR mode, live order execution, ML models, instruments beyond the 15 listed, parameter grids that
+skip the plateau and placebo-grid rules of §6.2.2.
