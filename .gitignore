@@ -67,3 +67,9 @@ experiments/marks.json
 # because git cannot re-include a file whose parent directory is excluded.
 dashboard/public/*
 !dashboard/public/.gitkeep
+
+### Python research engine ###
+research/engine/.venv/
+research/engine/**/__pycache__/
+research/engine/*.egg-info/
+research/engine/.pytest_cache/
