@@ -147,6 +147,33 @@ class HistoryUpdateServiceTest {
     }
 
     @Test
+    void resumesAnInterruptedTopUpBeforeStartingANewOne() throws Exception {
+        Path old = directory.resolve(".staging").resolve("US500-MINUTE-interrupted.sqlite");
+        Files.createDirectories(old.getParent());
+        Files.writeString(old, "stage");
+        HistoryImportRequest stored = new HistoryImportRequest("US500", "MINUTE",
+                Instant.parse("2026-08-01T00:00:00Z"), Instant.parse("2026-08-02T00:00:00Z"), old, "capital");
+        imports.retained.put(old, new HistoryImportService.RetainedStage(old,
+                HistoryImportService.RetainedStage.Kind.RESUMABLE, stored));
+
+        service.update("US500", null, null, active, archive);
+
+        assertThat(imports.requests).first().isEqualTo(stored);
+    }
+
+    @Test
+    void quarantinesAStagingFileItCannotResume() throws Exception {
+        Path old = directory.resolve(".staging").resolve("US500-MINUTE-old-algorithm.sqlite");
+        Files.createDirectories(old.getParent());
+        Files.writeString(old, "stage");
+
+        service.update("US500", null, null, active, archive);
+
+        assertThat(old).doesNotExist();
+        assertThat(directory.resolve(".staging").resolve("incompatible").resolve(old.getFileName())).exists();
+    }
+
+    @Test
     void recordsAFailureWithoutAbortingTheOtherInstruments() {
         imports.failFor = "US500";
 
@@ -184,6 +211,12 @@ class HistoryUpdateServiceTest {
         }
 
         private String emptyFor;
+        private final java.util.Map<Path, RetainedStage> retained = new java.util.HashMap<>();
+
+        @Override
+        public RetainedStage inspectRetainedStage(Path staging) {
+            return retained.getOrDefault(staging, new RetainedStage(staging, RetainedStage.Kind.INCOMPATIBLE, null));
+        }
 
         @Override
         public HistoryImportAudit stage(HistoryImportRequest request, Path activeDatabase, Path archive,

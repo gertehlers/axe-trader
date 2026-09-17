@@ -194,6 +194,31 @@ class HistoryImportServiceTest {
     }
 
     @Test
+    void aStageInterruptedByAPagingFailureIsResumable() {
+        RecordingSource source = new RecordingSource(List.of(page(FROM, TO, price("2024-01-01T00:00:30Z"))));
+        HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
+        assertThatThrownBy(() -> service.stage(request(), activeDatabase(), archive()));
+
+        HistoryImportService.RetainedStage retained = service.inspectRetainedStage(request().stagingDatabase());
+
+        assertThat(retained.kind()).isEqualTo(HistoryImportService.RetainedStage.Kind.RESUMABLE);
+        assertThat(retained.request()).isEqualTo(request());
+    }
+
+    @Test
+    void aStageFromAnOlderAlgorithmIsIncompatible() throws Exception {
+        RecordingSource source = new RecordingSource(List.of(page(FROM, TO, price("2024-01-01T00:00:30Z"))));
+        HistoryImportService service = new HistoryImportService(source, new HistoryDatabasePromoter());
+        assertThatThrownBy(() -> service.stage(request(), activeDatabase(), archive()));
+        try (var connection = DriverManager.getConnection("jdbc:sqlite:" + request().stagingDatabase())) {
+            connection.createStatement().execute("UPDATE history_import_run SET algorithm_version = 3");
+        }
+
+        assertThat(service.inspectRetainedStage(request().stagingDatabase()).kind())
+                .isEqualTo(HistoryImportService.RetainedStage.Kind.INCOMPATIBLE);
+    }
+
+    @Test
     void anEmptyWindowStagesCleanlyWhenEmptyIsAllowed() {
         RecordingSource source = new RecordingSource(List.of(page(FROM, TO)));
 

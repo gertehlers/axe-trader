@@ -18,6 +18,7 @@ final class HistoryStagingStoreFixtures {
     static void writeMinimalDelta(HistoryImportRequest request) {
         Path database = request.stagingDatabase();
         try {
+            Files.deleteIfExists(database);
             Files.createDirectories(database.getParent());
         } catch (java.io.IOException exception) {
             throw new IllegalStateException("Could not create the staging directory", exception);

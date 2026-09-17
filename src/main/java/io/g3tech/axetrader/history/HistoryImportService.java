@@ -361,4 +361,36 @@ public class HistoryImportService {
 
     private record CompletedImport(HistoryImportRequest request, String auditFingerprint) {
     }
+
+    /** A staging file left behind by an earlier run, and what can safely be done with it. */
+    public record RetainedStage(Path path, Kind kind, HistoryImportRequest request) {
+        public enum Kind { RESUMABLE, COMPLETED, INCOMPATIBLE }
+    }
+
+    public RetainedStage inspectRetainedStage(Path staging) {
+        String url = "jdbc:sqlite:file:" + staging.toAbsolutePath().normalize() + "?mode=ro";
+        try (Connection connection = DriverManager.getConnection(url); var statement = connection.createStatement()) {
+            boolean completed;
+            try (var rows = statement.executeQuery("""
+                    SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='history_import_completion'
+                    """)) {
+                completed = rows.getLong(1) > 0;
+            }
+            try (var rows = statement.executeQuery("""
+                    SELECT algorithm_version, source, epic, resolution, requested_from_utc, requested_to_utc
+                    FROM history_import_run
+                    """)) {
+                if (!rows.next() || rows.getInt(1) != HistoryStagingStore.ALGORITHM_VERSION) {
+                    return new RetainedStage(staging, RetainedStage.Kind.INCOMPATIBLE, null);
+                }
+                HistoryImportRequest request = new HistoryImportRequest(rows.getString(3), rows.getString(4),
+                        Instant.parse(rows.getString(5)), Instant.parse(rows.getString(6)), staging,
+                        rows.getString(2));
+                return new RetainedStage(staging,
+                        completed ? RetainedStage.Kind.COMPLETED : RetainedStage.Kind.RESUMABLE, request);
+            }
+        } catch (SQLException | RuntimeException unreadable) {
+            return new RetainedStage(staging, RetainedStage.Kind.INCOMPATIBLE, null);
+        }
+    }
 }

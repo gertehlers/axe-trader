@@ -52,9 +52,68 @@ public class HistoryUpdateService {
         Instant now = clock.get();
         List<HistoryUpdateOutcome> outcomes = new ArrayList<>();
         for (HistoryTarget target : targets) {
+            outcomes.addAll(resumeRetained(target, activeDatabase, archive));
             outcomes.add(updateOne(target, configuredFrom, now, activeDatabase, archive));
         }
         return List.copyOf(outcomes);
+    }
+
+    /**
+     * Finishes what an earlier interrupted run left in the staging directory before starting a new
+     * window: resumable stages are completed and merged, completed-but-unmerged stages are merged, and
+     * files from another importer version are moved aside rather than deleted.
+     */
+    private List<HistoryUpdateOutcome> resumeRetained(HistoryTarget target, Path activeDatabase, Path archive) {
+        if (!Files.isDirectory(stagingDirectory)) {
+            return List.of();
+        }
+        String prefix = target.epic() + "-" + target.resolution() + "-";
+        List<Path> retained;
+        try (var files = Files.list(stagingDirectory)) {
+            retained = files.filter(path -> path.getFileName().toString().startsWith(prefix))
+                    .filter(path -> path.getFileName().toString().endsWith(".sqlite"))
+                    .sorted().toList();
+        } catch (IOException exception) {
+            throw new IllegalStateException("Could not list the staging directory " + stagingDirectory, exception);
+        }
+        List<HistoryUpdateOutcome> outcomes = new ArrayList<>();
+        for (Path staging : retained) {
+            HistoryImportService.RetainedStage stage = importService.inspectRetainedStage(staging);
+            try {
+                switch (stage.kind()) {
+                    case INCOMPATIBLE -> quarantine(staging);
+                    case COMPLETED -> {
+                        HistoryDeltaMerger.MergeResult merge = merger.merge(staging, activeDatabase);
+                        deleteStagingArtifacts(staging);
+                        outcomes.add(HistoryUpdateOutcome.merged(target, stage.request().from(),
+                                stage.request().to(), null, merge));
+                    }
+                    case RESUMABLE -> {
+                        HistoryImportAudit audit = importService.stage(stage.request(), activeDatabase, archive, true);
+                        HistoryDeltaMerger.MergeResult merge = merger.merge(staging, activeDatabase);
+                        deleteStagingArtifacts(staging);
+                        outcomes.add(HistoryUpdateOutcome.merged(target, stage.request().from(),
+                                stage.request().to(), audit, merge));
+                    }
+                }
+            } catch (RuntimeException exception) {
+                logger.error("{} {} could not resume {}", target.epic(), target.resolution(), staging, exception);
+                outcomes.add(HistoryUpdateOutcome.failed(target, null, null, exception.getMessage()));
+            }
+        }
+        return outcomes;
+    }
+
+    private void quarantine(Path staging) {
+        Path directory = stagingDirectory.resolve("incompatible");
+        try {
+            Files.createDirectories(directory);
+            Files.move(staging, directory.resolve(staging.getFileName()));
+            Files.deleteIfExists(staging.resolveSibling(staging.getFileName() + ".stage.lock"));
+            logger.warn("Moved staging file {} made by another importer version to {}", staging, directory);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Could not quarantine " + staging, exception);
+        }
     }
 
     /**
