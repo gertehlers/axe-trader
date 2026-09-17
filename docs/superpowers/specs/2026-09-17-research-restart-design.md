@@ -62,7 +62,7 @@ NATURALGAS, GOLD, SILVER, US100, DE40, UK100, J225, EURUSD, GBPUSD, USDJPY, BTCU
 | I3 | Zero-minute update fails (learnings D3) | "Nothing new" (weekend/holiday) exits 0 as `already current` and deletes its staging file. |
 | I4 | Late/revised bars never fetched (learnings D4) | Update window ends 2 minutes before now and re-fetches the last 60 stored minutes; a changed bar replaces the stored one and is logged as a revision. |
 | I5 | No re-auth on expired session (learnings D5) | On 401/403: create a new session once and retry the request. A failed update resumes its existing staging file on the next run instead of starting a new one. |
-| I6 | Unique index not in Flyway; two timestamp formats (learnings D7, D8) | Flyway migration adds the unique index `(source, epic, resolution, snapshot_time_utc)` and ledger tables. One canonical timestamp format `YYYY-MM-DDTHH:MM:SSZ` for every writer. |
+| I6 | Unique index not in Flyway; two timestamp formats (learnings D7, D8) | Flyway migration adds the unique index `(source, epic, resolution, snapshot_time_utc)`. One canonical timestamp format `YYYY-MM-DDTHH:MM:SSZ` for every writer. *(Revised during implementation: the migration does **not** create the ledger tables — existing integration tests pin that the ledger is optional for the application and owned by the importer, which creates it on merge.)* |
 | I7 | Bar time semantics unverified (learnings E11) | Fetch one raw payload, compare `snapshotTimeUTC` with the candle it describes, document whether it is bar open or close in `docs/local-price-history.md`, and add a test pinning the convention. |
 
 Out of scope for step 1: MONITOR mode, WebSocket client (not needed for research; revisit in step 6).

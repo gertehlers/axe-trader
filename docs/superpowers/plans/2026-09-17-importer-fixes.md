@@ -63,7 +63,8 @@ Expected: BUILD SUCCESS. If anything fails before any change, stop and report it
 - Test: `src/test/java/io/g3tech/axetrader/strategy/backtest/repositories/InstantConverterTest.java`
 
 **Interfaces:**
-- Produces: Flyway version `2` creating index `historical_price_source_epic_resolution_timestamp` and tables `history_import_run`, `price_exclusion`, `history_import_page`, `history_import_closure` (same DDL as `HistoryDeltaMerger.LEDGER_SCHEMA`).
+- Produces: Flyway version `2` normalising timestamps and creating index `historical_price_source_epic_resolution_timestamp`.
+- **Implementation note (2026-09-17):** the ledger-table DDL originally listed here was removed from V2 — the full suite showed it broke `PriceExclusionRepositoryIntegrationTest` and `BrokenPriceExclusionLedgerIntegrationTest`, which pin that the ledger is optional for the application and owned by the importer. The migration test asserts `price_exclusion` is *not* created.
 
 Note: import mode disables Flyway, so the live history DB keeps getting this schema from `HistoryDeltaMerger.prepareTarget` (unchanged). V2 protects fresh databases and any JPA writer.
 
