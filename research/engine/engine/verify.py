@@ -7,11 +7,20 @@ import pandas as pd
 
 from engine.sessions import core_minutes, session_ids
 
-MAX_MISSING_CORE_PCT = 0.5
-MAX_GAP_MINUTES = 30
+# Owner decision 2026-09-17: Capital.com's own minute history misses ~2% of trading minutes in every hour
+# (confirmed "prices not found" at the source), so the bar is set to what the data really is and every
+# hole is listed rather than failing the instrument.
+MAX_MISSING_CORE_PCT = 3.0
+HOLE_MINUTES = 30
 MAX_BAD_TICK_PCT = 0.01
 MAX_MISSING_SESSIONS_PER_365D = 15
 MAX_EDGE_GAP_SESSIONS_PER_365D = 20
+# Sessions shorter than this (e.g. US500 21:05-21:59 UTC, a seasonal futures break Capital.com's published
+# hours do not show) are reported but do not count toward the session rules.
+MIN_COUNTED_SESSION_MINUTES = 60
+# Published hours ignore daylight saving and some breaks, so real session boundaries drift by up to an hour.
+# An edge gap longer than this is a genuine early close / late open (holidays); shorter is boundary drift.
+BOUNDARY_DRIFT_MINUTES = 60
 JUMP_MULTIPLE = 20
 # Spike threshold uses the median mid range of the preceding hour; neighbours must be this close in time.
 LOCAL_RANGE_WINDOW = 60
@@ -74,8 +83,10 @@ def verify_instrument(frame: pd.DataFrame, spec: dict, excluded_minutes: int = 0
     present = np.asarray(core.isin(frame.index))
     sessions = session_ids(core)
 
-    per_session = pd.DataFrame({"session": sessions, "present": present}).groupby("session")["present"].sum()
-    empty_sessions = per_session.index[per_session == 0].to_numpy()
+    per_session = pd.DataFrame({"session": sessions, "present": present}).groupby("session")["present"].agg(["sum", "size"])
+    empty_sessions = per_session.index[per_session["sum"] == 0].to_numpy()
+    long_sessions = set(per_session.index[per_session["size"] >= MIN_COUNTED_SESSION_MINUTES].tolist())
+    counted_empty = [s for s in empty_sessions if s in long_sessions]
     in_partial = ~np.isin(sessions, empty_sessions)
 
     partial_minutes = core[in_partial]
@@ -92,18 +103,21 @@ def verify_instrument(frame: pd.DataFrame, spec: dict, excluded_minutes: int = 0
 
     interior_lengths = lengths[interior]
     longest_gap = int(interior_lengths.max()) if len(interior_lengths) else 0
-    ordered = [i for i in np.argsort(-lengths, kind="stable") if interior[i] and lengths[i] > MAX_GAP_MINUTES][:20]
-    long_gaps = [{"from": _iso(partial_minutes[starts[i]]), "to": _iso(partial_minutes[ends[i]] + ONE_MINUTE),
-                  "minutes": int(lengths[i])} for i in ordered]
+    holes = [{"from": _iso(partial_minutes[starts[i]]), "to": _iso(partial_minutes[ends[i]] + ONE_MINUTE),
+              "minutes": int(lengths[i])} for i in np.flatnonzero(interior & (lengths > HOLE_MINUTES))]
+    edge_positions = np.flatnonzero(at_edge)
+    drift_minutes = int(sum(lengths[i] for i in edge_positions if lengths[i] <= BOUNDARY_DRIFT_MINUTES))
+    edge_indexes = [i for i in edge_positions
+                    if lengths[i] > BOUNDARY_DRIFT_MINUTES and int(partial_sessions[starts[i]]) in long_sessions]
     edge_gaps = [{"from": _iso(partial_minutes[starts[i]]), "to": _iso(partial_minutes[ends[i]] + ONE_MINUTE),
-                  "minutes": int(lengths[i])} for i in np.flatnonzero(at_edge)]
-    edge_gap_sessions = len({int(partial_sessions[starts[i]]) for i in np.flatnonzero(at_edge)})
+                  "minutes": int(lengths[i])} for i in edge_indexes]
+    edge_gap_sessions = len({int(partial_sessions[starts[i]]) for i in edge_indexes})
     missing_core = int(interior_lengths.sum())
     missing_pct = 100.0 * missing_core / len(partial_minutes) if len(partial_minutes) else 100.0
 
     session_starts = pd.Series(core).groupby(sessions).first()
     days = max((last - first).total_seconds() / 86400, 1.0)
-    missing_sessions = len(empty_sessions)
+    missing_sessions = len(counted_empty)
     missing_per_year = missing_sessions / days * 365
     edge_per_year = edge_gap_sessions / days * 365
 
@@ -116,8 +130,6 @@ def verify_instrument(frame: pd.DataFrame, spec: dict, excluded_minutes: int = 0
     failures = []
     if missing_pct >= MAX_MISSING_CORE_PCT:
         failures.append("missing_core_pct")
-    if longest_gap > MAX_GAP_MINUTES:
-        failures.append("longest_gap")
     if bad_pct >= MAX_BAD_TICK_PCT:
         failures.append("bad_tick_pct")
     if missing_per_year > MAX_MISSING_SESSIONS_PER_365D:
@@ -134,16 +146,19 @@ def verify_instrument(frame: pd.DataFrame, spec: dict, excluded_minutes: int = 0
         "core_minutes_expected": int(len(core)),
         "edge_gap_sessions": int(edge_gap_sessions),
         "edge_gap_sessions_per_365d": edge_per_year,
-        "edge_gap_minutes": int(lengths[at_edge].sum()) if len(lengths) else 0,
+        "edge_gap_minutes": int(sum(lengths[i] for i in edge_indexes)),
+        "boundary_drift_minutes": drift_minutes,
         "edge_gaps": edge_gaps[:50],
         "partial_session_core_minutes": int(len(partial_minutes)),
         "missing_core_minutes": missing_core,
         "missing_core_pct": missing_pct,
         "longest_gap_minutes": longest_gap,
-        "long_gaps": long_gaps,
+        "holes_over_30m": holes,
+        "holes_over_30m_per_365d": len(holes) / days * 365,
         "missing_sessions": int(missing_sessions),
         "missing_sessions_per_365d": missing_per_year,
-        "missing_session_starts": [_iso(session_starts[s]) for s in empty_sessions][:50],
+        "missing_session_starts": [_iso(session_starts[s]) for s in counted_empty][:50],
+        "short_missing_sessions": int(len(empty_sessions) - len(counted_empty)),
         "bars_outside_core": int((~frame.index.isin(core)).sum()),
         "bad_ticks": bad_count,
         "bad_tick_pct": bad_pct,
@@ -184,6 +199,8 @@ def main(argv: list[str] | None = None) -> None:
         reports[epic] = report
         print(f"{epic:<12} {'PASS' if report['passed'] else 'FAIL'}  rows={report['rows']} "
               f"missing_core={report['missing_core_pct']:.3f}% longest_gap={report['longest_gap_minutes']}m "
+              f"holes>30m/yr={report['holes_over_30m_per_365d']:.1f} "
+              f"edge_sessions/yr={report['edge_gap_sessions_per_365d']:.1f} "
               f"missing_sessions/yr={report['missing_sessions_per_365d']:.1f} "
               f"bad_ticks={report['bad_tick_pct']:.4f}% {report['failures']}")
 
@@ -193,7 +210,10 @@ def main(argv: list[str] | None = None) -> None:
         "db": str(args.db),
         "thresholds": {
             "max_missing_core_pct": MAX_MISSING_CORE_PCT,
-            "max_gap_minutes": MAX_GAP_MINUTES,
+            "hole_minutes": HOLE_MINUTES,
+            "max_edge_gap_sessions_per_365d": MAX_EDGE_GAP_SESSIONS_PER_365D,
+            "min_counted_session_minutes": MIN_COUNTED_SESSION_MINUTES,
+            "boundary_drift_minutes": BOUNDARY_DRIFT_MINUTES,
             "max_bad_tick_pct": MAX_BAD_TICK_PCT,
             "max_missing_sessions_per_365d": MAX_MISSING_SESSIONS_PER_365D,
             "jump_multiple": JUMP_MULTIPLE,

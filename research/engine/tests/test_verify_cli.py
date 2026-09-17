@@ -21,6 +21,6 @@ def test_writes_a_report_for_each_requested_epic(db_factory, tmp_path, capsys):
     report = json.loads(out.read_text())
     assert report["instruments"]["TEST"]["passed"] is True
     assert report["instruments"]["EMPTY"]["failures"] == ["no_data"]
-    assert report["thresholds"]["max_gap_minutes"] == 30
+    assert report["thresholds"]["hole_minutes"] == 30
     printed = capsys.readouterr().out
     assert "TEST" in printed and "PASS" in printed and "EMPTY" in printed and "FAIL" in printed

@@ -93,10 +93,17 @@ market behaviour:*
 - *A **bad tick** from price movement is a **reverting spike** (away from both neighbours by > 20× the
   previous hour's median range and back); persistent moves (news, weekend reopen) are not bad ticks.
   Crossed bid/ask and non-positive prices still always count.*
-- ***Under review with the owner:** real data has 1–2% of core minutes missing in every hour (not just
-  around breaks), and Capital.com's published hours miss seasonal breaks (US500 21:05–22:00 UTC has bars
-  on only 411 of 848 days). The 0.5% missing-minute threshold and the missing-session rule are not yet
-  settled.* The report is published as an
+- ***Owner decision (accept and handle honestly):** Capital.com's own history has ~2% of core minutes
+  missing in every hour — re-requesting flagged holes returns `error.prices.not-found`, so no re-import can
+  fill them. Rules now: missing core minutes **< 3%**; every interior hole > 30 min is **listed with a
+  per-year rate but does not fail** the instrument; prices are never invented — the engine flags or skips
+  trades touching incomplete bars (§3.1).*
+- *Capital.com's published hours ignore daylight saving and some breaks (US500 21:05–22:00 UTC has bars on
+  only 411 of 848 days; US500 reopens 23:00 not 22:05 in winter). So: an edge gap counts as an early close /
+  late open only if **> 60 minutes**, shorter edge gaps are reported as boundary drift; sessions **shorter
+  than 60 core minutes** are reported but excluded from the missing-session and edge-gap rules.*
+- *First result (2026-09-17): US500, OIL_BRENT, OIL_CRUDE pass — missing core 1.7–2.3%, holes > 30 min
+  1.5–7.4/yr, early closes 1.5–8.1/yr, missing sessions 2.6–3.0/yr (Christmas, New Year, Good Friday).* The report is published as an
 Artifact page and its summary stored at `research/data-quality/<date>.json`.
 
 Imports running during this design continue; ranges affected by I1/I2/I4 are re-imported after the
