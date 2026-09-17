@@ -116,3 +116,54 @@ def verify_instrument(frame: pd.DataFrame, spec: dict, excluded_minutes: int = 0
         "passed": not failures,
         "failures": failures,
     }
+
+
+def main(argv: list[str] | None = None) -> None:
+    import argparse
+    import json
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    from engine.data import excluded_minute_count, load_minutes
+    from engine.instruments import load_instruments
+
+    parser = argparse.ArgumentParser(description="Verify minute history per instrument")
+    parser.add_argument("--db", type=Path, required=True)
+    parser.add_argument("--instruments", type=Path, required=True)
+    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--epic", action="append", dest="epics")
+    args = parser.parse_args(argv)
+
+    specs = load_instruments(args.instruments)
+    epics = args.epics or sorted(specs)
+    reports = {}
+    for epic in epics:
+        frame = load_minutes(args.db, epic)
+        if frame.empty:
+            reports[epic] = {"epic": epic, "passed": False, "failures": ["no_data"]}
+            print(f"{epic:<12} FAIL  no data")
+            continue
+        report = verify_instrument(frame, specs[epic], excluded_minute_count(args.db, epic))
+        reports[epic] = report
+        print(f"{epic:<12} {'PASS' if report['passed'] else 'FAIL'}  rows={report['rows']} "
+              f"missing_core={report['missing_core_pct']:.3f}% longest_gap={report['longest_gap_minutes']}m "
+              f"missing_sessions/yr={report['missing_sessions_per_365d']:.1f} "
+              f"bad_ticks={report['bad_tick_pct']:.4f}% {report['failures']}")
+
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps({
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "db": str(args.db),
+        "thresholds": {
+            "max_missing_core_pct": MAX_MISSING_CORE_PCT,
+            "max_gap_minutes": MAX_GAP_MINUTES,
+            "max_bad_tick_pct": MAX_BAD_TICK_PCT,
+            "max_missing_sessions_per_365d": MAX_MISSING_SESSIONS_PER_365D,
+            "jump_multiple": JUMP_MULTIPLE,
+        },
+        "instruments": reports,
+    }, indent=2))
+
+
+if __name__ == "__main__":
+    main()
