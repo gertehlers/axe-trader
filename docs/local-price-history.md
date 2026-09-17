@@ -14,10 +14,9 @@ the active database wholesale — reach for it only when the existing data is un
 
 ## Update
 
-`update` imports every minute between an instrument's last stored bar and the last completed UTC
-minute. The in-progress minute is deliberately excluded, since a partial candle would be stored once
-and never revisited. Cursors are derived from `MAX(snapshot_time_utc)` per source/epic/resolution, so
-there is no cursor state to keep in sync and an interrupted run simply resumes with a shorter window.
+`update` imports from one hour before an instrument's last stored bar up to two minutes before now
+(see "Behaviour after the 2026-09 importer fixes" below). Cursors are derived from
+`MAX(snapshot_time_utc)` per source/epic/resolution, so there is no cursor state to keep in sync.
 
 ```bash
 # Top up every stored instrument from its own cursor.
@@ -34,16 +33,42 @@ Each delta stages into its own file under `data/.staging/`, is audited by the sa
 promotion, and is only then merged into `data/axe-trader.sqlite` inside a single transaction. Dirty
 source candles never enter `historical_price`; they are recorded in `price_exclusion` with a reason
 and reported in the run summary, and they do **not** block the merge. Duplicates, counts that fail to
-reconcile, and unexplained continuity gaps do block it. Empty and 404 provider windows are recognised
-session closures — weekend and holiday top-ups are the ordinary case, not a failure.
+reconcile, and unexplained continuity gaps do block it. Intervals where Capital.com returned nothing
+are recorded but are **not** treated as market closures (see below).
 
-A failed instrument does not abort the others, but the process exits non-zero and **leaves its
-staging file under `data/.staging/` as evidence**. Delete it only after you have read it. Rerunning
-`update` is always safe: the merge is idempotent against the unique index on
+A failed instrument does not abort the others, but the process exits non-zero and leaves its staging
+file under `data/.staging/`; the next `update` for that instrument resumes it first. Rerunning `update`
+is always safe: the merge is idempotent against the unique index on
 `(source, epic, resolution, snapshot_time_utc)`.
 
-Seeding fails closed. An instrument with no stored rows has no cursor, so `update` refuses to guess a
-start date and requires an explicit `from` and `resolution`.
+Seeding fails closed. An instrument with no stored rows has no cursor, so `update` requires an explicit
+`from` and `resolution`, checks the epic exists, and probes where its history really starts.
+
+## Behaviour after the 2026-09 importer fixes
+
+- **Empty intervals are not closures.** Intervals for which Capital.com returned no bars are stored in
+  `history_import_closure` with provenance `EMPTY_BASE`, `EMPTY_REFETCH`, `NOT_FOUND_BASE` or
+  `NOT_FOUND_REFETCH` (empty body vs HTTP 404, × a base 999-minute page vs a re-fetch of missing minutes
+  inside a page that had data). The provider response cannot tell a market closure from a data hole,
+  so closure classification lives in the research engine's data verification report, which uses
+  Capital.com trading hours. Rows written before this change carry `CAPITAL_EMPTY_OR_404`.
+- **Seeding** requires the epic to exist (`GET /markets/{epic}`; an unknown epic fails with
+  `Unknown epic at Capital.com`). The seed then starts at the history-start probe result: weekly
+  Wednesday 12:00 UTC probe windows from the configured `from`; the seed begins at the Monday 00:00 UTC
+  of the first week with data that is followed by another week with data, never before `from`.
+- **Top-ups** end 2 minutes before now and re-fetch the last 60 stored minutes. A re-fetched bar whose
+  values changed replaces the stored one and is recorded in `price_revision` (old and new values as
+  JSON arrays). The run log shows `revised=`.
+- **Nothing new** (e.g. a weekend) is not a failure: the run exits 0 and leaves no staging files.
+- **Expired sessions**: a 401/403 during a fetch re-creates the session once and retries.
+- **Retained staging files** for an instrument are handled before its next top-up: resumable stages are
+  completed and merged, completed-but-unmerged stages are merged, and files from another importer
+  version are moved to `data/.staging/incompatible/`.
+- **Bar timestamps** are the bar's **open** minute in UTC. Evidence (demo API, 2026-09-17): a request
+  `from=12:00, to=12:02` returned bars stamped 12:00, 12:01 and 12:02.
+- **Running from a worktree** that is not where the database lives: add
+  `--axe-trader.history-import.active-database=<db> --axe-trader.history-import.archive=<db>.gz
+  --axe-trader.history-import.staging-directory=<data dir>/.staging`.
 
 ## Report
 
