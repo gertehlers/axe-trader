@@ -7,7 +7,8 @@ public record ImportedPage(
         Instant requestedFrom,
         Instant requestedTo,
         List<ImportedPrice> prices,
-        String payloadHash
+        String payloadHash,
+        boolean providerNotFound
 ) {
 
     public ImportedPage {
@@ -18,5 +19,12 @@ public record ImportedPage(
         if (payloadHash == null || payloadHash.isBlank()) {
             throw new IllegalArgumentException("payloadHash must be configured");
         }
+        if (providerNotFound && !prices.isEmpty()) {
+            throw new IllegalArgumentException("A not-found page cannot carry prices");
+        }
+    }
+
+    public ImportedPage(Instant requestedFrom, Instant requestedTo, List<ImportedPrice> prices, String payloadHash) {
+        this(requestedFrom, requestedTo, prices, payloadHash, false);
     }
 }

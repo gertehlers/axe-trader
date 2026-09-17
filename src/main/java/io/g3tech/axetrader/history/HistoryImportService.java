@@ -136,7 +136,7 @@ public class HistoryImportService {
             }
             normalized.add(price);
         }
-        return new ImportedPage(fromInclusive, toExclusive, normalized, page.payloadHash());
+        return new ImportedPage(fromInclusive, toExclusive, normalized, page.payloadHash(), page.providerNotFound());
     }
 
     private static Instant boundedTo(Instant fromInclusive, Instant requestedTo) {

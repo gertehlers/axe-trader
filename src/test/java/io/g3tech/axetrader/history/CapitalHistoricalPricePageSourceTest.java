@@ -119,6 +119,15 @@ class CapitalHistoricalPricePageSourceTest {
         ImportedPage page = source.fetch(REQUEST, FROM, TO, 1_000);
 
         assertThat(page.prices()).isEmpty();
+        assertThat(page.providerNotFound()).isTrue();
+    }
+
+    @Test
+    void marksAnOrdinaryResponseAsFound() {
+        CapitalHistoricalPricePageSource source = new CapitalHistoricalPricePageSource(
+                new StubAuthenticationClient(), new StubApiClient(response()));
+
+        assertThat(source.fetch(REQUEST, FROM, TO, 1_000).providerNotFound()).isFalse();
     }
 
     @Test

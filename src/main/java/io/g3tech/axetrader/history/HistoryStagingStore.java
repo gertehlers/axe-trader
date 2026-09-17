@@ -27,7 +27,10 @@ import java.util.UUID;
 
 public final class HistoryStagingStore implements AutoCloseable {
 
-    static final int ALGORITHM_VERSION = 3;
+    static final int ALGORITHM_VERSION = 4;
+
+    static final Set<String> EMPTY_PROVENANCES =
+            Set.of("EMPTY_BASE", "EMPTY_REFETCH", "NOT_FOUND_BASE", "NOT_FOUND_REFETCH");
 
     private static final String INSERT_PAGE = """
             INSERT INTO history_import_page (
@@ -175,14 +178,14 @@ public final class HistoryStagingStore implements AutoCloseable {
     WorkItem nextPending() {
         requireStageOwner();
         String sql = """
-                SELECT work_id, requested_from_utc, requested_to_utc
+                SELECT work_id, requested_from_utc, requested_to_utc, origin
                 FROM history_import_work WHERE import_run_id = ? AND state = 'PENDING' ORDER BY work_id LIMIT 1
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, stageRunId);
             try (var rows = statement.executeQuery()) {
                 return rows.next() ? new WorkItem(rows.getLong(1), stageRunId, Instant.parse(rows.getString(2)),
-                        Instant.parse(rows.getString(3))) : null;
+                        Instant.parse(rows.getString(3)), rows.getString(4)) : null;
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Could not read pending history interval", exception);
@@ -213,7 +216,7 @@ public final class HistoryStagingStore implements AutoCloseable {
             }
             writePageInTransaction(page, request, validated);
             if (page.prices().isEmpty()) {
-                insertClosure(work, request, page.payloadHash());
+                insertClosure(work, request, page);
             } else {
                 enqueueMissingRuns(work, request, observed);
             }
@@ -345,7 +348,7 @@ public final class HistoryStagingStore implements AutoCloseable {
 
     public record PriceExclusion(String snapshotTimeUtc, String reason) { }
 
-    record WorkItem(long id, String importRunId, Instant fromInclusive, Instant toExclusive) { }
+    record WorkItem(long id, String importRunId, Instant fromInclusive, Instant toExclusive, String origin) { }
 
     private void initializeRun(HistoryImportRequest request, Duration baseWindow) throws SQLException {
         connection.setAutoCommit(false);
@@ -370,7 +373,7 @@ public final class HistoryStagingStore implements AutoCloseable {
             for (Instant from = request.from(); from.isBefore(request.to()); ) {
                 Instant candidate = from.plus(baseWindow);
                 Instant to = candidate.isBefore(request.to()) ? candidate : request.to();
-                insertWork(request, from, to);
+                insertWork(request, from, to, "BASE");
                 from = to;
             }
             connection.commit();
@@ -502,7 +505,7 @@ public final class HistoryStagingStore implements AutoCloseable {
         for (Instant minute = work.fromInclusive(); minute.isBefore(work.toExclusive()); minute = minute.plusSeconds(60)) {
             if (observed.contains(minute)) {
                 if (gapStart != null) {
-                    insertWork(request, gapStart, minute);
+                    insertWork(request, gapStart, minute, "REFETCH");
                     gapStart = null;
                 }
             } else if (gapStart == null) {
@@ -510,35 +513,38 @@ public final class HistoryStagingStore implements AutoCloseable {
             }
         }
         if (gapStart != null) {
-            insertWork(request, gapStart, work.toExclusive());
+            insertWork(request, gapStart, work.toExclusive(), "REFETCH");
         }
     }
 
-    private void insertWork(HistoryImportRequest request, Instant from, Instant to) throws SQLException {
+    private void insertWork(HistoryImportRequest request, Instant from, Instant to, String origin) throws SQLException {
         String sql = """
                 INSERT OR IGNORE INTO history_import_work (
-                    import_run_id, requested_from_utc, requested_to_utc, state)
-                VALUES (?, ?, ?, 'PENDING')
+                    import_run_id, requested_from_utc, requested_to_utc, state, origin)
+                VALUES (?, ?, ?, 'PENDING', ?)
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, importRunId(request));
             statement.setString(2, from.toString());
             statement.setString(3, to.toString());
+            statement.setString(4, origin);
             statement.executeUpdate();
         }
     }
 
-    private void insertClosure(WorkItem work, HistoryImportRequest request, String payloadHash) throws SQLException {
+    private void insertClosure(WorkItem work, HistoryImportRequest request, ImportedPage page) throws SQLException {
+        String provenance = (page.providerNotFound() ? "NOT_FOUND_" : "EMPTY_") + work.origin();
         String sql = """
                 INSERT OR IGNORE INTO history_import_closure (
                     import_run_id, from_utc, to_utc, provenance, payload_hash)
-                VALUES (?, ?, ?, 'CAPITAL_EMPTY_OR_404', ?)
+                VALUES (?, ?, ?, ?, ?)
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, importRunId(request));
             statement.setString(2, work.fromInclusive().toString());
             statement.setString(3, work.toExclusive().toString());
-            statement.setString(4, payloadHash);
+            statement.setString(4, provenance);
+            statement.setString(5, page.payloadHash());
             statement.executeUpdate();
         }
     }
@@ -660,7 +666,7 @@ public final class HistoryStagingStore implements AutoCloseable {
                         String provenance = rows.getString(3);
                         String closureHash = rows.getString(4);
                         String pageHash = rows.getString(5);
-                        if (!"CAPITAL_EMPTY_OR_404".equals(provenance)) {
+                        if (!EMPTY_PROVENANCES.contains(provenance)) {
                             throw new IllegalStateException("Unsupported closure provenance: " + provenance);
                         }
                         if (closureHash == null || !closureHash.equals(pageHash)
@@ -903,7 +909,8 @@ public final class HistoryStagingStore implements AutoCloseable {
                     CREATE TABLE IF NOT EXISTS history_import_work (
                       work_id INTEGER PRIMARY KEY AUTOINCREMENT, import_run_id TEXT NOT NULL,
                       requested_from_utc TEXT NOT NULL, requested_to_utc TEXT NOT NULL,
-                      state TEXT NOT NULL CHECK (state IN ('PENDING','PROCESSED')), last_error TEXT,
+                      state TEXT NOT NULL CHECK (state IN ('PENDING','PROCESSED')),
+                      origin TEXT NOT NULL DEFAULT 'BASE' CHECK (origin IN ('BASE','REFETCH')), last_error TEXT,
                       last_attempt_utc TEXT,
                       UNIQUE (import_run_id, requested_from_utc, requested_to_utc),
                       FOREIGN KEY (import_run_id) REFERENCES history_import_run(import_run_id))

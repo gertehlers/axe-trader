@@ -189,7 +189,28 @@ class HistoryImportServiceTest {
         assertThat(audit.duplicateCount()).isZero();
         assertThat(audit.providerEmptyMinuteCount()).isEqualTo(2);
         assertThat(audit.providerEmptyIntervals())
-                .allSatisfy(closure -> assertThat(closure.provenance()).isEqualTo("CAPITAL_EMPTY_OR_404"));
+                .allSatisfy(closure -> assertThat(closure.provenance()).isEqualTo("EMPTY_REFETCH"));
+        assertThat(audit.isConsistent()).isTrue();
+    }
+
+    @Test
+    void labelsEmptyIntervalsByWorkOriginAndProviderAnswer() {
+        Instant firstWindowEnd = FROM.plusSeconds(999 * 60L);
+        Instant end = FROM.plusSeconds(1_000 * 60L);
+        HistoryImportRequest request = new HistoryImportRequest("US500", "MINUTE", FROM, end,
+                tempDir.resolve("labels-stage.sqlite"), "capital");
+        ScriptedSource source = new ScriptedSource(Map.of(
+                new Interval(FROM, firstWindowEnd), page(FROM, firstWindowEnd, price("2024-01-01T00:00:00Z")),
+                new Interval(FROM.plusSeconds(60), firstWindowEnd),
+                new ImportedPage(FROM.plusSeconds(60), firstWindowEnd, List.of(), "not-found-refetch", true),
+                new Interval(firstWindowEnd, end), page(firstWindowEnd, end)));
+
+        HistoryImportAudit audit = new HistoryImportService(source, new HistoryDatabasePromoter())
+                .stage(request, activeDatabase(), archive());
+
+        assertThat(audit.providerEmptyIntervals())
+                .extracting(HistoryCoverageGap::provenance)
+                .containsExactlyInAnyOrder("NOT_FOUND_REFETCH", "EMPTY_BASE");
         assertThat(audit.isConsistent()).isTrue();
     }
 

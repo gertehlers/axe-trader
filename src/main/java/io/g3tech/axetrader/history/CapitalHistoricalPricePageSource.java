@@ -93,7 +93,7 @@ public class CapitalHistoricalPricePageSource implements HistoricalPricePageSour
                 fetchWithRetry(request, fromInclusive, toExclusive, maxBars);
         if (response == null) {
             return new ImportedPage(fromInclusive, toExclusive, List.of(),
-                    hashPage(fromInclusive, toExclusive, List.of()));
+                    hashPage(fromInclusive, toExclusive, List.of()), true);
         }
         var returnedPrices = response.prices() == null ? List.<PricesItem>of() : response.prices();
         var inPagePrices = returnedPrices.stream().filter(price -> {
