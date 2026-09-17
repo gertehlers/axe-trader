@@ -63,6 +63,13 @@ The pass rule is applied to each family with support and resistance tests **comb
 (clarified before the first run). Per-side, per-sub-level (prior high/low/close) and `x00` rows
 are informational only and cannot rescue a failing family.
 
+## Outcome (2026-09-17, first and only run)
+
+**All three families fail.** See `RESULTS.md`. At R = 1.0 A, real and placebo bounce rates
+differ by at most 0.6 pp in either period; every rate sits at 48–50%, as a random walk would.
+The only CI that clears zero (pivots in 2024–2025, +0.6 pp) is a fifth of the required effect
+and reverses in 2026. On this definition of S/R, the levels carry no bounce edge on US500.
+
 A family **passes** only if, at R = 1.0 A, on **both** periods, the CI lower bound is above 0
 **and** the effect is at least **+3 percentage points**. Anything else is a fail, including a
 pass on one period only. No re-definition to rescue a fail.
