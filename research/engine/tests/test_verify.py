@@ -55,6 +55,35 @@ def test_dirty_week_fails_on_every_rule():
     assert report["passed"] is False
 
 
+def weekdays(start, weeks):
+    days = pd.date_range(start, periods=weeks * 7, freq="D")
+    return [d.strftime("%Y-%m-%d") for d in days if d.dayofweek < 5]
+
+
+def test_an_early_close_is_an_edge_gap_not_an_interior_gap():
+    days = weekdays("2024-01-01", 2)
+    minutes = (sum((core_hour(d) for d in days[:4]), []) + core_hour(days[4])[:20]  # Friday closes at 11:20
+               + core_hour(days[5]))
+
+    report = verify_instrument(frame(minutes), SPEC)
+
+    assert report["edge_gap_sessions"] == 1
+    assert report["longest_gap_minutes"] == 0
+    assert "longest_gap" not in report["failures"]
+
+
+def test_a_persistent_news_move_is_not_a_bad_tick():
+    minutes = core_hour("2024-01-01")
+    data = frame(minutes)
+    after = data.index >= pd.Timestamp("2024-01-01 11:30", tz="UTC")
+    data.loc[after, ["open_bid", "close_bid", "high_bid", "low_bid"]] += 50
+    data.loc[after, ["open_ask", "close_ask", "high_ask", "low_ask"]] += 50
+
+    report = verify_instrument(data, SPEC)
+
+    assert report["bad_ticks"] == 0
+
+
 def test_price_jump_counts_as_a_bad_tick():
     minutes = core_hour("2024-01-01")
     data = frame(minutes)

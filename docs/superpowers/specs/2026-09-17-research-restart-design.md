@@ -83,7 +83,20 @@ session with **zero** bars is a *missing session* (typically a holiday), counted
 
 **Pass thresholds (per instrument):** missing core minutes < 0.5% (excluding missing sessions); longest
 gap inside a partially present session ≤ 30 minutes; bad ticks < 0.01% of minutes; missing sessions
-≤ 15 per 365 days. Failing instruments are excluded from research until fixed or re-imported. The report is published as an
+≤ 15 per 365 days. Failing instruments are excluded from research until fixed or re-imported.
+
+*Revised 2026-09-17 after the first real run (US500, OIL_BRENT), because the rules above flagged normal
+market behaviour:*
+- *A gap touching a session's first or last minute is an **edge gap** (holiday early close / late open),
+  listed separately and capped at 20 sessions per 365 days; only interior gaps count toward missing
+  minutes and the 30-minute rule.*
+- *A **bad tick** from price movement is a **reverting spike** (away from both neighbours by > 20× the
+  previous hour's median range and back); persistent moves (news, weekend reopen) are not bad ticks.
+  Crossed bid/ask and non-positive prices still always count.*
+- ***Under review with the owner:** real data has 1–2% of core minutes missing in every hour (not just
+  around breaks), and Capital.com's published hours miss seasonal breaks (US500 21:05–22:00 UTC has bars
+  on only 411 of 848 days). The 0.5% missing-minute threshold and the missing-session rule are not yet
+  settled.* The report is published as an
 Artifact page and its summary stored at `research/data-quality/<date>.json`.
 
 Imports running during this design continue; ranges affected by I1/I2/I4 are re-imported after the

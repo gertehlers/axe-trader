@@ -11,7 +11,11 @@ MAX_MISSING_CORE_PCT = 0.5
 MAX_GAP_MINUTES = 30
 MAX_BAD_TICK_PCT = 0.01
 MAX_MISSING_SESSIONS_PER_365D = 15
+MAX_EDGE_GAP_SESSIONS_PER_365D = 20
 JUMP_MULTIPLE = 20
+# Spike threshold uses the median mid range of the preceding hour; neighbours must be this close in time.
+LOCAL_RANGE_WINDOW = 60
+MAX_NEIGHBOUR_MINUTES = 5
 
 PAIRS = [("open_bid", "open_ask"), ("high_bid", "high_ask"), ("low_bid", "low_ask"), ("close_bid", "close_ask")]
 ONE_MINUTE = pd.Timedelta(minutes=1)
@@ -26,14 +30,27 @@ def _bad_ticks(frame: pd.DataFrame) -> pd.Series:
     for bid, ask in PAIRS:
         crossed |= (frame[bid] > frame[ask]).to_numpy()
     non_positive = (frame[[c for pair in PAIRS for c in pair]] <= 0).any(axis=1).to_numpy()
-    mid_close = (frame["close_bid"] + frame["close_ask"]) / 2
+    return pd.Series(crossed | non_positive | _reverting_spikes(frame), index=frame.index)
+
+
+def _reverting_spikes(frame: pd.DataFrame) -> np.ndarray:
+    """A bar whose mid close jumps away from both neighbours and snaps back.
+
+    A persistent move (news, a weekend reopening) is real price action, not a bad tick, so it never counts.
+    """
+    mid = (frame["close_bid"] + frame["close_ask"]) / 2
     mid_range = ((frame["high_bid"] + frame["high_ask"]) - (frame["low_bid"] + frame["low_ask"])) / 2
-    positive_ranges = mid_range[mid_range > 0]
-    jumps = np.zeros(len(frame), dtype=bool)
-    if len(positive_ranges):
-        threshold = JUMP_MULTIPLE * positive_ranges.median()
-        jumps = (mid_close.diff().abs() > threshold).to_numpy()
-    return pd.Series(crossed | non_positive | jumps, index=frame.index)
+    positive = mid_range.where(mid_range > 0)
+    local = positive.rolling(LOCAL_RANGE_WINDOW, min_periods=10).median().shift(1)
+    threshold = JUMP_MULTIPLE * local.fillna(positive.median())
+    previous, following = mid.shift(1), mid.shift(-1)
+    away, back = mid - previous, following - mid
+    times = frame.index.to_series()
+    near = pd.Timedelta(minutes=MAX_NEIGHBOUR_MINUTES)
+    neighbours_close = ((times - times.shift(1)) <= near) & ((times.shift(-1) - times) <= near)
+    spike = ((away.abs() > threshold) & (back.abs() > threshold) & (np.sign(away) != np.sign(back))
+             & ((following - previous).abs() < 0.5 * away.abs()) & neighbours_close.to_numpy())
+    return spike.fillna(False).to_numpy(dtype=bool)
 
 
 def _missing_runs(missing: np.ndarray, minutes: pd.DatetimeIndex, sessions: np.ndarray):
@@ -54,8 +71,8 @@ def verify_instrument(frame: pd.DataFrame, spec: dict, excluded_minutes: int = 0
     hours = spec["opening_hours"]
     first, last = frame.index.min(), frame.index.max()
     core = core_minutes(first.floor("D"), last, hours)
-    sessions = session_ids(core)
     present = np.asarray(core.isin(frame.index))
+    sessions = session_ids(core)
 
     per_session = pd.DataFrame({"session": sessions, "present": present}).groupby("session")["present"].sum()
     empty_sessions = per_session.index[per_session == 0].to_numpy()
@@ -63,18 +80,32 @@ def verify_instrument(frame: pd.DataFrame, spec: dict, excluded_minutes: int = 0
 
     partial_minutes = core[in_partial]
     partial_missing = ~present[in_partial]
-    starts, ends, lengths = _missing_runs(partial_missing, partial_minutes, sessions[in_partial])
-    longest_gap = int(lengths.max()) if len(lengths) else 0
-    long_runs = np.argsort(-lengths, kind="stable")[: 20]
+    partial_sessions = sessions[in_partial]
+    starts, ends, lengths = _missing_runs(partial_missing, partial_minutes, partial_sessions)
+
+    # A run touching its session's first or last minute is a late open or early close (holidays), not a hole.
+    boundary = partial_sessions[1:] != partial_sessions[:-1]
+    session_first = np.concatenate([[True], boundary])
+    session_last = np.concatenate([boundary, [True]])
+    at_edge = session_first[starts] | session_last[ends] if len(starts) else np.array([], dtype=bool)
+    interior = ~at_edge
+
+    interior_lengths = lengths[interior]
+    longest_gap = int(interior_lengths.max()) if len(interior_lengths) else 0
+    ordered = [i for i in np.argsort(-lengths, kind="stable") if interior[i] and lengths[i] > MAX_GAP_MINUTES][:20]
     long_gaps = [{"from": _iso(partial_minutes[starts[i]]), "to": _iso(partial_minutes[ends[i]] + ONE_MINUTE),
-                  "minutes": int(lengths[i])} for i in long_runs if lengths[i] > MAX_GAP_MINUTES]
-    missing_core = int(partial_missing.sum())
+                  "minutes": int(lengths[i])} for i in ordered]
+    edge_gaps = [{"from": _iso(partial_minutes[starts[i]]), "to": _iso(partial_minutes[ends[i]] + ONE_MINUTE),
+                  "minutes": int(lengths[i])} for i in np.flatnonzero(at_edge)]
+    edge_gap_sessions = len({int(partial_sessions[starts[i]]) for i in np.flatnonzero(at_edge)})
+    missing_core = int(interior_lengths.sum())
     missing_pct = 100.0 * missing_core / len(partial_minutes) if len(partial_minutes) else 100.0
 
     session_starts = pd.Series(core).groupby(sessions).first()
     days = max((last - first).total_seconds() / 86400, 1.0)
     missing_sessions = len(empty_sessions)
     missing_per_year = missing_sessions / days * 365
+    edge_per_year = edge_gap_sessions / days * 365
 
     bad = _bad_ticks(frame)
     bad_count = int(bad.sum())
@@ -91,6 +122,8 @@ def verify_instrument(frame: pd.DataFrame, spec: dict, excluded_minutes: int = 0
         failures.append("bad_tick_pct")
     if missing_per_year > MAX_MISSING_SESSIONS_PER_365D:
         failures.append("missing_sessions")
+    if edge_per_year > MAX_EDGE_GAP_SESSIONS_PER_365D:
+        failures.append("edge_gap_sessions")
 
     return {
         "epic": spec["epic"],
@@ -99,6 +132,10 @@ def verify_instrument(frame: pd.DataFrame, spec: dict, excluded_minutes: int = 0
         "rows": int(len(frame)),
         "excluded_minutes": int(excluded_minutes),
         "core_minutes_expected": int(len(core)),
+        "edge_gap_sessions": int(edge_gap_sessions),
+        "edge_gap_sessions_per_365d": edge_per_year,
+        "edge_gap_minutes": int(lengths[at_edge].sum()) if len(lengths) else 0,
+        "edge_gaps": edge_gaps[:50],
         "partial_session_core_minutes": int(len(partial_minutes)),
         "missing_core_minutes": missing_core,
         "missing_core_pct": missing_pct,
