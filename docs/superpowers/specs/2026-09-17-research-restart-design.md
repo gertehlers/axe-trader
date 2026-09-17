@@ -57,8 +57,8 @@ NATURALGAS, GOLD, SILVER, US100, DE40, UK100, J225, EURUSD, GBPUSD, USDJPY, BTCU
 
 | ID | Problem (see learnings §4) | Required behaviour |
 |----|---------------------------|--------------------|
-| I1 | Missing minutes inside a page recorded as session closures (learnings D1) | A minute missing inside a window that returned other data is recorded as a **gap** with its own type. Only a whole requested window with no data may be a closure. Existing closure rows are reclassified by a one-off migration using the same rule. |
-| I2 | Every 404 treated as closure (learnings D2) | Unknown epic → fail the run with a clear error before staging. Seeding runs a **history-start probe** that finds the first available minute; the seed window starts there. A 404 inside an otherwise-populated range is a gap, not a closure. |
+| I1 | Missing minutes inside a page recorded as session closures (learnings D1) | The importer **stops classifying** empty intervals as closures: the provider response cannot tell a market closure from a data hole (real closures, e.g. US500's daily break, sit inside 999-minute windows that contain data). Each empty interval is recorded neutrally with provenance `EMPTY_BASE`, `EMPTY_REFETCH`, `NOT_FOUND_BASE` or `NOT_FOUND_REFETCH` (provider answer × whether the window was a base page or a re-fetch of missing minutes). Closure-vs-gap classification moves to the data verification report (§2.2), which uses Capital.com trading hours. Existing `CAPITAL_EMPTY_OR_404` rows are left as history. *(Revised 2026-09-17 while planning; original wording assumed the response could decide.)* |
+| I2 | Every 404 treated as closure (learnings D2) | Unknown epic (market-details lookup fails) → the seed fails with a clear error before staging. Seeding runs a **history-start probe**: weekly Wednesday 12:00 UTC probe windows from the configured start; the seed starts at the Monday 00:00 UTC of the first week that has data and is followed by a week with data (never before the configured start). |
 | I3 | Zero-minute update fails (learnings D3) | "Nothing new" (weekend/holiday) exits 0 as `already current` and deletes its staging file. |
 | I4 | Late/revised bars never fetched (learnings D4) | Update window ends 2 minutes before now and re-fetches the last 60 stored minutes; a changed bar replaces the stored one and is logged as a revision. |
 | I5 | No re-auth on expired session (learnings D5) | On 401/403: create a new session once and retry the request. A failed update resumes its existing staging file on the next run instead of starting a new one. |
@@ -76,9 +76,14 @@ Out of scope for step 1: MONITOR mode, WebSocket client (not needed for research
 - bad ticks: bid > ask, zero/negative prices, jumps > 20× median 1-min range;
 - spread distribution by hour of day; volume present/zero share.
 
-**Pass thresholds (per instrument):** in-session missing minutes < 0.5%; no gap > 30 in-session
-minutes unless it matches a documented market halt; bad ticks < 0.01% of minutes. Failing
-instruments are excluded from research until fixed or re-imported. The report is published as an
+**Expected minutes ("core session"):** Capital.com returns *current* trading hours in UTC, which
+shift by one hour with daylight saving. A minute is expected only if it is open under the fetched
+hours **and** under the same hours shifted by +60 minutes, so DST never manufactures gaps. A core
+session with **zero** bars is a *missing session* (typically a holiday), counted separately.
+
+**Pass thresholds (per instrument):** missing core minutes < 0.5% (excluding missing sessions); longest
+gap inside a partially present session ≤ 30 minutes; bad ticks < 0.01% of minutes; missing sessions
+≤ 15 per 365 days. Failing instruments are excluded from research until fixed or re-imported. The report is published as an
 Artifact page and its summary stored at `research/data-quality/<date>.json`.
 
 Imports running during this design continue; ranges affected by I1/I2/I4 are re-imported after the
