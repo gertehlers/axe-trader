@@ -649,7 +649,9 @@ class HistoryImportServiceTest {
 
         HistoryCursorReader cursorReader = new HistoryCursorReader(active);
         HistoryUpdateService updateService = new HistoryUpdateService(cursorReader, service,
-                new HistoryDeltaMerger(), epic -> true, tempDir.resolve(".staging"), java.time.Instant::now);
+                new HistoryDeltaMerger(), epic -> true, new HistoryStartProbe((r, f, t, m) -> {
+                    throw new AssertionError("promotion must not probe provider data");
+                }), tempDir.resolve(".staging"), java.time.Instant::now);
 
         new HistoryImportRunner(properties, service, updateService,
                 new HistoryDirtyDataReporter(), cursorReader, new HistoryArchiveWriter()).run(null);

@@ -47,9 +47,39 @@ class HistoryUpdateServiceTest {
                     """);
         }
         imports = new RecordingImportService();
+        HistoryStartProbe probe = new HistoryStartProbe((request, from, to, maxBars) ->
+                new ImportedPage(from, to, from.isBefore(probeStart) ? List.of()
+                        : List.of(new ImportedPrice(from, java.math.BigDecimal.ONE, java.math.BigDecimal.ONE,
+                        java.math.BigDecimal.ONE, java.math.BigDecimal.ONE, java.math.BigDecimal.ONE,
+                        java.math.BigDecimal.ONE, java.math.BigDecimal.ONE, java.math.BigDecimal.ONE, 1L)),
+                        "probe-" + from));
         service = new HistoryUpdateService(new HistoryCursorReader(active), imports,
-                new HistoryDeltaMerger(), epic -> !epic.equals("NOPE"), directory.resolve(".staging"),
+                new HistoryDeltaMerger(), epic -> !epic.equals("NOPE"), probe, directory.resolve(".staging"),
                 () -> Instant.parse("2026-08-06T09:14:00Z"));
+    }
+
+    private Instant probeStart = Instant.parse("2024-02-05T00:00:00Z");
+
+    @Test
+    void seedsANewInstrumentFromWhereItsHistoryReallyStarts() {
+        service.update("SILVER", "MINUTE", Instant.parse("2024-01-01T00:00:00Z"), active, archive);
+
+        assertThat(imports.requests).singleElement()
+                .extracting(HistoryImportRequest::from)
+                .isEqualTo(Instant.parse("2024-02-05T00:00:00Z"));
+    }
+
+    @Test
+    void failsASeedWhenCapitalHasNoHistoryAtAll() {
+        probeStart = Instant.parse("2030-01-01T00:00:00Z");
+
+        List<HistoryUpdateOutcome> outcomes = service.update("SILVER", "MINUTE",
+                Instant.parse("2024-01-01T00:00:00Z"), active, archive);
+
+        assertThat(outcomes).singleElement().satisfies(outcome -> {
+            assertThat(outcome.status()).isEqualTo(HistoryUpdateOutcome.Status.FAILED);
+            assertThat(outcome.failure()).contains("No history");
+        });
     }
 
     @Test

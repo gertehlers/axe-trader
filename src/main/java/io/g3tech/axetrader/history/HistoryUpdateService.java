@@ -30,16 +30,18 @@ public class HistoryUpdateService {
     private final HistoryImportService importService;
     private final HistoryDeltaMerger merger;
     private final InstrumentCatalog catalog;
+    private final HistoryStartProbe startProbe;
     private final Path stagingDirectory;
     private final Supplier<Instant> clock;
 
     public HistoryUpdateService(HistoryCursorReader cursorReader, HistoryImportService importService,
-                                HistoryDeltaMerger merger, InstrumentCatalog catalog, Path stagingDirectory,
-                                Supplier<Instant> clock) {
+                                HistoryDeltaMerger merger, InstrumentCatalog catalog, HistoryStartProbe startProbe,
+                                Path stagingDirectory, Supplier<Instant> clock) {
         this.cursorReader = Objects.requireNonNull(cursorReader, "cursorReader");
         this.importService = Objects.requireNonNull(importService, "importService");
         this.merger = Objects.requireNonNull(merger, "merger");
         this.catalog = Objects.requireNonNull(catalog, "catalog");
+        this.startProbe = Objects.requireNonNull(startProbe, "startProbe");
         this.stagingDirectory = Objects.requireNonNull(stagingDirectory, "stagingDirectory");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
@@ -93,6 +95,13 @@ public class HistoryUpdateService {
 
         Instant from = window.get().fromInclusive();
         Instant to = window.get().toExclusive();
+        if (cursor.isEmpty()) {
+            Optional<Instant> start = startProbe.firstAvailableFrom(target, from, now);
+            if (start.isEmpty() || !start.get().isBefore(to)) {
+                return HistoryUpdateOutcome.failed(target, from, to, "No history available at Capital.com from " + from);
+            }
+            from = start.get();
+        }
         Path staging = stagingPath(target);
         HistoryImportRequest request =
                 new HistoryImportRequest(target.epic(), target.resolution(), from, to, staging, target.source());
