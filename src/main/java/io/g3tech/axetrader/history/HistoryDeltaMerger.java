@@ -54,6 +54,12 @@ public class HistoryDeltaMerger {
               provenance TEXT NOT NULL, payload_hash TEXT NOT NULL,
               PRIMARY KEY (import_run_id, from_utc, to_utc),
               FOREIGN KEY (import_run_id) REFERENCES history_import_run(import_run_id))
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS price_revision (
+              source TEXT NOT NULL, epic TEXT NOT NULL, resolution TEXT NOT NULL,
+              snapshot_time_utc TEXT NOT NULL, old_values TEXT NOT NULL, new_values TEXT NOT NULL,
+              revised_at_utc TEXT NOT NULL)
             """);
 
     private static final String PRICE_COLUMNS = """
@@ -101,6 +107,32 @@ public class HistoryDeltaMerger {
                            requested_from_utc, requested_to_utc, created_at_utc
                     FROM delta.history_import_run
                     """);
+            String differs = """
+                    (a.open_bid <> d.open_bid OR a.open_ask <> d.open_ask OR a.high_bid <> d.high_bid
+                     OR a.high_ask <> d.high_ask OR a.low_bid <> d.low_bid OR a.low_ask <> d.low_ask
+                     OR a.close_bid <> d.close_bid OR a.close_ask <> d.close_ask
+                     OR a.last_traded_volume <> d.last_traded_volume)
+                    """;
+            long revised = statement.executeUpdate("""
+                    INSERT INTO price_revision
+                    SELECT a.source, a.epic, a.resolution, a.snapshot_time_utc,
+                           json_array(a.open_bid, a.open_ask, a.high_bid, a.high_ask, a.low_bid, a.low_ask,
+                                      a.close_bid, a.close_ask, a.last_traded_volume),
+                           json_array(d.open_bid, d.open_ask, d.high_bid, d.high_ask, d.low_bid, d.low_ask,
+                                      d.close_bid, d.close_ask, d.last_traded_volume),
+                           strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                    FROM historical_price a JOIN delta.historical_price d
+                      ON a.source = d.source AND a.epic = d.epic AND a.resolution = d.resolution
+                     AND a.snapshot_time_utc = d.snapshot_time_utc
+                    WHERE """ + differs);
+            statement.executeUpdate("""
+                    UPDATE historical_price AS a
+                    SET open_bid = d.open_bid, open_ask = d.open_ask, high_bid = d.high_bid, high_ask = d.high_ask,
+                        low_bid = d.low_bid, low_ask = d.low_ask, close_bid = d.close_bid, close_ask = d.close_ask,
+                        last_traded_volume = d.last_traded_volume, ingestion_time_utc = d.ingestion_time_utc
+                    FROM delta.historical_price AS d
+                    WHERE a.source = d.source AND a.epic = d.epic AND a.resolution = d.resolution
+                      AND a.snapshot_time_utc = d.snapshot_time_utc AND """ + differs);
             long prices = statement.executeUpdate(
                     "INSERT OR IGNORE INTO historical_price (" + PRICE_COLUMNS + ") SELECT "
                             + PRICE_COLUMNS + " FROM delta.historical_price");
@@ -120,7 +152,7 @@ public class HistoryDeltaMerger {
                     SELECT import_run_id, from_utc, to_utc, provenance, payload_hash
                     FROM delta.history_import_closure
                     """);
-            return new MergeResult(prices, exclusions);
+            return new MergeResult(prices, exclusions, revised);
         }
     }
 
@@ -186,6 +218,6 @@ public class HistoryDeltaMerger {
         }
     }
 
-    public record MergeResult(long pricesMerged, long exclusionsMerged) {
+    public record MergeResult(long pricesMerged, long exclusionsMerged, long pricesRevised) {
     }
 }

@@ -113,7 +113,7 @@ class HistoryDeltaMergerTest {
     void mergesPricesAndExclusionsIntoALedgerlessActiveDatabase() throws Exception {
         HistoryDeltaMerger.MergeResult result = merger.merge(staging, active);
 
-        assertThat(result).isEqualTo(new HistoryDeltaMerger.MergeResult(2, 1));
+        assertThat(result).isEqualTo(new HistoryDeltaMerger.MergeResult(2, 1, 0));
         assertThat(count(active, "historical_price")).isEqualTo(2);
         assertThat(count(active, "price_exclusion")).isEqualTo(1);
         assertThat(count(active, "history_import_run")).isEqualTo(1);
@@ -124,7 +124,7 @@ class HistoryDeltaMergerTest {
         merger.merge(staging, active);
         HistoryDeltaMerger.MergeResult second = merger.merge(staging, active);
 
-        assertThat(second).isEqualTo(new HistoryDeltaMerger.MergeResult(0, 0));
+        assertThat(second).isEqualTo(new HistoryDeltaMerger.MergeResult(0, 0, 0));
         assertThat(count(active, "historical_price")).isEqualTo(2);
         assertThat(count(active, "price_exclusion")).isEqualTo(1);
     }

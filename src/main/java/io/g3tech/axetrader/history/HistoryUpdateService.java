@@ -116,10 +116,10 @@ public class HistoryUpdateService {
             HistoryDeltaMerger.MergeResult merge = merger.merge(staging, activeDatabase);
             deleteStagingArtifacts(staging);
             logger.info("{} {} merged [{}, {}): accepted={}, excluded={}, exclusions={}, "
-                            + "providerEmpty={}, rowsMerged={}, exclusionsMerged={}",
+                            + "providerEmpty={}, rowsMerged={}, exclusionsMerged={}, revised={}",
                     target.epic(), target.resolution(), from, to, audit.acceptedMinuteCount(),
                     audit.excludedMinuteCount(), audit.exclusionsByReason(),
-                    audit.providerEmptyIntervals().size(), merge.pricesMerged(), merge.exclusionsMerged());
+                    audit.providerEmptyIntervals().size(), merge.pricesMerged(), merge.exclusionsMerged(), merge.pricesRevised());
             return HistoryUpdateOutcome.merged(target, from, to, audit, merge);
         } catch (RuntimeException exception) {
             logger.error("{} {} failed over [{}, {}); staging retained at {}",

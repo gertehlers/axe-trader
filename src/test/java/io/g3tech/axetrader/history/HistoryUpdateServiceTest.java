@@ -102,10 +102,10 @@ class HistoryUpdateServiceTest {
                 .containsExactlyInAnyOrder("US500", "GOLD");
         assertThat(imports.requests).extracting(HistoryImportRequest::from)
                 .containsExactlyInAnyOrder(
-                        Instant.parse("2026-08-02T22:53:00Z"),
-                        Instant.parse("2026-08-05T10:01:00Z"));
+                        Instant.parse("2026-08-02T21:53:00Z"),
+                        Instant.parse("2026-08-05T09:01:00Z"));
         assertThat(imports.requests).allSatisfy(request ->
-                assertThat(request.to()).isEqualTo(Instant.parse("2026-08-06T09:14:00Z")));
+                assertThat(request.to()).isEqualTo(Instant.parse("2026-08-06T09:12:00Z")));
     }
 
     @Test
@@ -121,7 +121,7 @@ class HistoryUpdateServiceTest {
              Statement statement = connection.createStatement()) {
             statement.execute("""
                     INSERT INTO historical_price VALUES
-                      ('c','US500','MINUTE','2026-08-06T09:13:00Z',1,1,1,1,1,1,1,1,10,'capital','2026-08-06T09:14:00Z')
+                      ('c','US500','MINUTE','2026-08-06T09:11:00Z',1,1,1,1,1,1,1,1,10,'capital','2026-08-06T09:14:00Z')
                     """);
         }
 
