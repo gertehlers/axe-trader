@@ -123,6 +123,7 @@ public class CapitalHistoricalPricePageSource implements HistoricalPricePageSour
     private io.g3tech.axetrader.brokers.capital.dto.prices.GetPricesResponse fetchWithRetry(
             HistoryImportRequest request, Instant fromInclusive, Instant toExclusive, int maxBars) {
         RuntimeException lastFailure = null;
+        boolean reauthenticated = false;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             ConversationContext context = authenticatedContext();
             pacer.acquire();
@@ -133,6 +134,13 @@ public class CapitalHistoricalPricePageSource implements HistoricalPricePageSour
                         "Capital prices response was empty");
             } catch (HttpClientErrorException.NotFound ignored) {
                 return null;
+            } catch (HttpClientErrorException.Unauthorized | HttpClientErrorException.Forbidden expired) {
+                if (reauthenticated) {
+                    throw expired;
+                }
+                reauthenticated = true;
+                invalidateConversationContext();
+                attempt--; // a session refresh does not consume a retry attempt
             } catch (RuntimeException failure) {
                 if (!retryable(failure) || attempt == maxAttempts) {
                     throw failure;

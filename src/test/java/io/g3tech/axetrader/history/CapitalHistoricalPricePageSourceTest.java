@@ -123,6 +123,38 @@ class CapitalHistoricalPricePageSourceTest {
     }
 
     @Test
+    void reauthenticatesOnceWhenTheSessionHasExpired() {
+        FakeTime time = new FakeTime();
+        StubAuthenticationClient authentication = new StubAuthenticationClient();
+        SequenceApiClient api = new SequenceApiClient(time,
+                HttpClientErrorException.create(HttpStatus.UNAUTHORIZED, "expired", HttpHeaders.EMPTY, new byte[0], null),
+                response(priceWithTypedValues("4800.1", "4800.3")));
+        CapitalHistoricalPricePageSource source = new CapitalHistoricalPricePageSource(authentication, api,
+                new CapitalRequestPacer(5, time, time), new CapitalSessionPacer(time, time), time,
+                () -> Duration.ZERO, 1, time::instant);
+
+        ImportedPage page = source.fetch(REQUEST, FROM, TO, 1_000);
+
+        assertThat(page.prices()).hasSize(1);
+        assertThat(authentication.createSessionCalls).isEqualTo(2);
+    }
+
+    @Test
+    void aSecondExpiredSessionInOneFetchFails() {
+        FakeTime time = new FakeTime();
+        StubAuthenticationClient authentication = new StubAuthenticationClient();
+        RuntimeException expired = HttpClientErrorException.create(
+                HttpStatus.FORBIDDEN, "expired", HttpHeaders.EMPTY, new byte[0], null);
+        SequenceApiClient api = new SequenceApiClient(time, expired, expired);
+        CapitalHistoricalPricePageSource source = new CapitalHistoricalPricePageSource(authentication, api,
+                new CapitalRequestPacer(5, time, time), new CapitalSessionPacer(time, time), time,
+                () -> Duration.ZERO, 3, time::instant);
+
+        assertThatThrownBy(() -> source.fetch(REQUEST, FROM, TO, 1_000)).isSameAs(expired);
+        assertThat(authentication.createSessionCalls).isEqualTo(2);
+    }
+
+    @Test
     void marksAnOrdinaryResponseAsFound() {
         CapitalHistoricalPricePageSource source = new CapitalHistoricalPricePageSource(
                 new StubAuthenticationClient(), new StubApiClient(response()));
