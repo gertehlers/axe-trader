@@ -194,6 +194,27 @@ class HistoryImportServiceTest {
     }
 
     @Test
+    void anEmptyWindowStagesCleanlyWhenEmptyIsAllowed() {
+        RecordingSource source = new RecordingSource(List.of(page(FROM, TO)));
+
+        HistoryImportAudit audit = new HistoryImportService(source, new HistoryDatabasePromoter())
+                .stage(request(), activeDatabase(), archive(), true);
+
+        assertThat(audit.acceptedMinuteCount()).isZero();
+        assertThat(audit.isConsistent()).isTrue();
+    }
+
+    @Test
+    void anEmptyWindowIsStillRefusedForAFullImport() {
+        RecordingSource source = new RecordingSource(List.of(page(FROM, TO)));
+
+        assertThatThrownBy(() -> new HistoryImportService(source, new HistoryDatabasePromoter())
+                .stage(request(), activeDatabase(), archive()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Refusing to promote");
+    }
+
+    @Test
     void labelsEmptyIntervalsByWorkOriginAndProviderAnswer() {
         Instant firstWindowEnd = FROM.plusSeconds(999 * 60L);
         Instant end = FROM.plusSeconds(1_000 * 60L);

@@ -108,11 +108,18 @@ public class HistoryDatabasePromoter {
     }
 
     static void requirePromotableAudit(HistoryImportAudit audit) {
+        requireConsistentAudit(audit);
+        if (audit.acceptedMinuteCount() == 0) {
+            throw new IllegalStateException("Refusing to promote a failed history import audit");
+        }
+    }
+
+    static void requireConsistentAudit(HistoryImportAudit audit) {
         Objects.requireNonNull(audit, "audit");
         boolean countsReconcile = audit.receivedCount() == audit.acceptedCount() + audit.rejectedCount();
         boolean acceptedRowsReconcile = audit.acceptedCount() == audit.acceptedMinuteCount() + audit.duplicateCount();
         if (!audit.isConsistent() || audit.duplicateCount() != 0 || !countsReconcile || !acceptedRowsReconcile
-                || audit.acceptedMinuteCount() == 0 || !audit.continuityGaps().isEmpty()) {
+                || !audit.continuityGaps().isEmpty()) {
             throw new IllegalStateException("Refusing to promote a failed history import audit");
         }
     }

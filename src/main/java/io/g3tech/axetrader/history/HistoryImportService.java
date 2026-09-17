@@ -52,6 +52,15 @@ public class HistoryImportService {
     }
 
     public HistoryImportAudit stage(HistoryImportRequest request, Path activeDatabase, Path archive) {
+        return stage(request, activeDatabase, archive, false);
+    }
+
+    /**
+     * @param allowEmpty accept a consistent audit with zero accepted minutes (a top-up over a weekend or
+     *                   holiday); a full import still refuses one
+     */
+    public HistoryImportAudit stage(HistoryImportRequest request, Path activeDatabase, Path archive,
+                                    boolean allowEmpty) {
         Objects.requireNonNull(request, "request");
         Path staging = request.stagingDatabase();
         validatePaths(staging, activeDatabase, archive);
@@ -70,7 +79,11 @@ public class HistoryImportService {
             }
             audit = store.audit(request);
         }
-        HistoryDatabasePromoter.requirePromotableAudit(audit);
+        if (allowEmpty) {
+            HistoryDatabasePromoter.requireConsistentAudit(audit);
+        } else {
+            HistoryDatabasePromoter.requirePromotableAudit(audit);
+        }
         recordCompletion(request, audit);
         return audit;
     }

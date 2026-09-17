@@ -134,6 +134,19 @@ class HistoryUpdateServiceTest {
     }
 
     @Test
+    void aWeekendTopUpWithNothingNewIsAlreadyCurrentAndLeavesNoStagingFiles() throws Exception {
+        imports.emptyFor = "US500";
+
+        List<HistoryUpdateOutcome> outcomes = service.update("US500", null, null, active, archive);
+
+        assertThat(outcomes).singleElement().extracting(HistoryUpdateOutcome::status)
+                .isEqualTo(HistoryUpdateOutcome.Status.ALREADY_CURRENT);
+        try (var files = Files.list(directory.resolve(".staging"))) {
+            assertThat(files).isEmpty();
+        }
+    }
+
+    @Test
     void recordsAFailureWithoutAbortingTheOtherInstruments() {
         imports.failFor = "US500";
 
@@ -170,13 +183,27 @@ class HistoryUpdateServiceTest {
             }, new HistoryDatabasePromoter());
         }
 
+        private String emptyFor;
+
         @Override
-        public HistoryImportAudit stage(HistoryImportRequest request, Path activeDatabase, Path archive) {
+        public HistoryImportAudit stage(HistoryImportRequest request, Path activeDatabase, Path archive,
+                                        boolean allowEmpty) {
             requests.add(request);
             if (request.epic().equals(failFor)) {
                 throw new IllegalStateException("provider rejected the request");
             }
             HistoryStagingStoreFixtures.writeMinimalDelta(request);
+            if (request.epic().equals(emptyFor)) {
+                try {
+                    Files.writeString(request.stagingDatabase().resolveSibling(
+                            request.stagingDatabase().getFileName() + ".stage.lock"), "lease");
+                } catch (java.io.IOException exception) {
+                    throw new IllegalStateException(exception);
+                }
+                return new HistoryImportAudit(request.from(), request.to(), null, null, 0, 0, 0, 0, 0, 0,
+                        java.util.Map.of(), List.of(new HistoryCoverageGap(request.from(), request.to(),
+                        "EMPTY_BASE", "h")), List.of(), true);
+            }
             return HistoryStagingStoreFixtures.passingAudit(request);
         }
     }

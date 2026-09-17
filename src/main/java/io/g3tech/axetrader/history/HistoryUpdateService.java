@@ -106,9 +106,15 @@ public class HistoryUpdateService {
         HistoryImportRequest request =
                 new HistoryImportRequest(target.epic(), target.resolution(), from, to, staging, target.source());
         try {
-            HistoryImportAudit audit = importService.stage(request, activeDatabase, archive);
+            HistoryImportAudit audit = importService.stage(request, activeDatabase, archive, true);
+            if (audit.acceptedMinuteCount() == 0 && audit.excludedMinuteCount() == 0) {
+                deleteStagingArtifacts(staging);
+                logger.info("{} {} has no new minutes in [{}, {}); already current", target.epic(),
+                        target.resolution(), from, to);
+                return HistoryUpdateOutcome.alreadyCurrent(target);
+            }
             HistoryDeltaMerger.MergeResult merge = merger.merge(staging, activeDatabase);
-            deleteQuietly(staging);
+            deleteStagingArtifacts(staging);
             logger.info("{} {} merged [{}, {}): accepted={}, excluded={}, exclusions={}, "
                             + "providerEmpty={}, rowsMerged={}, exclusionsMerged={}",
                     target.epic(), target.resolution(), from, to, audit.acceptedMinuteCount(),
@@ -132,11 +138,13 @@ public class HistoryUpdateService {
                 + UUID.randomUUID() + ".sqlite");
     }
 
-    private static void deleteQuietly(Path staging) {
-        try {
-            Files.deleteIfExists(staging);
-        } catch (IOException exception) {
-            logger.warn("Merged delta but could not remove the staging file {}", staging, exception);
+    private static void deleteStagingArtifacts(Path staging) {
+        for (Path file : List.of(staging, staging.resolveSibling(staging.getFileName() + ".stage.lock"))) {
+            try {
+                Files.deleteIfExists(file);
+            } catch (IOException exception) {
+                logger.warn("Could not remove the staging file {}", file, exception);
+            }
         }
     }
 }
