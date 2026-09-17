@@ -36,7 +36,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
 
 @Service
-public class CapitalHistoricalPricePageSource implements HistoricalPricePageSource {
+public class CapitalHistoricalPricePageSource implements HistoricalPricePageSource, InstrumentCatalog {
 
     private final AuthenticationClient authenticationClient;
     private final ApiClient apiClient;
@@ -106,6 +106,18 @@ public class CapitalHistoricalPricePageSource implements HistoricalPricePageSour
         var importedPrices = inPagePrices.stream().map(CapitalHistoricalPricePageSource::map).toList();
 
         return new ImportedPage(fromInclusive, toExclusive, importedPrices, hashPage(fromInclusive, toExclusive, inPagePrices));
+    }
+
+    @Override
+    public boolean exists(String epic) {
+        Objects.requireNonNull(epic, "epic");
+        ConversationContext context = authenticatedContext();
+        pacer.acquire();
+        try {
+            return apiClient.getMarketDetails(context, epic) != null;
+        } catch (HttpClientErrorException.NotFound | HttpClientErrorException.BadRequest unknown) {
+            return false;
+        }
     }
 
     private io.g3tech.axetrader.brokers.capital.dto.prices.GetPricesResponse fetchWithRetry(

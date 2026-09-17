@@ -48,8 +48,20 @@ class HistoryUpdateServiceTest {
         }
         imports = new RecordingImportService();
         service = new HistoryUpdateService(new HistoryCursorReader(active), imports,
-                new HistoryDeltaMerger(), directory.resolve(".staging"),
+                new HistoryDeltaMerger(), epic -> !epic.equals("NOPE"), directory.resolve(".staging"),
                 () -> Instant.parse("2026-08-06T09:14:00Z"));
+    }
+
+    @Test
+    void refusesToSeedAnEpicCapitalDoesNotKnow() {
+        List<HistoryUpdateOutcome> outcomes = service.update("NOPE", "MINUTE",
+                Instant.parse("2024-01-01T00:00:00Z"), active, archive);
+
+        assertThat(outcomes).singleElement().satisfies(outcome -> {
+            assertThat(outcome.status()).isEqualTo(HistoryUpdateOutcome.Status.FAILED);
+            assertThat(outcome.failure()).contains("Unknown epic");
+        });
+        assertThat(imports.requests).isEmpty();
     }
 
     @Test

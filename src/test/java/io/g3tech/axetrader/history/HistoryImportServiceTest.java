@@ -649,7 +649,7 @@ class HistoryImportServiceTest {
 
         HistoryCursorReader cursorReader = new HistoryCursorReader(active);
         HistoryUpdateService updateService = new HistoryUpdateService(cursorReader, service,
-                new HistoryDeltaMerger(), tempDir.resolve(".staging"), java.time.Instant::now);
+                new HistoryDeltaMerger(), epic -> true, tempDir.resolve(".staging"), java.time.Instant::now);
 
         new HistoryImportRunner(properties, service, updateService,
                 new HistoryDirtyDataReporter(), cursorReader, new HistoryArchiveWriter()).run(null);

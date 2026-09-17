@@ -29,14 +29,17 @@ public class HistoryUpdateService {
     private final HistoryCursorReader cursorReader;
     private final HistoryImportService importService;
     private final HistoryDeltaMerger merger;
+    private final InstrumentCatalog catalog;
     private final Path stagingDirectory;
     private final Supplier<Instant> clock;
 
     public HistoryUpdateService(HistoryCursorReader cursorReader, HistoryImportService importService,
-                                HistoryDeltaMerger merger, Path stagingDirectory, Supplier<Instant> clock) {
+                                HistoryDeltaMerger merger, InstrumentCatalog catalog, Path stagingDirectory,
+                                Supplier<Instant> clock) {
         this.cursorReader = Objects.requireNonNull(cursorReader, "cursorReader");
         this.importService = Objects.requireNonNull(importService, "importService");
         this.merger = Objects.requireNonNull(merger, "merger");
+        this.catalog = Objects.requireNonNull(catalog, "catalog");
         this.stagingDirectory = Objects.requireNonNull(stagingDirectory, "stagingDirectory");
         this.clock = Objects.requireNonNull(clock, "clock");
     }
@@ -82,6 +85,10 @@ public class HistoryUpdateService {
             logger.info("{} {} is already current at {}", target.epic(), target.resolution(),
                     cursor.map(Instant::toString).orElse("unknown"));
             return HistoryUpdateOutcome.alreadyCurrent(target);
+        }
+        if (cursor.isEmpty() && !catalog.exists(target.epic())) {
+            logger.error("{} is not a Capital.com epic; refusing to seed it", target.epic());
+            return HistoryUpdateOutcome.failed(target, null, null, "Unknown epic at Capital.com: " + target.epic());
         }
 
         Instant from = window.get().fromInclusive();

@@ -19,8 +19,9 @@ public class HistoryUpdateConfiguration {
     public HistoryUpdateService historyUpdateService(HistoryCursorReader cursorReader,
                                                      HistoryImportService importService,
                                                      HistoryDeltaMerger merger,
+                                                     CapitalHistoricalPricePageSource catalog,
                                                      HistoryImportProperties properties) {
-        return new HistoryUpdateService(cursorReader, importService, merger,
+        return new HistoryUpdateService(cursorReader, importService, merger, catalog,
                 properties.stagingDirectory(), Instant::now);
     }
 }

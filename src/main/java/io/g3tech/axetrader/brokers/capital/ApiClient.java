@@ -1,6 +1,7 @@
 package io.g3tech.axetrader.brokers.capital;
 
 import io.g3tech.axetrader.brokers.capital.dto.account.GetAccountsResponse;
+import io.g3tech.axetrader.brokers.capital.dto.market.details.GetMarketDetailsResponse;
 import io.g3tech.axetrader.brokers.capital.dto.prices.GetPricesRequest;
 import io.g3tech.axetrader.brokers.capital.dto.prices.GetPricesResponse;
 import org.slf4j.Logger;
@@ -15,6 +16,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 import static io.g3tech.axetrader.brokers.capital.Constants.API_V1_ACCOUNTS;
+import static io.g3tech.axetrader.brokers.capital.Constants.API_V1_MARKETS;
 import static io.g3tech.axetrader.brokers.capital.Constants.API_V1_PRICES;
 import static io.g3tech.axetrader.brokers.capital.Constants.CLIENT_SSO_TOKEN;
 import static io.g3tech.axetrader.brokers.capital.Constants.X_SECURITY_TOKEN;
@@ -42,6 +44,16 @@ public class ApiClient {
                 .headers(httpHeaders -> httpHeaders.addAll(requestHeaders))
                 .retrieve()
                 .body(GetAccountsResponse.class);
+    }
+
+    public GetMarketDetailsResponse getMarketDetails(ConversationContext conversationContext, String epic) {
+        var requestHeaders = buildHttpHeadersForContext(conversationContext);
+
+        return restClient.get()
+                .uri(uriBuilder -> uriBuilder.path(API_V1_MARKETS.value()).pathSegment(epic).build())
+                .headers(httpHeaders -> httpHeaders.addAll(requestHeaders))
+                .retrieve()
+                .body(GetMarketDetailsResponse.class);
     }
 
     public GetPricesResponse getPrices(ConversationContext conversationContext, GetPricesRequest request) {
