@@ -180,7 +180,7 @@ public class HistoryImportService {
                 request.from(), request.to(), actualFrom, actualTo,
                 page.prices().size(), accepted.size(), rejected,
                 distinctTimestamps.size(), rejected, duplicateCount, exclusions,
-                coverage.recognizedSessionClosures(), coverage.continuityGaps(),
+                coverage.providerEmptyIntervals(), coverage.continuityGaps(),
                 1, page.prices().size(), accepted.size(), rejected, 0,
                 duplicateCount == 0 && coverage.continuityGaps().isEmpty());
     }
@@ -265,7 +265,7 @@ public class HistoryImportService {
                 .append(audit.acceptedMinuteCount()).append('\n')
                 .append(audit.excludedMinuteCount()).append('\n')
                 .append(audit.duplicateCount()).append('\n')
-                .append(audit.recognizedSessionClosures()).append('\n')
+                .append(audit.providerEmptyIntervals()).append('\n')
                 .append(audit.continuityGaps()).append('\n');
         audit.exclusionsByReason().entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())

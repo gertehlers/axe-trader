@@ -94,7 +94,7 @@ class HistoryImportServiceTest {
 
         HistoryImportAudit audit = service.stage(request, activeDatabase(), archive());
 
-        assertThat(audit.recognizedSessionClosures()).isNotEmpty();
+        assertThat(audit.providerEmptyIntervals()).isNotEmpty();
         assertThat(audit.continuityGaps()).isEmpty();
         assertThat(audit.isConsistent()).isTrue();
     }
@@ -187,8 +187,8 @@ class HistoryImportServiceTest {
         assertThat(audit.rawReceivedCount()).isEqualTo(4);
         assertThat(audit.pendingWorkCount()).isZero();
         assertThat(audit.duplicateCount()).isZero();
-        assertThat(audit.recognizedClosureMinuteCount()).isEqualTo(2);
-        assertThat(audit.recognizedSessionClosures())
+        assertThat(audit.providerEmptyMinuteCount()).isEqualTo(2);
+        assertThat(audit.providerEmptyIntervals())
                 .allSatisfy(closure -> assertThat(closure.provenance()).isEqualTo("CAPITAL_EMPTY_OR_404"));
         assertThat(audit.isConsistent()).isTrue();
     }
@@ -217,7 +217,7 @@ class HistoryImportServiceTest {
                 new FetchCall(FROM.plusSeconds(180), gapTo, 1_000));
         assertThat(audit.receivedCount()).isEqualTo(3);
         assertThat(audit.acceptedMinuteCount()).isEqualTo(3);
-        assertThat(audit.recognizedClosureMinuteCount()).isEqualTo(2);
+        assertThat(audit.providerEmptyMinuteCount()).isEqualTo(2);
         assertThat(audit.isConsistent()).isTrue();
     }
 

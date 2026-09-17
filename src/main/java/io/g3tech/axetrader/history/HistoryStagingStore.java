@@ -304,7 +304,7 @@ public final class HistoryStagingStore implements AutoCloseable {
         long pending = tableExists("history_import_work") ? pendingCount(importRunId(request)) : 0;
         long received = acceptedMinutes + excludedMinutes;
         PageCounts raw = pageCounts(request);
-        long closureMinutes = coverage.recognizedSessionClosures().stream()
+        long closureMinutes = coverage.providerEmptyIntervals().stream()
                 .mapToLong(closure -> Duration.between(closure.fromInclusive(), closure.toExclusive()).toMinutes())
                 .sum();
         long requestedMinutes = Duration.between(request.from(), request.to()).toMinutes();
@@ -313,7 +313,7 @@ public final class HistoryStagingStore implements AutoCloseable {
                 request.from(), request.to(), actualBounds[0], actualBounds[1],
                 received, acceptedMinutes, excludedMinutes,
                 acceptedMinutes, excludedMinutes, 0, exclusionsByReason,
-                coverage.recognizedSessionClosures(), coverage.continuityGaps(),
+                coverage.providerEmptyIntervals(), coverage.continuityGaps(),
                 raw.observationCount(), raw.receivedCount(), raw.acceptedCount(), raw.rejectedCount(), pending,
                 malformedAcceptedCount == 0 && pending == 0 && exactNonOverlappingCoverage
                         && coverage.continuityGaps().isEmpty());

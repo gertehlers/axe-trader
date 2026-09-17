@@ -82,6 +82,6 @@ final class HistoryCoverage {
         }
     }
 
-    record Assessment(List<HistoryCoverageGap> recognizedSessionClosures, List<HistoryCoverageGap> continuityGaps) {
+    record Assessment(List<HistoryCoverageGap> providerEmptyIntervals, List<HistoryCoverageGap> continuityGaps) {
     }
 }
