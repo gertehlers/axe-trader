@@ -59,6 +59,10 @@ R = 0.5 A and R = 2.0 A are also reported as robustness checks. R = 1.0 A is pri
   trading days (2,000 resamples, seed 20260917).
 - Reported separately on **2024-01-01 → 2025-12-31** and **2026-01-01 → 2026-08-06**.
 
+The pass rule is applied to each family with support and resistance tests **combined**
+(clarified before the first run). Per-side, per-sub-level (prior high/low/close) and `x00` rows
+are informational only and cannot rescue a failing family.
+
 A family **passes** only if, at R = 1.0 A, on **both** periods, the CI lower bound is above 0
 **and** the effect is at least **+3 percentage points**. Anything else is a fail, including a
 pass on one period only. No re-definition to rescue a fail.
