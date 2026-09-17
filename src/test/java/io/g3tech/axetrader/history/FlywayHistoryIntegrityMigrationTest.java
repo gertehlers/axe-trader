@@ -39,11 +39,9 @@ class FlywayHistoryIntegrityMigrationTest {
                     INSERT INTO historical_price VALUES
                       ('b','US500','MINUTE','2024-12-04T23:20:00Z',1,1,1,1,1,1,1,1,1,'capital','2024-12-04T23:21:00Z')
                     """)).isInstanceOf(SQLException.class);
-            var tables = connection.createStatement().executeQuery("""
-                    SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN
-                      ('history_import_run','price_exclusion','history_import_page','history_import_closure')
-                    """);
-            assertThat(tables.getLong(1)).isEqualTo(4);
+            var ledger = connection.createStatement().executeQuery(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='price_exclusion'");
+            assertThat(ledger.getLong(1)).as("the import ledger stays owned by the importer").isZero();
         }
     }
 }
