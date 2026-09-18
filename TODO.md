@@ -7,6 +7,271 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
 (not scalping), reproducible via 5-pillar confluence, with each instrument tuned as its own
 "personality" rather than one shared config.
 
+## ⭐ SESSION STATE — 2026-09-18 (evening): engine core built, first two hypotheses rejected
+
+**Read this before the consolidation section below it.** Earlier today's directive ("don't commit
+anything") was superseded by the owner in the evening session: commit per task, do not push. 17
+commits now sit on `main`, unpushed. The 242 MB `data/axe-trader.sqlite.gz` has never been staged
+and must not be.
+
+### The headline: the strategy premise is falsified, twice
+
+| hypothesis | what it says | verdict |
+|---|---|---|
+| H-0001 | RSI(7)<25 + lower band + above EMA(200) → buy the dip | **`rejected: no signal`** |
+| H-0002 | the inversion: short-horizon extremes continue | **`uneconomic`** |
+
+H-0001 is the archived Java engine's entry. Against random entries at matched times it is
+*anti-predictive*: −0.77 pts at 60m, −1.37 at 120m, −2.62 at 240m, with less upside and more
+downside than placebo. The 88.2% win rate was geometry — a 3.0-ATR stop against a 0.75-ATR target
+wins ~80% of the time on a driftless walk.
+
+H-0002 inverts it and tests a 96-cell grid. The direction is right (47/64 positive, 40 on a
+plateau) but the best config does not beat the placebo grid, and the family edge among
+adequately-sized configs is **+0.565 pts/hour against a 0.561-pt spread**. The edge is exactly one
+spread wide. Nothing to collect.
+
+Full write-ups with numbers: `research/ledger/` (INDEX.md + H-0001 + H-0002).
+
+### Built this session (all tested, all committed)
+
+- `research/engine/` core, spec step 2: `cache.py` (parquet cache, exclusions applied),
+  `bars.py` (UTC-grid resampling, incomplete bars flagged), `strategy.py` (protocol + intents +
+  lookahead-safe views), `lookahead.py`, `sizing.py`, `costs.py`, `simulator.py` (1-min bid/ask),
+  `run.py` (net expectancy + bootstrap CI), `indicators.py`, `diagnose.py` (layers 0 and 1).
+- **85 tests pass.** Full US500 run: 958,849 minutes → 16,366 trades in **4.3s** (budget 120s), so
+  the numba dependency the spec anticipated is not needed.
+- Data-quality report committed: `research/data-quality/2026-09-18.json`.
+
+### Findings worth carrying
+
+- **The lookahead guard in spec §3.3 has a hole** and the implementation now exceeds the spec:
+  re-running one strategy instance on truncated data cannot catch a strategy that precomputed an
+  indicator over the whole series in `__init__`. `check_lookahead` also accepts a factory and
+  rebuilds per truncation. Both leak shapes are tested.
+- **NATURALGAS FAILS data quality** at 16.2% missing core minutes — but it is illiquidity, not a
+  broken import: 30–41% missing 00:00–06:00 UTC against 1.5–2.4% during US hours. Usable only
+  inside roughly 11:00–19:00 UTC. Re-importing cannot fix it; Capital.com's gaps are permanent.
+- **The 12-instrument seed was stopped.** NATURALGAS completed (801,226 rows, merged). GOLD was
+  killed mid-staging; its staging file is resumable. Each instrument costs ~5–6 hours, almost all
+  of it re-requesting permanently-empty gaps.
+- Placebo method matters: independent draws overstate significance because RSI extremes cluster.
+  `shifted_placebo_entries` shifts the whole entry set by whole weeks, preserving clustering and
+  weekday/hour. The 60m H-0001 result softened from percentile 0.0 to 6.2 under it — still a
+  rejection, but the weaker method flattered it.
+
+### Next action
+
+Decide the direction, because the obvious paths are now closed:
+1. **Follow up H-0002 where it is allowed** — longer timeframe (the 120m column is already in the
+   JSON, unanalysed) or a lower-cost instrument, where a ~0.5-pt tilt could clear a smaller spread.
+2. **Test the full 4-pillar confluence** — H-0001 does *not* transfer to it (threshold 3-of-4 means
+   pillar 1 need not fire), so it is formally untested. Needs candles, S/R and volume/trend built.
+3. **Go back to hypothesis sourcing** (spec §6.2.1) — `known-effect` and `structured-brainstorm`
+   have never been mined, and both falsified ideas came from the same exhausted source.
+
+### Still open, owner's call
+
+- **Weekend financing multiplier** is not in `instruments.yaml` and defaults to 1.0, understating
+  the cost of any weekend hold. Every run records the value used.
+- **Slippage defaults to 0** — spec allows it, but it assumes perfect fills.
+- **The 242 MB `sqlite.gz`** — untracked, unresolved.
+- `research/review-spike/` and `scripts/` remain untracked.
+
+---
+
+## ⭐ SESSION STATE — 2026-09-18 consolidation onto `main` (read this first)
+
+**Owner directive this session:** work only on `main`, no more worktrees/branches — the parallel
+worktrees had drifted and caused confusion. Don't commit anything until the owner says ready
+(pet project, no rush). Keep this section updated turn-to-turn so a `handover` invocation has
+accurate raw material.
+
+**Sections below this one are historically layered and partly stale** — several describe work
+against branches/worktrees that either no longer exist or have since been superseded. Trust this
+section over anything below it until it's cleaned up.
+
+**What happened before this session:** the SessionStart hook pointed at
+`docs/handoffs/2026-08-08-research-agent-design.md` (a discovery-agent design in progress). That
+document is **stale and superseded** — the owner restarted strategy research from scratch on
+2026-09-17 (see `docs/handoffs/2026-09-17-research-restart-step1.md` and
+`docs/superpowers/specs/2026-09-17-research-restart-design.md`; primary bar is now net expectancy
+after costs, not win rate; nothing from before 2026-09-17 is trusted). That restart work happened
+on `feature/research-restart`, 54 commits ahead of `main`, and was never merged.
+
+**Done this session:**
+- Merged `feature/research-restart` into `main` — a clean fast-forward, no conflicts. `main` is
+  now at `08e30f0` (was `49b6a09`/`c424580`). This brings in: the Flyway V2 history-integrity
+  migration, a rewritten history importer (`update`/`report`/`archive` modes, per-instrument delta
+  merge, resumable staging, 401 re-auth), the `DISCOVERY` `AxeTraderMode` entry point (the thing
+  the 2026-08-08 handover was designing — already built), and a new Python `research/engine`
+  package for data-quality verification.
+- Fixed `AxeTraderApplication`'s `main` method being package-private (broke `clean package` and
+  `spring-boot:run` — this came in via the merge, already fixed upstream at `0aeb81f`; confirmed
+  this was a regression, not deliberate, by comparing against a worktree where it still worked).
+- Verified: `./mvnw clean package -DskipTests` → BUILD SUCCESS. `./mvnw test` → 328 run, 0
+  failures, 0 errors, 3 skipped (needs `data/axe-trader.sqlite` decompressed first: `gzip -dc
+  data/axe-trader.sqlite.gz > data/axe-trader.sqlite`; `./mvnw test` also rewrites the tracked
+  `output/charts/runner-results.html` as a side effect — restore with `git checkout --` before
+  committing).
+- Removed two stale untracked files from `main`'s working tree: `docs/d1-price-history-import-
+  progress.md` (retired Cloudflare D1 workflow, superseded by the local SQLite workflow) and an
+  empty `data/us500-2024-to-2026.reingestion.log`.
+- Confirmed `feature/delta-price-import` and `feature/clean-local-price-history` are now fully
+  merged into `main` (0 unmerged commits each) — their worktrees are safe to remove.
+- Confirmed `feature/reusable-history-reingestion` (7 unmerged commits) is a stalled, superseded
+  duplicate of the history-import pipeline — it stalled on a `401 error.null.accountId` Capital
+  auth error on 2026-07-30 that turned out to be transient (a probe from that worktree succeeded
+  this session); its own pipeline was independently reimplemented, further, and better on the
+  `delta-price-import`/`research-restart` line. Has ~108 lines of now-moot uncommitted WIP.
+
+**Both blockers below are now resolved (owner approved both):**
+1. ✅ **`main`'s dataset consolidated.** `data/axe-trader.sqlite` now holds the current dataset —
+   US500 958,849 rows, OIL_BRENT 901,618, OIL_CRUDE 944,105, all 2024-01-01 → 2026-09-17 — copied
+   from `.worktrees/delta-price-import`. The old legacy 500,000-row file is preserved, untracked,
+   at `data/axe-trader.sqlite.pre-consolidation-backup` (reversible; delete once confident it's no
+   longer needed). `data/axe-trader.sqlite.gz` was rebuilt via `mode=archive` and verified to
+   decompress back to the same row counts. `./mvnw test` re-run clean afterward: 328/0/0/3.
+   **Still uncommitted** — `git status` shows `M data/axe-trader.sqlite.gz` and the untracked
+   backup file — per "don't commit yet."
+2. ✅ **All worktree checkouts removed** — `git worktree list` now shows only `main`. Branches were
+   **not** deleted (owner only approved removing checkouts): `feature/clean-local-price-history`,
+   `feature/delta-price-import`, `feature/research-restart`, `feature/reusable-history-reingestion`,
+   `worktree-ma-cross-spike`, `worktree-sr-bounce-test` all still exist locally and on `origin`.
+   Deleting the fully-merged/superseded ones (`clean-local-price-history`, `delta-price-import`,
+   `research-restart`, `reusable-history-reingestion`) is a safe future cleanup; keep
+   `worktree-ma-cross-spike` and `worktree-sr-bounce-test` — they hold real, non-superseded
+   (if now untrusted-per-new-methodology) research: MA-cross + RSI-extremity spike (all falsified)
+   and SR bounce-vs-random (all level families fail).
+
+**In progress (background, detached):** seeding the 12 remaining instruments (NATURALGAS, GOLD,
+SILVER, US100, DE40, UK100, J225, EURUSD, GBPUSD, USDJPY, BTCUSD, ETHUSD) per the research-restart
+handover's own next action. Running via `scripts/seed-remaining-instruments.sh`, launched detached
+(`nohup ... & disown`, PPID 1 — survives this session ending) at 2026-09-18T10:49 local. One
+instrument at a time (`mode=update`, single writer against `data/axe-trader.sqlite`), ~25–80 min
+each, so plan for hours, not minutes. After all 12: rebuilds `data/axe-trader.sqlite.gz`
+(`mode=archive`) and runs a final dirty-data report (`mode=report`) automatically.
+
+**To check on it** (no need to ask a session to babysit this):
+- `tail -f logs/seed-remaining-instruments.log` — live progress.
+- `cat logs/seed-remaining-instruments.status` — one line per finished instrument (`EPIC OK/FAILED
+  <seconds>`); absence of a line means it hasn't finished (or reached) that instrument yet.
+- `grep DONE logs/seed-remaining-instruments.log` — non-empty once the whole run (all 12 +
+  archive + report) has completed.
+- `sqlite3 data/axe-trader.sqlite "SELECT epic, COUNT(*), MIN(snapshot_time_utc), MAX(snapshot_time_utc) FROM historical_price GROUP BY epic;"`
+  — live row counts per instrument at any point.
+- The script is idempotent per instrument — safe to re-run
+  (`nohup scripts/seed-remaining-instruments.sh >> logs/seed-remaining-instruments.nohup.out 2>&1 &
+  disown`) if it ever needs restarting; already-current instruments are skipped quickly.
+
+**Review-page spike (spec §5.1) — built and published 2026-09-18.**
+`research/review-spike/` (`index.html` + generated `run-data.js`), published at
+<https://claude.ai/artifact/Uk2eshf413WWW3eUdhFXwJ> with `capabilities: {comments: {customAnchors: true}}`.
+Data is the archived Java backtest run `US500-1784664611692` (102 trades, 5m bars, costs netted),
+extracted from `dashboard/run.json` — deliberately **not** read from `data/axe-trader.sqlite`, to
+avoid contending with the seeding job writing to it. Owner chose old-engine trades knowingly; under
+D2 those results are leads, not evidence.
+
+What it shows: KPI strip, a pannable/zoomable candle chart per trade with entry/exit markers and
+labelled stop/target lines, a filterable trade list, per-trade context (pillars, RSI, ATR,
+volatility regime), and a cumulative-net-P&L panel that marks the peak→trough span directly.
+The honest headline it surfaces: **+87.2 pts total against an 83.5 pt max drawdown — 96% of
+everything the run made**, trough at trade 25 (−69.3 from a +14.2 peak).
+
+**Spike verdict against §5.1's three proof points — tested live 2026-09-18:**
+- (b) **PASS.** Threads survive republishes. Two threads created on v1 both came back marked
+  "carried from an earlier version" after publishing v2 and v3 with changed page content.
+- (c) **PASS.** "Send to Claude" reached this session (woke it via task notification), an
+  auto-reply landed in the thread, and follow-up replies posted back successfully.
+- (a) **FAIL — and the cause is structural, not a bug.** Pins placed via the page's own button
+  never appeared. Root cause, from `comments.d.ts` on the `threads` callback: the thread list is
+  *"Sent only in sessions the viewer entered from the shell's own controls — a session the page
+  started with compose receives none, even after its draft posts."* So the `compose()` →
+  `threads()` → `placed()` loop **cannot** work for a page-initiated pin: no thread list means no
+  handle, so `placed()` is never called and no pin is drawn. `customAnchors` pins only work when
+  the viewer enters comment mode from the claude.ai toolbar first — which is exactly the
+  "too many steps" pain point D8 set out to fix.
+
+**Design consequence — adopted in v4 (2026-09-18), supersedes §5.1's fallback:** the page owns its
+markup instead of the shell. Notes are page-drawn numbered pins on the canvas (clamped into the
+plot with an arrow when the price is off-screen, so they can never vanish), listed in a panel,
+click-to-jump back, persisted per viewer in `localStorage`, and **batched** — many notes, then one
+`sendToClaude()` carrying all of them. `customAnchors` was dropped entirely; the declaration is now
+`{comments: {}}`. This also fixes the owner's second ask (batch feedback rather than one thread per
+remark). **Recommend §5.1/§5.3 of the spec be revised to this pattern.**
+
+**Also added in v4, from the owner's actual use case** (marking missed runs and poor entries/exits
+so they become strategy learning): per-trade run analysis — MFE, MAE, best price reached after
+entry, and *"left on the table"* = how much of the available move the 0.75-ATR target gave up.
+Trade 1 scores 86% left behind (+6.25 pts available vs a 0.86 target). A "Most left behind" filter
+ranks trades by it. Each sent note carries its `EPIC|minute|price`, bar OHLC, and RSI(7)/ATR(14)
+computed from that trade's own window — explicitly labelled as window-local with warm-up bars
+reading n/a, since full-history indicator values need the SQLite dataset.
+
+**Owner feedback applied via the comment loop** (the loop working end-to-end is itself the result):
+red/green candles replacing neutral hollow/filled (v2), then solid bars with hollow dropped (v3)
+on request; stop/target formulas added to the chart legend. Noted to the owner that red/green is
+the red-green-colourblind confusion pair and the hollow/filled shape had been the backup channel —
+accepted deliberately for a single-viewer page.
+
+**First real feedback batch received 2026-09-18** (thread `b49bcefd`, via the page's batch send —
+the loop works end to end). Owner marked up trades 1, 2, 3, 6. Two leads worth carrying into the
+ledger, both **unvalidated**:
+- **Entry filter may be firing on noise.** Trade 1 entry: RSI(7) 48.0, ATR 1.14, LOW volatility,
+  bar closes below its open ("choppy"). Trade 2 entry: RSI 45.8, ATR 0.91, four pillars fired,
+  owner called it luck. Hypothesis: 4-pillar confluence in LOW volatility with sub-1.0 ATR is
+  counting agreement between indicators all reading the same flat tape → test a minimum-ATR or
+  volatility gate.
+- **The opposite direction was repeatedly the better trade.** Trade 1 note 3 "could have shorted
+  here" (ATR 3.36, ~3× entry ATR); trade 3 note 1 "sell run missed" (RSI 26.2, four bars before a
+  LONG entry at RSI 18.9 — long into a collapsing RSI, took 42% of a bounce while the sell run was
+  bigger and cleaner). Note `enable-short: false` is current config, justified by tuning-log iter. 7.
+Both are hindsight marks with **no entry rule attached** — a rule that catches them must be written
+and backtested under the net-expectancy bar before either counts as anything.
+
+**v5 fix (2026-09-18):** batch sends were truncating at the 4 KiB per-comment cap — the first real
+batch was cut off mid-trade-6 and those notes never reached Claude. `buildChunks()` now packs notes
+into as many messages as needed (first via `sendToClaude`, rest via `reply()` into the same thread,
+900 ms apart), marks notes sent per-chunk so a partial failure can be resumed without duplicating,
+and previews every message with its byte count. Verified: 42 notes / 14 trades → 7 messages, max
+2.9 KiB, nothing dropped.
+
+**Still open:** thread `dc0c6101` ("this was a missed run, all the up to about 6050") is **not
+activated for Claude** — it was left as a plain comment, so it cannot be replied to or resolved
+from here. The owner must reply on it with Send to Claude, or resolve it in the artifact view.
+
+**Owner's counter-read (2026-09-18), and it is the stronger one — carry into the strategy work:**
+the problem is the **entries**, not the exit geometry. "Almost every entry is in choppy waters and
+real runs are missed." The arithmetic supports it: with a 3.0 ATR stop and 0.75 ATR target, a
+**driftless random walk hits the target first 80% of the time** (3.0 / 3.75) — no edge required.
+The run scores 88.2%. So the entry contributes roughly **8 percentage points, not 88**, and
+breakeven is exactly 80%. The entire profitability rests on that ~8pp, which may not survive
+contact with costs or a placebo test. This is precisely spec §6.2.3 layer 1 (Signal): forward
+returns and MFE/MAE after signal vs **random entries at matched times**. Run that before any exit
+work — if the entry does not beat matched-time random entries, tuning exits is polishing noise.
+(Supersedes the earlier "losers are the gap" framing, which assumed the entry had value.)
+
+**v7 fix (2026-09-18) — second-order damage from the v4 truncation bug.** v4 marked *every* unsent
+note as `sent` after one successful send, including the notes the 4 KiB truncation had silently
+dropped. Result: the owner's trade-6-onward notes sat in `localStorage` flagged sent, so
+`buildChunks(true)` found nothing, Send became a silent no-op, and an attempted resend posted an
+empty comment. Added a **Resend all (N)** button that ignores the sent flags, plus a hint line that
+says when everything is marked sent. Lesson for the real review page: *never mark a unit delivered
+until its own payload is confirmed delivered* — v5 already fixed the per-chunk marking, but the
+bad flags it left behind needed their own escape hatch.
+
+**v6 UI changes (2026-09-18, owner request):** notes now carry an optional **LONG/SHORT direction**
+chosen as a chip, and the kind picker became a chip grid (Missed run, Better entry, Better exit,
+Bad entry, Exited early, Entered late, Choppy / no trend, This was right, Note) — so the common
+case is click bar → LONG/SHORT → type → Add, with **no typing at all**. Direction rides along into
+the sent payload (`Missed run · SHORT @ US500|…`). Arming was removed: **any plain click on a bar
+opens the composer** (drag still pans, wheel still zooms); the toolbar button is now a
+`Click-to-note: on/off` toggle for when the chart is only being read.
+
+**Do not commit anything yet** — explicit owner instruction this session (pet project, no rush).
+When ready to commit, the working tree will need: the dataset copy/archive rebuild above, and
+whatever worktree removals the owner approves.
+
 ## Local price-history rebuild — completed locally 2026-08-03
 
 The Cloudflare D1 price-history workflow is retired. Clean history is now a local-only SQLite
