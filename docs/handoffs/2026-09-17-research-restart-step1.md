@@ -1,6 +1,7 @@
 ---
 date: 2026-09-17
-status: open
+status: landed
+landed: 028c7a2
 branch: feature/research-restart
 head: b25eaff
 next: Re-seed NATURALGAS..ETHUSD with the fixed importer from this worktree, then run the full data-quality report
@@ -117,3 +118,23 @@ Observed at `b25eaff` (tree clean, nothing unpushed) on 2026-09-17 18:05:
 - `research/engine/engine/verify.py` — data-quality rules and thresholds (constants at top, rationale in comments).
 - `research/engine/instruments.yaml` — generated specs for 15 instruments (fetched 2026-09-17; do not hand-edit).
 - `docs/learnings/2026-09-17-code-and-research-sweep.md` — why old results are untrusted.
+
+
+---
+
+## Closure — 2026-09-18
+
+Superseded by `2026-09-18-engine-core-and-first-rejections.md`.
+
+**The next action was cancelled in part, by owner decision.** Seeding all twelve instruments was
+stopped after NATURALGAS: measured cost is ~5-6 hours per instrument, of which ~4.5 is re-requesting
+permanently-empty minute gaps (87,130 refetch units, 80,500 closing as `EMPTY_REFETCH`), so twelve
+instruments meant ~2.5 days for data that no live research question needed. NATURALGAS completed
+and is merged (801,226 rows); GOLD was killed mid-staging and its staging file is resumable.
+
+**Delivered:** the full data-quality report, committed at `028c7a2` as
+`research/data-quality/2026-09-18.json`. US500, OIL_BRENT and OIL_CRUDE PASS; NATURALGAS FAILS at
+16.2% missing core, which is illiquidity rather than a broken import.
+
+**Still outstanding from this document:** publishing the data-quality report as an Artifact page
+(data plan Task 6 step 10). Small, and not blocking anything.
