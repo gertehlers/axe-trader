@@ -73,3 +73,5 @@ research/engine/.venv/
 research/engine/**/__pycache__/
 research/engine/*.egg-info/
 research/engine/.pytest_cache/
+research/engine/.cache/
+research/runs/
