@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import pytest
 
 from engine.diagnose import (excursions, forward_returns, matched_placebo_entries,
@@ -118,3 +119,47 @@ def test_a_clock_only_signal_is_not_credited_as_an_edge():
 
     assert naive_percentile > 95.0        # the clock effect makes it look real
     assert 5.0 < matched.percentile < 95.0  # matched times expose it as the clock
+
+
+def test_shifted_placebos_preserve_clustering_and_clock_position():
+    """The whole point: independent draws lose the signal's bunching, shifts keep it."""
+    from engine.diagnose import shifted_placebo_entries
+
+    times = np.arange(np.datetime64("2024-01-01T00:00", "m"),
+                      np.datetime64("2024-06-01T00:00", "m"),
+                      np.timedelta64(5, "m"))
+    # Three tight bursts, placed mid-series so a 4-week shift in either direction stays in range.
+    # (288 five-minute bars per day; the series runs 152 days.)
+    day = 288
+    signal = np.concatenate([np.arange(60 * day, 60 * day + 30),
+                             np.arange(75 * day, 75 * day + 30),
+                             np.arange(90 * day, 90 * day + 30)])
+
+    sets = shifted_placebo_entries(times, signal, sets=20, seed=5, max_shifts=4)
+
+    assert len(sets) == 20
+    for entries in sets:
+        if len(entries) == 0:
+            continue
+        # same number of entries, because a 5-minute grid with no holes maps every shift
+        assert len(entries) == len(signal)
+        # clustering preserved exactly: the gap structure is identical
+        np.testing.assert_array_equal(np.diff(np.sort(entries)), np.diff(np.sort(signal)))
+        # whole-week shifts keep weekday and hour
+        original = pd.DatetimeIndex(times[signal])
+        shifted = pd.DatetimeIndex(times[np.sort(entries)])
+        np.testing.assert_array_equal(original.dayofweek.to_numpy(), shifted.dayofweek.to_numpy())
+        np.testing.assert_array_equal(original.hour.to_numpy(), shifted.hour.to_numpy())
+
+
+def test_shifted_placebos_are_not_the_signal_itself():
+    from engine.diagnose import shifted_placebo_entries
+
+    times = np.arange(np.datetime64("2024-01-01T00:00", "m"),
+                      np.datetime64("2024-06-01T00:00", "m"),
+                      np.timedelta64(5, "m"))
+    signal = np.arange(2000, 2030)
+
+    for entries in shifted_placebo_entries(times, signal, sets=10, seed=5):
+        if len(entries):
+            assert not np.array_equal(np.sort(entries), signal)

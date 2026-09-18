@@ -139,3 +139,32 @@ def run_layer1(mid: np.ndarray, high: np.ndarray, low: np.ndarray, buckets: np.n
         placebo_mfe=float(np.mean(mfes)) if mfes else float("nan"),
         placebo_mae=float(np.mean(maes)) if maes else float("nan"),
     )
+
+
+def shifted_placebo_entries(times: "np.ndarray", signal_entries: np.ndarray, sets: int, seed: int,
+                            period_days: int = 7, max_shifts: int = 52) -> list[np.ndarray]:
+    """Placebos that keep the signal's CLUSTERING, by shifting the whole set in time.
+
+    Drawing placebo entries independently understates their variance whenever the real signal
+    bunches up — RSI extremes cluster inside a selloff, so 1,600 entries carry far less
+    independent information than 1,600 scattered ones, and the percentile against independent
+    placebos is anti-conservative.
+
+    Shifting the entire entry set by a whole number of weeks preserves both the clustering and the
+    (weekday, hour) composition exactly, and destroys only the alignment with the signal. Entries
+    that land outside the series, or on a timestamp with no bar, are dropped.
+    """
+    rng = np.random.default_rng(seed)
+    order = np.argsort(times)
+    sorted_times = times[order]
+    offsets = rng.choice(np.concatenate([np.arange(-max_shifts, 0), np.arange(1, max_shifts + 1)]),
+                         size=sets, replace=True)
+    day = np.timedelta64(period_days * 24 * 60, "m")
+    out = []
+    for weeks in offsets:
+        wanted = times[signal_entries] + weeks * day
+        found = np.searchsorted(sorted_times, wanted)
+        found = np.clip(found, 0, len(sorted_times) - 1)
+        exact = sorted_times[found] == wanted
+        out.append(order[found[exact]])
+    return out
