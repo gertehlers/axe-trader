@@ -1,0 +1,183 @@
+{
+  "hypothesis": "H-0004",
+  "epic": "US500",
+  "window": [
+    "2024-01-02",
+    "2026-07-31"
+  ],
+  "holdout": "2026-08-01 onward is held out and untouched",
+  "sessions": 665,
+  "exchange_tz": "America/New_York",
+  "cash_session": "09:30-16:00",
+  "trial_count": 4,
+  "mean_spread": 0.5552669231502946,
+  "financing_rates": {
+    "long": -0.0215402,
+    "short": -0.000682,
+    "charge_time_utc": "21:00"
+  },
+  "weekend_handling": "every 21:00 UTC cut-off crossed is charged; no weekend_multiplier applied",
+  "legs": {
+    "overnight_long": {
+      "n": 664,
+      "net_sd": 36.55576062524767,
+      "sessions_for_power": 7689,
+      "gross_mean": 3.1732680722891704,
+      "spread_mean": 0.5552669231502946,
+      "financing_mean": 1.4500439459414156,
+      "mean_charges": 1.1009036144578312,
+      "mean_hours": 27.51957831325301,
+      "net_mean": 1.1679572031974599,
+      "net_ci95": [
+        -1.6160910158166568,
+        3.896205353710544
+      ],
+      "net_total": 775.5235829231134,
+      "quarters": 11,
+      "quarters_positive": 8,
+      "quarters_positive_share": 0.7272727272727273,
+      "per_quarter": {
+        "2024-01-01": 170.52674225273967,
+        "2024-04-01": 98.65363240582978,
+        "2024-07-01": 271.6121899900758,
+        "2024-10-01": 83.73383895713194,
+        "2025-01-01": -232.05625709271553,
+        "2025-04-01": -163.37259636591685,
+        "2025-07-01": 116.92790583728346,
+        "2025-10-01": 250.141913160231,
+        "2026-01-01": -188.51651129456855,
+        "2026-04-01": 365.86181864617976,
+        "2026-07-01": 2.010906426843217
+      }
+    },
+    "overnight_short": {
+      "n": 664,
+      "net_sd": 36.62558491025102,
+      "sessions_for_power": 740,
+      "gross_mean": -3.1732680722891704,
+      "spread_mean": 0.5552669231502946,
+      "financing_mean": 0.04591090013704819,
+      "mean_charges": 1.1009036144578312,
+      "mean_hours": 27.51957831325301,
+      "net_mean": -3.774445895576513,
+      "net_ci95": [
+        -6.4884788763287595,
+        -0.9794908020078542
+      ],
+      "net_total": -2506.2320746628047,
+      "quarters": 11,
+      "quarters_positive": 2,
+      "quarters_positive_share": 0.18181818181818182,
+      "per_quarter": {
+        "2024-01-01": -282.0653853031756,
+        "2024-04-01": -278.08371405876807,
+        "2024-07-01": -460.6497525479147,
+        "2024-10-01": -228.88158822577026,
+        "2025-01-01": 106.32794883067898,
+        "2025-04-01": -23.387487444620884,
+        "2025-07-01": -321.47576399592236,
+        "2025-10-01": -406.47486235476936,
+        "2026-01-01": 51.20115744053143,
+        "2026-04-01": -583.6394158836174,
+        "2026-07-01": -79.10321111945677
+      }
+    },
+    "intraday_long": {
+      "n": 665,
+      "net_sd": 46.39101344340798,
+      "sessions_for_power": 96554,
+      "gross_mean": 0.9735338345864533,
+      "spread_mean": 0.5552669231502946,
+      "financing_mean": 0.0,
+      "mean_charges": 0.0,
+      "mean_hours": 6.490977443609022,
+      "net_mean": 0.41826691143615796,
+      "net_ci95": [
+        -3.0336992539773986,
+        3.930330821210581
+      ],
+      "net_total": 278.14749610504504,
+      "quarters": 11,
+      "quarters_positive": 4,
+      "quarters_positive_share": 0.36363636363636365,
+      "per_quarter": {
+        "2024-01-01": 223.87345076467375,
+        "2024-04-01": -56.49235000476696,
+        "2024-07-01": -167.9476169279151,
+        "2024-10-01": -100.7423500047706,
+        "2025-01-01": -174.6265492353208,
+        "2025-04-01": 583.5629169183798,
+        "2025-07-01": 163.05238307207765,
+        "2025-10-01": -234.49235000476972,
+        "2026-01-01": -269.1818161584684,
+        "2026-04-01": 384.0629169183824,
+        "2026-07-01": -72.92113923245641
+      }
+    },
+    "intraday_short": {
+      "n": 665,
+      "net_sd": 46.39101344340798,
+      "sessions_for_power": 7228,
+      "gross_mean": -0.9735338345864533,
+      "spread_mean": 0.5552669231502946,
+      "financing_mean": 0.0,
+      "mean_charges": 0.0,
+      "mean_hours": 6.490977443609022,
+      "net_mean": -1.5288007577367488,
+      "net_ci95": [
+        -5.040864667511173,
+        1.9231654076768074
+      ],
+      "net_total": -1016.652503894938,
+      "quarters": 11,
+      "quarters_positive": 6,
+      "quarters_positive_share": 0.5454545454545454,
+      "per_quarter": {
+        "2024-01-01": -292.72654923531024,
+        "2024-04-01": -15.692350004771331,
+        "2024-07-01": 94.65238307207618,
+        "2024-10-01": 28.557649995232342,
+        "2025-01-01": 105.7734507646843,
+        "2025-04-01": -654.6370830816174,
+        "2025-07-01": -236.34761692791653,
+        "2025-10-01": 162.30764999523143,
+        "2026-01-01": 199.21818384153124,
+        "2026-04-01": -455.1370830816201,
+        "2026-07-01": 47.37886076754286
+      }
+    }
+  },
+  "criteria": {
+    "1_net_expectancy": {
+      "required": "overnight-long net mean > 0 AND bootstrap CI lower bound > 0",
+      "observed_net_mean": 1.1679572031974599,
+      "observed_ci_low": -1.6160910158166568,
+      "pass": false
+    },
+    "2_power": {
+      "required": ">= 100 observations, and enough to resolve the observed net effect at 80% power",
+      "observed": 664,
+      "sessions_needed_for_observed_effect": 7689,
+      "years_needed_at_252_sessions": 30.511904761904763,
+      "pass": false
+    },
+    "3_stability": {
+      "required": ">= 60% of quarters net-positive",
+      "observed": 0.7272727272727273,
+      "pass": true
+    },
+    "4_effect_not_drift": {
+      "required": "overnight gross mean > intraday gross mean",
+      "observed_overnight": 3.1732680722891704,
+      "observed_intraday": 0.9735338345864533,
+      "pass": true
+    },
+    "1b_costs_covered": {
+      "required": "layer 2 on its own: overnight gross mean > spread + financing",
+      "observed_gross": 3.1732680722891704,
+      "observed_costs": 2.0053108690917103,
+      "pass": true
+    }
+  },
+  "verdict": "inconclusive"
+}
