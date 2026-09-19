@@ -117,3 +117,61 @@ def highest(values: np.ndarray, period: int) -> np.ndarray:
 def lowest(values: np.ndarray, period: int) -> np.ndarray:
     """Rolling minimum INCLUDING the current bar, as ta4j's LowestValueIndicator does."""
     return _rolling(values, period, np.min)
+
+
+def _directional_movement(high: np.ndarray, low: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    high = np.asarray(high, dtype=float)
+    low = np.asarray(low, dtype=float)
+    up = np.zeros(len(high))
+    down = np.zeros(len(high))
+    up_move = high[1:] - high[:-1]
+    down_move = low[:-1] - low[1:]
+    up[1:] = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
+    down[1:] = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
+    return up, down
+
+
+def plus_di(high, low, close, period: int) -> np.ndarray:
+    up, _ = _directional_movement(high, low)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return 100.0 * wilder_mma(up, period) / atr(high, low, close, period)
+
+
+def minus_di(high, low, close, period: int) -> np.ndarray:
+    _, down = _directional_movement(high, low)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return 100.0 * wilder_mma(down, period) / atr(high, low, close, period)
+
+
+def adx(high, low, close, period: int) -> np.ndarray:
+    plus = plus_di(high, low, close, period)
+    minus = minus_di(high, low, close, period)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        dx = 100.0 * np.abs(plus - minus) / (plus + minus)
+    return wilder_mma(np.nan_to_num(dx, nan=0.0, posinf=0.0, neginf=0.0), period)
+
+
+def _trend(high, low, close, period: int, threshold: float, rising: bool) -> np.ndarray:
+    """ta4j's Up/DownTrendIndicator: strong ADX now, direction decided at the PREVIOUS bar.
+
+    Warm-up is 4 * period bars (DI smoothing then ADX smoothing). The exact ta4j unstable-bar
+    count differs by a few bars; over a ~5,900-bar 4h series that is immaterial, and the
+    strategy's own 600-bar warm-up dominates it either way.
+    """
+    strength = adx(high, low, close, period)
+    plus = plus_di(high, low, close, period)
+    minus = minus_di(high, low, close, period)
+    out = np.zeros(len(strength), dtype=bool)
+    leader, follower = (plus, minus) if rising else (minus, plus)
+    warmup = 4 * period
+    for i in range(max(warmup, 1), len(out)):
+        out[i] = bool(strength[i] > threshold and leader[i - 1] > follower[i - 1])
+    return out
+
+
+def up_trend(high, low, close, period: int = 5, threshold: float = 25.0) -> np.ndarray:
+    return _trend(high, low, close, period, threshold, rising=True)
+
+
+def down_trend(high, low, close, period: int = 5, threshold: float = 25.0) -> np.ndarray:
+    return _trend(high, low, close, period, threshold, rising=False)

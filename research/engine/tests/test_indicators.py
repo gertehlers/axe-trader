@@ -102,3 +102,43 @@ def test_highest_and_lowest_include_the_current_bar():
     assert list(highest(values, 2)) == [5.0, 5.0, 4.0, 4.0]
     assert list(lowest(values, 2)) == [5.0, 3.0, 3.0, 2.0]
     assert lowest(values, 3)[3] == 2.0
+
+
+# --- directional movement, ADX and the trend flags (task 2) -------------------------------
+
+from engine.indicators import plus_di, minus_di, adx, up_trend, down_trend
+
+
+def _ramp(n: int, step: float):
+    """A clean one-directional series: rising for step > 0, falling for step < 0."""
+    base = 100.0 + step * np.arange(n, dtype=float)
+    return base + 1.0, base - 1.0, base      # high, low, close
+
+
+def test_plus_di_dominates_minus_di_in_a_rising_market():
+    high, low, close = _ramp(60, 1.0)
+    assert plus_di(high, low, close, 5)[-1] > minus_di(high, low, close, 5)[-1]
+
+
+def test_minus_di_dominates_plus_di_in_a_falling_market():
+    high, low, close = _ramp(60, -1.0)
+    assert minus_di(high, low, close, 5)[-1] > plus_di(high, low, close, 5)[-1]
+
+
+def test_adx_is_high_in_a_clean_trend():
+    high, low, close = _ramp(60, 1.0)
+    assert adx(high, low, close, 5)[-1] > 25.0
+
+
+def test_trend_flags_pick_the_right_direction():
+    up_h, up_l, up_c = _ramp(60, 1.0)
+    down_h, down_l, down_c = _ramp(60, -1.0)
+    assert up_trend(up_h, up_l, up_c)[-1]
+    assert not down_trend(up_h, up_l, up_c)[-1]
+    assert down_trend(down_h, down_l, down_c)[-1]
+    assert not up_trend(down_h, down_l, down_c)[-1]
+
+
+def test_trend_flags_are_false_during_warmup():
+    high, low, close = _ramp(60, 1.0)
+    assert not up_trend(high, low, close)[:20].any()
