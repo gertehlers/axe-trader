@@ -3,7 +3,7 @@
 Running count of everything tried, so the multiple-testing bar can only ever go up. Trial counts
 are cumulative down a parent/child chain (spec §6.2.3) and feed the Bonferroni adjustment at G1.
 
-**Hypotheses: 7 · Variants tried: 355 · Reached G1: 0 · Reached G2: 0**
+**Hypotheses: 8 · Variants tried: 368 · Reached G1: 0 · Reached G2: 0**
 
 | id | title | instruments | tf | status | trials | created |
 |---|---|---|---|---|---|---|
@@ -14,6 +14,7 @@ are cumulative down a parent/child chain (spec §6.2.3) and feed the Bonferroni 
 | [H-0005](H-0005-confluence-entry-signal.md) | The 4-pillar confluence entry predicts forward returns | US500, OIL_CRUDE, OIL_BRENT | 15min | `signal present` | 30 | 2026-09-19 |
 | [H-0006](H-0006-confluence-entry-direction.md) | The confluence entry has the wrong sign on OIL_CRUDE | OIL_CRUDE | 15min | `inconclusive` | 50 | 2026-09-19 |
 | [H-0007](H-0007-run-census-timing.md) | Fast runs are predictable in timing but not direction | OIL_CRUDE, OIL_BRENT, US500 | 15min | `signal present` | 12 | 2026-09-19 |
+| [H-0008](H-0008-compression-breakout.md) | A volatility-compression breakout converts H-0007's timing into an edge | OIL_CRUDE, OIL_BRENT, US500 | 15min | `pre-registered` | 13 | 2026-09-19 |
 
 ## Notes
 
@@ -58,6 +59,15 @@ are cumulative down a parent/child chain (spec §6.2.3) and feed the Bonferroni 
   (47.9–52.6% LONG). This is the second independent route to the same wall as
   [[H-0006-confluence-entry-direction]]: the move is findable, the side is not. The only shape the
   evidence supports is a breakout, where the market declares direction.
+
+- **H-0008** is H-0007's one supported follow-up and is **pre-registered but not run**. A breakout
+  is the only structure that spends a timing signal with no directional content: the setup picks
+  the moment, the market declares the side. Spec at
+  `docs/superpowers/specs/2026-09-19-compression-breakout-design.md`, fixed and committed before any
+  run, with no free parameters left. The criterion that carries it is **percentile ≥ 95 against an
+  hour-matched placebo without the quiet and volume conditions** — oil breaks out anyway, and the
+  question is whether H-0007's setup adds to that. It is also the **first strategy here to model
+  slippage as non-zero** (10 ticks), which a stop-entry design cannot honestly skip.
 
 - **H-0005** is the first result in this project with an economically meaningful edge.
   **OIL_CRUDE SHORT**: 222 entries, positive at all 5 horizons, percentile 100.0 at 4h, edge
