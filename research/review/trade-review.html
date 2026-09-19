@@ -227,30 +227,38 @@ canvas{display:block;width:100%;height:420px;touch-action:none;border-radius:4px
     <div class="eyebrow">Exit matrix · layer 2 · pre-registration review</div>
     <h1>Four exits, one entry</h1>
     <p class="standfirst">The confluence entry is frozen, so all four exit arms mostly trade the
-      <em>same</em> setups and differ only in where they get out. That makes the exits comparable
-      candle by candle — and it is the only honest way to decide which arms the 51-config matrix
-      should spend its budget on.</p>
+      <em>same</em> setups and differ only in where they get out. That was meant to settle which
+      arms deserve the matrix budget. Reviewing the trades settled something else: the exits are
+      not the binding constraint.</p>
   </header>
 
   <div class="verdict">
-    <p class="lede">Nothing here is profitable. The question is not which arm wins, but whether
-      the 1:1 arm is broken for a <em>structural</em> reason — and the data says it is.</p>
-    <p>H-0005 measured this entry's edge by forward horizon and found it <b>rising with time held</b>:
-      50th percentile at 15m, 97.9 at 2h, <b>100.0 at 4h</b>, 89.4 at 8h, on OIL_CRUDE SHORT. Every
-      arm here exits long before that. Mean holds are <span class="num">0.27h</span> (reversal),
-      <span class="num">0.71h</span> (symmetric), <span class="num">1.50h</span> (time),
-      <span class="num">2.17h</span> (trailing) — <b>all four cut inside the horizon band where the
-      edge was not yet measurable.</b></p>
-    <p>Worse for the symmetric arm specifically: held to 4h the SHORT side averages
-      <span class="num pos">+0.2604 ATR</span> but its <em>median</em> is
-      <span class="num neg">−0.4147</span> at a 42.9% win rate. The edge is <b>tail-driven</b> — a
-      minority of large moves. A symmetric 1:1 target caps every winner at 1R, which is precisely
-      where a tail-driven edge lives. It cannot capture this edge by construction, so its
-      <span class="num">−0.218R</span> is not bad luck to be averaged out over more instruments.</p>
-    <p>Use the inspector below to check that claim yourself before anything is thrown out: sort by
-      <b>best 4h horizon</b>, look at the big SHORT winners, and see where each arm bailed. Tag what
-      you disagree with and send it back — a tagged trade becomes a
-      <code>source: owner-comment</code> hypothesis in the ledger.</p>
+    <p class="lede">The typical trade has to survive <b>more pain than the gain it is chasing</b>.
+      That is a property of the entry, and no exit rule fixes it.</p>
+    <p>Within 4 hours of entry, the median LONG trade goes <span class="num pos">+1.67 ATR</span>
+      in your favour at some point — and <span class="num neg">−2.08 ATR</span> against you.
+      Favourable <b>1.67</b>, adverse <b>2.08</b>. The move you want is genuinely there (1.67 ATR is
+      about eleven spreads), but collecting it means sitting through a larger loss first.</p>
+    <p>That settles the symmetric 1:1 arm without needing the matrix. Its stop sits
+      <span class="num">1.0 ATR</span> away, against a median adverse excursion of 2.08. It is
+      stopped out before the favourable move arrives in most trades <b>by construction</b> — the
+      36.1% win rate is geometry, not luck. The wide-brake arms survive the drawdown and then leave
+      on a clock or a fading signal, banking a fraction of what was available.</p>
+    <p><b>Two things the owner spotted, now measured.</b> The entries are <em>not</em> late and have
+      not missed a spike: they fire <em>against</em> a completed ~1.1 ATR move on both sides, which
+      is exactly what RSI-oversold plus lower-band plus near-support is built to do. And the chop is
+      not in the signal — the forward efficiency ratio after an entry (0.21–0.24) is the same as
+      after any random bar (0.230). OIL_CRUDE at 15m travels about 4.3 points of path per 1 point of
+      progress <em>everywhere</em>.</p>
+    <p><b>A correction to what this page said before.</b> It argued the edge peaks at 4h so the arms
+      exit too early, and that fading the signal looked promising. The fade was put to a
+      pre-registered placebo test and <b>failed</b> — percentile 6.2 against a required 5.0. Two of
+      three criteria passed; all three were required. It is recorded as a miss and is not being
+      re-run to chase 4.9. Holding longer does not rescue an entry whose median is negative on both
+      sides.</p>
+    <p>Use the inspector to check the excursion claim yourself: the two dotted horizontal lines on
+      each chart are the best and worst the price reached within 4 hours of entry. Mark what you
+      disagree with and send it back — that is where these last three findings came from.</p>
   </div>
 
   <section>
@@ -277,20 +285,25 @@ canvas{display:block;width:100%;height:420px;touch-action:none;border-radius:4px
         <span><svg width="12" height="12" aria-hidden="true"><path d="M6 1 L11 10 L1 10 Z" fill="var(--ink-2)"/></svg> an arm's mean hold</span>
       </div>
       <div id="horizonChart"></div>
-      <p class="fig-cap">Edge rises to a peak at 4h (percentile 100.0 against the placebo
-        distribution) then falls back by 8h. The four arms sit at 0.27h, 0.71h, 1.50h and 2.17h —
-        the flat left-hand part of the curve, where the measured edge is 0.0006 to 0.07 points
-        against a 0.0351 spread. Reading the exits as "which brake width is best" answers a
-        question the entry has no measured edge at yet.</p>
+      <p class="fig-cap"><b>Read this one carefully — it is a mean, and the median disagrees with
+        it.</b> The SHORT edge does rise to a peak at 4h (percentile 100.0 against the placebo
+        distribution, reproduced exactly in the H-0006 run), and the four arms all exit to the left
+        of that peak. But at the same 4h point the SHORT median is <span class="num neg">−0.0535</span>
+        and the win rate is <b>44.1%</b>: fewer than half of these trades are ever profitable, and
+        the positive mean is carried by a minority of large moves. So "the arms exit too early" does
+        not follow from this chart, and an earlier version of this page was wrong to say it did.
+        What the chart does show is that nothing tradeable sits in the first hour.</p>
     </div>
   </section>
 
   <section>
     <div class="sec-head"><h2>Trade inspector</h2><span class="pill" id="filterCount">—</span></div>
     <p class="sec-note">Every entry, with each arm's exit on the same candle window. The dashed gold
-      line marks the 4h horizon where H-0005 measured the edge, so an exit that cut it short is
-      visible rather than inferred. Keyboard: <span class="kbd">←</span>
-      <span class="kbd">→</span> to step through trades.</p>
+      line marks the 4h horizon. The two dotted horizontal lines are the <b>best</b> and
+      <b>worst</b> the price reached inside that horizon — the gap between them is what any exit
+      rule has to work with, and the reason the 1:1 stop fails. Sort by
+      <b>worst pain-to-gain</b> to see the cases where the adverse excursion dwarfs the favourable
+      one. Keyboard: <span class="kbd">←</span> <span class="kbd">→</span> to step through trades.</p>
 
     <div class="tools">
       <div class="tool"><label for="fSide">Side</label>
@@ -302,6 +315,7 @@ canvas{display:block;width:100%;height:420px;touch-action:none;border-radius:4px
           <option value="hz-worst">Worst 4h horizon</option>
           <option value="spread">Biggest disagreement between arms</option>
           <option value="left">Most left on the table vs 4h</option>
+          <option value="pain">Worst pain-to-gain (MAE over MFE)</option>
         </select></div>
       <div class="tool"><label for="fShared">Coverage</label>
         <select id="fShared"><option value="all">All entries</option><option value="4">Taken by all four arms</option></select></div>
@@ -365,18 +379,19 @@ canvas{display:block;width:100%;height:420px;touch-action:none;border-radius:4px
     <div class="caveats"><ul>
       <li><b>Slippage is 0 in every figure here.</b> Every cost number is a floor. The trailing arm
         exits 456 of 456 trades via <code>STOP</code> and the symmetric arm 294 of 482 — exactly
-        where slippage bites hardest — so the wide-brake arms are flattered most by this.</li>
-      <li><b>This is one instrument.</b> D3 asks whether an ATR-normalised exit behaves differently
-        on US500 than on oil; that is unanswered until the matrix runs on more than OIL_CRUDE.</li>
-      <li><b>H-0005 is a lead, not a finding.</b> 30 cells were examined, so a percentile of 100.0
-        does not clearly clear a Bonferroni bar; and OIL_BRENT showing the same shape is not
-        independent evidence, because Brent and WTI are the same underlying.</li>
-      <li><b>The LONG side looks dead on this instrument</b> — negative at the 4h horizon
-        (<span class="num">−0.3694 ATR</span>) and in all four arms. H-0005 put both oil LONG sides
-        at percentiles 0–31. Enabling LONG in the matrix spends budget on a side already measured
-        as having no edge.</li>
-      <li><b>Weekend financing still multiplies by 1.0.</b> Holds here average 0.27–2.17h so carry is
-        rare, but it stays wrong for any arm that holds toward the 4h horizon the edge actually needs.</li>
+        where slippage bites hardest.</li>
+      <li><b>This is one instrument.</b> Whether an ATR-normalised exit behaves differently on US500
+        than on oil (D3) is untouched, and the excursion finding above is OIL_CRUDE 15m only. MFE
+        against MAE is cheap to measure elsewhere and is the first thing worth checking.</li>
+      <li><b>Multiple testing is now heavy.</b> 30 cells at H-0005 and 20 more at H-0006, down one
+        parent chain on one entry rule. A near-miss percentile at this depth is not a promising
+        result, it is an expected one.</li>
+      <li><b>The LONG side has no measured edge in either direction.</b> As signalled it is negative
+        at every horizon; fading it failed the placebo. It is not "probably fadeable" — it is
+        unresolved, and spending matrix budget on it is spending it on an open question.</li>
+      <li><b>You only see trades the strategy took.</b> All 506 windows are entries, so a large move
+        the strategy ignored completely cannot be marked here. "What are we missing entirely?" is a
+        different question than "are our exits wrong?", and this page cannot ask it yet.</li>
     </ul></div>
   </section>
 </div>
@@ -472,6 +487,21 @@ canvas{display:block;width:100%;height:420px;touch-action:none;border-radius:4px
     rec._best = best;
     rec._left = (rec._hz !== null && best !== null) ? rec._hz - best : null;
     rec._key = rec.e + "|" + rec.d;
+    // Best and worst the price reached within the 4h horizon — the excursion profile. This is the
+    // measurement that decides the symmetric arm: a stop nearer than the adverse excursion is hit
+    // before the favourable one arrives.
+    var lo = null, hiP = null;
+    for (var j = rec.eb + 1; j <= Math.min(rec.h, rec.b.length - 1); j++){
+      var bar = rec.b[j];
+      if (hiP === null || bar[2] > hiP) hiP = bar[2];
+      if (lo === null || bar[3] < lo) lo = bar[3];
+    }
+    if (hiP !== null){
+      rec._mfePrice = rec.d === "LONG" ? hiP : lo;
+      rec._maePrice = rec.d === "LONG" ? lo : hiP;
+      rec._mfe = rec.atr ? Math.abs(rec._mfePrice - rec.ep) / rec.atr : null;
+      rec._mae = rec.atr ? Math.abs(rec._maePrice - rec.ep) / rec.atr : null;
+    } else { rec._mfePrice = rec._maePrice = rec._mfe = rec._mae = null; }
   });
   var BY_KEY = {};
   D.entries.forEach(function(r){ BY_KEY[r._key] = r; });
@@ -523,7 +553,11 @@ canvas{display:block;width:100%;height:420px;touch-action:none;border-radius:4px
       "hz-best": function(a,b){ return (b._hz===null?-1e9:b._hz) - (a._hz===null?-1e9:a._hz); },
       "hz-worst":function(a,b){ return (a._hz===null?1e9:a._hz) - (b._hz===null?1e9:b._hz); },
       "spread":  function(a,b){ return b._spread - a._spread; },
-      "left":    function(a,b){ return (b._left===null?-1e9:b._left) - (a._left===null?-1e9:a._left); }
+      "left":    function(a,b){ return (b._left===null?-1e9:b._left) - (a._left===null?-1e9:a._left); },
+      "pain":    function(a,b){
+        var ra = (a._mfe ? a._mae / a._mfe : -1), rb = (b._mfe ? b._mae / b._mfe : -1);
+        return rb - ra;
+      }
     };
     view.sort(by[state.sort]);
     if (state.i >= view.length) state.i = 0;
@@ -667,6 +701,7 @@ canvas{display:block;width:100%;height:420px;touch-action:none;border-radius:4px
       var tr = r.arms[a.k]; if (!tr || !state.arms[a.k]) return;
       levels.push(tr.xp, tr.sp); if (tr.tp !== null) levels.push(tr.tp);
     });
+    if (r._mfePrice !== null) levels.push(r._mfePrice, r._maePrice);
     levels.forEach(function(v){ if (v < lo) lo = v; if (v > hi) hi = v; });
     var span = (hi - lo) || 1; lo -= span * 0.08; hi += span * 0.08; span = hi - lo;
 
@@ -760,6 +795,13 @@ canvas{display:block;width:100%;height:420px;touch-action:none;border-radius:4px
       ctx.font = '700 10px Archivo, sans-serif';
       ctx.fillText("4h horizon", hx - 5, PAD.t + 2);
       ctx.beginPath(); ctx.arc(hx, yOf(bars[r.h][4]), 4, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // the excursion profile: the best and the worst this trade ever reached inside the horizon
+    if (r._mfePrice !== null){
+      var xEnd = xOf(Math.min(r.h, bars.length - 1) + 0.5);
+      levelLine(r._mfePrice, gain, "best " + signed(r._mfe, 2) + " ATR", [2, 4], ex, xEnd);
+      levelLine(r._maePrice, loss, "worst -" + fmt(r._mae, 2) + " ATR", [2, 4], ex, xEnd);
     }
 
     // each arm's stop, target and exit
@@ -1093,6 +1135,10 @@ canvas{display:block;width:100%;height:420px;touch-action:none;border-radius:4px
       '<dt>Hour (UTC)</dt><dd>' + r.hr + ':00</dd>' +
       '<dt>At 4h horizon</dt><dd class="' + cls(hz) + '">' +
         (hz === null ? "—" : signed(hz) + " ATR") + '</dd>' +
+      '<dt>Best within 4h</dt><dd class="pos">' +
+        (r._mfe === null ? "—" : "+" + fmt(r._mfe, 2) + " ATR") + '</dd>' +
+      '<dt>Worst within 4h</dt><dd class="neg">' +
+        (r._mae === null ? "—" : "−" + fmt(r._mae, 2) + " ATR") + '</dd>' +
       '<dt>Arms taking it</dt><dd>' + r._nArms + ' of 4</dd>';
 
     var vl = document.getElementById("voteList");

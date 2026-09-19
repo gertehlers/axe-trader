@@ -43,27 +43,53 @@ the only positive cell — same instrument, same side.
 **The confluence fires on ~0.6% of bars**, so 4h produced only 11–25 entries per instrument and the
 first H-0005 run was `inconclusive` on power alone. The matrix moved to 15m with the entry frozen.
 
-### The trade-review page exists, and it reframes the 1:1 question
+### The review loop ran, and it moved the question off the exits
 
-The owner's call: **nothing gets thrown out before it is verified visually.** So the trade-review
-surface (spec §7.3) was built before any matrix decision, not after —
-**https://claude.ai/artifact/GrqdRANKK6AnzCGcgRyXiU** ("Four Exits, One Entry"). Source in
-`research/review/trade-review.html`, data via `research/review/export_trade_review.py`, adapter in
-`research/engine/engine/review.py` (11 new tests; suite now 141).
+The owner marked 13 runs across 5 trades on the review page
+(**https://claude.ai/artifact/GrqdRANKK6AnzCGcgRyXiU**, source `research/review/trade-review.html`,
+canvas annotation layer ported from the spike). Three of his five marked entries had the entry
+pointing the wrong way. That became **H-0006** (`source: owner-comment`) — the first hypothesis in
+this project raised by the owner's eye rather than a spec.
 
-It aligns on the entry rather than the arm: the entry is frozen, and **426 of 506 entries are taken
-by all four arms**, so one candle window carries all four exits and the arms are comparable trade by
-trade.
+**H-0006's pre-registered placebo FAILED**: percentile 6.2 against a required 5.0 (two of three
+criteria passed; all three were required). Recorded as a miss, not re-run. The fade line is closed.
+An earlier in-session claim that fading held out-of-sample (+0.4263) was **wrong** — that split was
+60/40 by entry count, not the project's 2026-07-31 boundary, where the holdout holds 12 LONG
+entries.
 
-**Building it surfaced the thing the summary table hid.** H-0005's edge *rises with horizon* — p50 at
-15m, p97.9 at 2h, **p100 at 4h**, p89.4 at 8h. The arms' mean holds are 0.27h, 0.71h, 1.50h, 2.17h:
-**every arm exits inside the band where the entry has no measured edge.** Reading the matrix as
-"which brake width wins" answers a question the entry cannot yet support.
+**What survived is better than what failed.** The diagnostics answer both of the owner's
+observations and reframe the whole exit-matrix question:
 
-And splitting the 4h horizon by side (506 entries, ATR units):
+| finding | number |
+|---|---|
+| Entries are **not late** — they fire *against* a completed move, by design | prior 2h move **−1.12 ATR** both sides (baseline ±0.04) |
+| The **chop is the instrument, not the signal** | forward efficiency 0.21–0.24 vs **0.230** for any bar |
+| The **excursion profile is upside down** | LONG median MFE **+1.67 ATR** vs MAE **+2.08 ATR** |
 
-| side | held to 4h | median | win | best arm |
-|---|---|---|---|---|
+**The typical trade must survive more adverse movement than the favourable movement it is chasing.**
+No exit rule fixes MAE > MFE. The symmetric 1:1 arm's 1.0-ATR stop against a 2.08-ATR median
+adverse excursion is stopped out before the move arrives *by construction* — its 36.1% win rate is
+geometry, not luck. So the 1:1 question is settled without the matrix, and the matrix itself is
+now the wrong next step.
+
+H-0005 reproduces exactly (SHORT 4h edge +0.1385, percentile 100.0) but at a **44.1% win rate and a
+negative median** — a mean-only, tail-driven effect the typical trade never sees.
+
+### Next action
+
+**Do not build the 51-config exit matrix.** It spends its entire budget tuning exits for an entry
+whose median is negative on both sides and whose adverse excursion exceeds its favourable one.
+
+The live question is now **layer 0/1 on entries**: *can any entry be found on this instrument whose
+MFE exceeds its MAE?* It is measurable with no exit rule at all, and it subsumes both the sign
+question and the matrix. It needs a new hypothesis id and its own pre-registration — the confluence
+entry has been examined at 50 cells down one chain and cannot absorb another look. MFE-vs-MAE is
+also cheap to measure on US500 and OIL_BRENT, which is the first place to look.
+
+Still open: the review page only shows windows where the strategy entered, so moves it ignored
+entirely cannot be marked. "What are we missing?" needs a different export.
+
+---|---|---|---|---|
 | SHORT | **+0.2604** | −0.4147 | 42.9% | time **+0.0471** |
 | LONG | −0.3694 | −0.4240 | 45.7% | reversal −0.1369 |
 
