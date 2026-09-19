@@ -62,3 +62,43 @@ def test_bollinger_uses_population_standard_deviation():
     values = np.arange(1.0, 21.0)
     middle, upper, _ = bollinger(values, 20, 1.0)
     assert upper[-1] - middle[-1] == pytest.approx(values.std(ddof=0))
+
+
+# --- Wilder smoothing, ATR and rolling extremes (task 1) -----------------------------------
+
+from engine.indicators import wilder_mma, true_range, atr, highest, lowest
+
+
+def test_wilder_mma_seeds_on_the_first_value_like_ta4j():
+    # ta4j's MMAIndicator seeds with the first value, then smooths recursively. Seeding on the
+    # mean of the first `period` values instead would be a different (and unfaithful) series.
+    values = np.array([10.0, 20.0, 30.0])
+    out = wilder_mma(values, 2)
+    assert out[0] == 10.0
+    assert out[1] == (10.0 * 1 + 20.0) / 2       # 15.0
+    assert out[2] == (15.0 * 1 + 30.0) / 2       # 22.5
+
+
+def test_true_range_takes_the_largest_of_the_three_ranges():
+    high = np.array([10.0, 12.0])
+    low = np.array([9.0, 11.0])
+    close = np.array([9.5, 11.5])
+    out = true_range(high, low, close)
+    assert out[0] == 1.0                  # first bar: high - low
+    assert out[1] == 12.0 - 9.5           # gap up: high - previous close
+
+
+def test_atr_is_wilder_smoothed_true_range():
+    high = np.array([10.0, 12.0, 13.0])
+    low = np.array([9.0, 11.0, 12.0])
+    close = np.array([9.5, 11.5, 12.5])
+    assert np.allclose(atr(high, low, close, 2), wilder_mma(true_range(high, low, close), 2))
+
+
+def test_highest_and_lowest_include_the_current_bar():
+    # This is ta4j's behaviour and pillar 3 depends on it: at a new extreme the distance to the
+    # level is zero, so "near support" is trivially true.
+    values = np.array([5.0, 3.0, 4.0, 2.0])
+    assert list(highest(values, 2)) == [5.0, 5.0, 4.0, 4.0]
+    assert list(lowest(values, 2)) == [5.0, 3.0, 3.0, 2.0]
+    assert lowest(values, 3)[3] == 2.0

@@ -69,3 +69,51 @@ def bollinger(closes: np.ndarray, period: int, multiplier: float) -> tuple[np.nd
         windows = np.lib.stride_tricks.sliding_window_view(closes, period)
         deviation[period - 1:] = windows.std(axis=1, ddof=0)
     return middle, middle + multiplier * deviation, middle - multiplier * deviation
+
+
+def wilder_mma(values: np.ndarray, period: int) -> np.ndarray:
+    """Wilder's modified moving average, seeded on the first value.
+
+    This is ta4j's MMAIndicator, not a simple mean of the first `period` values. The seeding
+    difference washes out after a few dozen bars but is replicated so the port matches.
+    """
+    values = np.asarray(values, dtype=float)
+    out = np.full(len(values), np.nan)
+    if len(values) == 0:
+        return out
+    out[0] = values[0]
+    for i in range(1, len(values)):
+        out[i] = (out[i - 1] * (period - 1) + values[i]) / period
+    return out
+
+
+def true_range(high: np.ndarray, low: np.ndarray, close: np.ndarray) -> np.ndarray:
+    high = np.asarray(high, dtype=float)
+    low = np.asarray(low, dtype=float)
+    close = np.asarray(close, dtype=float)
+    previous = np.empty_like(close)
+    previous[0] = close[0]
+    previous[1:] = close[:-1]
+    return np.maximum(high - low, np.maximum(np.abs(high - previous), np.abs(low - previous)))
+
+
+def atr(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int) -> np.ndarray:
+    return wilder_mma(true_range(high, low, close), period)
+
+
+def _rolling(values: np.ndarray, period: int, reducer) -> np.ndarray:
+    values = np.asarray(values, dtype=float)
+    out = np.full(len(values), np.nan)
+    for i in range(len(values)):
+        out[i] = reducer(values[max(0, i - period + 1): i + 1])
+    return out
+
+
+def highest(values: np.ndarray, period: int) -> np.ndarray:
+    """Rolling maximum INCLUDING the current bar, as ta4j's HighestValueIndicator does."""
+    return _rolling(values, period, np.max)
+
+
+def lowest(values: np.ndarray, period: int) -> np.ndarray:
+    """Rolling minimum INCLUDING the current bar, as ta4j's LowestValueIndicator does."""
+    return _rolling(values, period, np.min)
