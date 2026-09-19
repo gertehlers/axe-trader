@@ -95,9 +95,39 @@ independent of what he looked at.**
 - **Fading is not the bearish confluence.** Shorting when the *bullish* 3-of-4 fires is a different
   entry set from the bearish 3-of-4, and only the former was measured.
 
-## Next
+## Pre-registration — run 2 (written 2026-09-19, before the run)
 
-Pre-register before any further run: the placebo grid against matched random entries on the faded
-LONG side only, at the 4h horizon only, on the project's own development/holdout boundary rather
-than this split. If it clears, the exit matrix should be re-scoped around it — the current matrix
-spends its entire budget tuning exits for an entry whose median is negative on both sides.
+Fading is negation, so the testable claim is stated on the **as-signalled** measure: the confluence
+LONG entry's forward return is *below* what matched random entries achieve.
+
+**Primary test.** OIL_CRUDE, 15m, LONG side, 4h horizon (16 bars), development window
+2024-01-01 → 2026-07-31. Placebo: 200 whole-week shifts of the entire LONG entry set (±26 weeks),
+preserving clustering and weekday/hour — the H-0005 construction, unchanged.
+
+**Passes only if all three hold:**
+1. The real LONG mean sits at **percentile ≤ 5.0** of the placebo distribution (anti-predictive),
+   over at least 150 usable placebo sets.
+2. The real LONG **median** is negative — so it is not a tail artefact, which is the failure mode
+   this hypothesis was raised to catch.
+3. The edge against placebo exceeds the round-trip spread of **0.0351 pts**, since a smaller one
+   cannot be collected.
+
+**Everything else is secondary and cannot promote this hypothesis:** the other four horizons, the
+SHORT side, and the 2026-08-01 → 2026-09-17 holdout (which holds only ~6 weeks and is reported for
+direction, not for power). A secondary cell that passes while the primary fails is a failure.
+
+**If it fails**, the LONG anti-prediction is not separable from the window and the fade line is
+closed; the sign question returns to `inconclusive` and the exit matrix stands as the open question.
+
+**The owner's other two observations** (2026-09-19), tested alongside as diagnostics — these carry
+no pass/fail and cannot promote anything:
+- *"Entries keep starting in choppy waters — is it because it missed the spike, or truly shitty
+  confluence?"* Measured as the prior-move size in ATR over the 8 bars before entry (is the signal
+  **late**?) and the forward efficiency ratio, net displacement over summed absolute bar moves (is
+  the forward window **chop**?), both against the placebo entries.
+- *"The exits are way too tiny — we need bigger moves."* Measured as maximum favourable excursion
+  per entry against what each arm actually captured.
+
+A mechanism worth naming before it is tested, so it cannot be claimed as a prediction afterwards:
+if the confluence fires **after** a move has run, then "fading it" is capturing reversion, and the
+sign error and the chop are the same finding. The prior-move diagnostic is what would show that.
