@@ -16,6 +16,7 @@ Supersedes: nothing. Extends `2026-09-17-research-restart-design.md` (the plan o
 | D6 | Report in **percentage of account and R**, not dollars. The amount does not matter; the percentage does. |
 | D7 | Also test the **symmetric 1:1** target/stop variant — narrow target with a wide stop has not worked, the wins are too small. |
 | D8 | **NATURALGAS is excluded** from all research (`research/EXCLUDED-INSTRUMENTS.md`). |
+| D9 | **Shorts stay enabled on every instrument, US500 included.** At this stage the project is not in a position to exclude an angle that large. |
 
 ## 1. Purpose, and what this is not
 
@@ -100,16 +101,31 @@ visible rather than assumed to be contributing.
 
 **Pillar 3 uses the extremes of `close`, not of `high`/`low`.** Also replicated as-is.
 
-### 3.3 Two deliberate changes from the archived config
+### 3.3 Both sides enabled (D9)
 
-Both because the archived values encode US500-5m-specific conclusions from the untrusted era:
+The archived config sets `enable-short: false`. That is overridden here for two independent
+reasons, and the second is the load-bearing one:
 
-- **Both sides enabled.** `enable-short: false` was a US500 5m finding ("crash-only lottery").
-  Oil has no drift argument for long-only.
-- **Pre-registered prediction:** US500 **shorts should underperform**, because H-0004 measured that
-  holding US500 short overnight nets −3.774 pts/session with a CI entirely below zero, and 4h
-  positions with wide brakes will be held overnight. If this does not appear in the results, suspect
-  the run before suspecting the prediction.
+- The long-only call was a **US500 5-minute** finding ("crash-only lottery") from the untrusted
+  era, and oil has no drift argument for long-only in any case.
+- **The project cannot afford to exclude a whole direction right now (D9).** Half the opportunity
+  space would be removed on the strength of one instrument's tuning, at a point where four
+  hypotheses have been closed and nothing has replaced them. Excluding shorts is a decision to make
+  *from* evidence gathered here, not one to import.
+
+**Pre-registered prediction, not a pre-condemnation.** US500 shorts are expected to underperform
+US500 longs, because H-0004 measured short-overnight carry at −3.774 pts/session with a CI entirely
+below zero, and 4h positions behind a wide brake will be held overnight. This exists as a
+**calibration check on the run**: if it does not appear, suspect the harness before the prediction.
+It is explicitly *not* grounds for dropping shorts afterwards — a short book that merely
+underperforms longs may still be positive, and the carry penalty applies to US500 only, not to oil,
+whose long and short financing rates are identical (−0.01096%/day both sides).
+
+**Consequence for the output (§7.1).** Because both sides run inside every configuration, results
+mixing them would confound the cross-instrument comparison D3 asks for — an instrument whose
+signals happen to skew short would look like an instrument where the *exit* behaves differently.
+Every configuration therefore reports **long and short separately as well as combined**, including
+trade count, expectancy in R, win rate and financing per side.
 
 ## 4. The exit arms
 
@@ -235,6 +251,8 @@ cannot see drawdown. It would require a simulator change and is not justified ye
 - the §6 risk measurements
 - per-pillar fire rates and the confluence-score distribution (§3.2)
 - exit-reason breakdown (`STOP` / `TARGET` / `SIGNAL`), which is how E1–E4 are told apart
+- **every figure split long / short as well as combined** (§3.3), so the D3 instrument comparison
+  cannot be confounded by a side skew
 
 ### 7.2 Comparison
 
