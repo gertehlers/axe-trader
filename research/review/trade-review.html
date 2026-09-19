@@ -154,6 +154,63 @@ textarea{width:100%;font:inherit;font-size:13px;background:var(--sunk);color:var
 .caveats ul{margin:8px 0 0;padding-left:18px;display:grid;gap:7px;font-size:13.5px;color:var(--ink-2)}
 .caveats li{max-width:76ch}
 .caveats b{color:var(--ink)}
+
+/* canvas inspector */
+.cvwrap{position:relative}
+canvas{display:block;width:100%;height:420px;touch-action:none;border-radius:4px}
+@media (max-width:860px){canvas{height:330px}}
+.cvtools{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:9px}
+.cvtools .spacer{flex:1}
+.chip{font:inherit;font-size:11.5px;border:1px solid var(--line-2);background:var(--surface);
+  color:var(--ink-2);border-radius:5px;padding:3px 9px;cursor:pointer}
+.chip:hover{border-color:var(--ink-3)}
+.chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--paper);
+  font-weight:600}
+.hint{font-size:11.5px;color:var(--ink-3);margin-top:8px;min-height:1.3em}
+.hint b{color:var(--ink)}
+
+.composer{position:absolute;z-index:20;width:302px;background:var(--surface);
+  border:1px solid var(--accent);border-radius:8px;box-shadow:0 8px 26px rgba(0,0,0,.22);
+  padding:11px;max-height:440px;overflow-y:auto}
+.composer .at{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-2);
+  margin-bottom:7px}
+.composer .measured{font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:700;
+  color:var(--accent);margin-bottom:8px;line-height:1.45}
+.composer .seclabel{font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--ink-3);font-weight:600;margin:9px 0 4px}
+.composer textarea{min-height:46px;margin-top:8px}
+.composer .acts{display:flex;gap:6px;margin-top:9px;justify-content:flex-end}
+.kindgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.kindgrid .chip{text-align:left}
+.kindgrid .chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);
+  color:#fff;font-weight:600}
+.dirrow{display:flex;gap:6px;margin-bottom:7px}
+.dirrow .chip{flex:1;text-align:center;font-weight:600}
+.dirrow .chip[data-dir="LONG"][aria-pressed="true"]{background:var(--gain);border-color:var(--gain);color:#fff}
+.dirrow .chip[data-dir="SHORT"][aria-pressed="true"]{background:var(--loss);border-color:var(--loss);color:#fff}
+.armgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.armgrid .chip[aria-pressed="true"]{color:var(--paper);font-weight:600}
+.causegrid{display:grid;gap:4px}
+.causegrid .chip{text-align:left}
+.causegrid .chip[aria-pressed="true"]{background:var(--horizon);border-color:var(--horizon);color:#fff;font-weight:600}
+.causehint{font-size:11px;color:var(--ink-3);margin-top:4px;min-height:13px}
+
+.notes{list-style:none;margin:0;padding:0;max-height:270px;overflow-y:auto}
+.notes li{display:grid;grid-template-columns:20px 1fr auto;gap:8px;padding:8px 2px;
+  border-bottom:1px solid var(--line);align-items:start;cursor:pointer}
+.notes li:last-child{border-bottom:none}
+.notes li:hover{background:var(--surface-2)}
+.notes .idx{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:700;color:var(--paper);
+  background:var(--accent);width:19px;height:19px;border-radius:50%;display:grid;place-items:center}
+.notes .body{min-width:0}
+.notes .kind{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;
+  color:var(--accent)}
+.notes .head{font-size:10.5px;color:var(--ink-3);font-family:"IBM Plex Mono",monospace}
+.notes .txt{font-size:12px;overflow-wrap:anywhere}
+.notes .del{font:inherit;font-size:11px;background:transparent;border:1px solid var(--line);
+  color:var(--ink-3);border-radius:4px;cursor:pointer;padding:1px 6px}
+.notes .del:hover{border-color:var(--loss);color:var(--loss)}
+.empty{font-size:12px;color:var(--ink-3);padding:6px 0}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 
@@ -259,12 +316,18 @@ textarea{width:100%;font:inherit;font-size:13px;background:var(--sunk);color:var
           <span class="title" id="tTitle">—</span>
           <span class="sub" id="tSub">—</span>
         </div>
-        <div id="candleChart"></div>
-        <div class="nav">
+        <div class="cvtools">
+          <button class="chip" id="noteMode" type="button" aria-pressed="true">Click-to-note: on</button>
+          <button class="chip" id="runMode" type="button" aria-pressed="false">Draw a run</button>
+          <button class="chip" id="fitBtn" type="button">Fit</button>
+          <span class="spacer"></span>
           <button class="btn" id="prevBtn" type="button">← Prev</button>
           <button class="btn" id="nextBtn" type="button">Next →</button>
           <span class="count" id="posLabel">—</span>
         </div>
+        <div class="cvwrap" id="cvWrap"><canvas id="cv"></canvas></div>
+        <div class="hint" id="cvHint">Drag to pan · scroll to zoom · <b>click any bar</b> to note it.
+          <b>Draw a run</b> then drag from where the move could have started to where it ran out.</div>
       </div>
 
       <div class="side">
@@ -281,14 +344,9 @@ textarea{width:100%;font:inherit;font-size:13px;background:var(--sunk);color:var
           <div id="armExits"></div>
         </div>
         <div class="panel">
-          <h3>Your verdict</h3>
-          <div class="tagrow" id="tagRow"></div>
-          <textarea id="noteBox" placeholder="What do you see here that the summary table misses?"></textarea>
-          <div style="display:flex;gap:7px;margin-top:8px;flex-wrap:wrap">
-            <button class="btn" id="saveBtn" type="button">Save note</button>
-            <button class="btn" id="commentBtn" type="button">Comment here</button>
-          </div>
-          <div class="status" id="noteStatus"></div>
+          <h3>Marks on this trade</h3>
+          <ul class="notes" id="noteList"></ul>
+          <div class="empty" id="noteEmpty">Nothing marked here yet.</div>
         </div>
         <div class="panel">
           <h3>Send to Claude</h3>
@@ -334,7 +392,7 @@ textarea{width:100%;font:inherit;font-size:13px;background:var(--sunk);color:var
     {k:"time",      label:"Time stop",     color:"var(--a-time)"},
     {k:"reversal",  label:"Reversal",      color:"var(--a-rev)"}
   ];
-  var ARM_BY_KEY = {}; ARMS.forEach(function(a){ ARM_BY_KEY[a.k] = a; });
+  var TF = 15;   // minutes per signal bar
 
   // H-0005's forward-edge measurement, OIL_CRUDE SHORT (research/ledger/H-0005-*.md).
   var HORIZON = [
@@ -346,6 +404,33 @@ textarea{width:100%;font:inherit;font-size:13px;background:var(--sunk);color:var
   ];
   var SPREAD = 0.0351;
 
+  // What a mark can say. `dir` kinds describe a direction the market could have been traded in;
+  // `arm` kinds are about one arm's exit, which only this four-arm view can distinguish.
+  var KINDS = [
+    {id:"missed-run",   label:"Missed run",     dir:true},
+    {id:"better-entry", label:"Better entry",   dir:true},
+    {id:"bad-entry",    label:"Bad entry"},
+    {id:"late-entry",   label:"Entered late"},
+    {id:"better-exit",  label:"Better exit",    arm:true},
+    {id:"early-exit",   label:"Exited early",   arm:true},
+    {id:"late-exit",    label:"Exited late",    arm:true},
+    {id:"chop",         label:"Choppy / no trend"},
+    {id:"good",         label:"This was right"},
+    {id:"note",         label:"Note"}
+  ];
+  function kindOf(id){ for (var i=0;i<KINDS.length;i++) if (KINDS[i].id===id) return KINDS[i]; return null; }
+
+  // Naming the shape of a drawn run is optional, and a hypothesis either way — the hint travels
+  // with it so the reader gets the "so what", not just a tag.
+  var CAUSES = [
+    {id:"spike-correction", label:"Spike correction", hint:"news-driven spike, this is the snap-back — may not be TA-findable at all"},
+    {id:"stretched-trend",  label:"Stretched trend",  hint:"sustained move, a signal was probably there to spot"},
+    {id:"breakout",         label:"Breakout",         hint:"ran from a level break"},
+    {id:"reversal",         label:"Reversal at level",hint:"turned at support/resistance"},
+    {id:"unsure",           label:"Unsure — dig in",  hint:"saw it, can't name it — asking for analysis"}
+  ];
+  function causeOf(id){ for (var i=0;i<CAUSES.length;i++) if (CAUSES[i].id===id) return CAUSES[i]; return null; }
+
   var NS = "http://www.w3.org/2000/svg";
   function el(t, attrs, text){
     var n = document.createElementNS(NS, t);
@@ -353,47 +438,75 @@ textarea{width:100%;font:inherit;font-size:13px;background:var(--sunk);color:var
     if (text !== undefined && text !== null) n.textContent = text;
     return n;
   }
-  function fmt(v, d){ if (v === null || v === undefined || isNaN(v)) return "—";
-    var s = Number(v).toFixed(d === undefined ? 2 : d); return s; }
-  function signed(v, d){ if (v === null || v === undefined || isNaN(v)) return "—";
-    var s = Number(v).toFixed(d === undefined ? 3 : d); return (v > 0 ? "+" : "") + s; }
-  function cls(v){ return v > 0 ? "pos" : (v < 0 ? "neg" : ""); }
+  function fmt(v, d){ if (v===null||v===undefined||isNaN(v)) return "—";
+    return Number(v).toFixed(d===undefined?2:d); }
+  function signed(v, d){ if (v===null||v===undefined||isNaN(v)) return "—";
+    return (v>0?"+":"") + Number(v).toFixed(d===undefined?3:d); }
+  function cls(v){ return v>0?"pos":(v<0?"neg":""); }
   function esc(s){ return String(s).replace(/[&<>"]/g, function(c){
     return ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"})[c]; }); }
+  function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  function shortTime(sec){
+    var d = new Date(sec*1000), p = function(x){ return String(x).padStart(2,"0"); };
+    return p(d.getUTCDate()) + " " +
+      ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getUTCMonth()] +
+      " " + p(d.getUTCHours()) + ":" + p(d.getUTCMinutes());
+  }
+  function isoMin(sec){ return new Date(sec*1000).toISOString().slice(0,16) + "Z"; }
 
   /* ---------- derived per-entry measures ---------- */
-  // Signed move in ATR units: how far price went the trade's way.
   function move(rec, price){
     if (!rec.atr) return null;
-    var sign = rec.d === "LONG" ? 1 : -1;
-    return sign * (price - rec.ep) / rec.atr;
-  }
-  function horizonMove(rec){
-    if (rec.h >= rec.b.length) return null;
-    return move(rec, rec.b[rec.h][4]);
+    return (rec.d === "LONG" ? 1 : -1) * (price - rec.ep) / rec.atr;
   }
   D.entries.forEach(function(rec){
-    rec._hz = horizonMove(rec);
-    var rs = [];
-    for (var k in rec.arms) rs.push(rec.arms[k].r);
+    rec._hz = rec.h < rec.b.length ? move(rec, rec.b[rec.h][4]) : null;
+    var rs = [], best = null;
+    for (var k in rec.arms){
+      rs.push(rec.arms[k].r);
+      var m = move(rec, rec.arms[k].xp);
+      if (m !== null && (best === null || m > best)) best = m;
+    }
     rec._spread = rs.length > 1 ? Math.max.apply(null, rs) - Math.min.apply(null, rs) : 0;
     rec._nArms = rs.length;
-    // How much the best arm left versus simply holding to the horizon.
-    var best = null;
-    for (var k2 in rec.arms){ var m = move(rec, rec.arms[k2].xp);
-      if (m !== null && (best === null || m > best)) best = m; }
     rec._best = best;
     rec._left = (rec._hz !== null && best !== null) ? rec._hz - best : null;
+    rec._key = rec.e + "|" + rec.d;
   });
+  var BY_KEY = {};
+  D.entries.forEach(function(r){ BY_KEY[r._key] = r; });
+
+  /* ---------- note store ---------- */
+  // A mark is anchored to a bar (and optionally a second bar, for a drawn run) inside one entry's
+  // window. Kept per viewer in localStorage until sent; sending is what makes it a hypothesis.
+  var NOTE_KEY = "axe-trade-review-notes-v2";
+  var notes = [];
+  try { var raw = localStorage.getItem(NOTE_KEY); if (raw) notes = JSON.parse(raw) || []; }
+  catch (e) { notes = []; }
+  if (!Array.isArray(notes)) notes = [];
+  function saveNotes(){ try { localStorage.setItem(NOTE_KEY, JSON.stringify(notes)); } catch (e) {} }
+  function notesFor(key){ return notes.filter(function(n){ return n.key === key; }); }
+
+  function runMetrics(rec, n){
+    if (!n.span) return null;
+    var b1 = rec.b[n.bi], b2 = rec.b[n.span.bi2];
+    if (!b1 || !b2) return null;
+    var mv = n.span.price2 - n.price;
+    var bars = Math.abs(n.span.bi2 - n.bi);
+    var out = {move:mv, abs:Math.abs(mv), bars:bars, minutes:bars * TF,
+               atr:rec.atr || null, atrMult:rec.atr ? Math.abs(mv) / rec.atr : null};
+    // How the drawn move compares with what each arm actually took out of this entry.
+    out.vsArms = [];
+    ARMS.forEach(function(a){
+      var tr = rec.arms[a.k];
+      if (!tr) return;
+      var took = Math.abs(tr.xp - rec.ep);
+      if (took > 0) out.vsArms.push(a.k + " " + fmt(Math.abs(mv) / took, 1) + "x");
+    });
+    return out;
+  }
 
   /* ---------- state ---------- */
-  var NOTE_KEY = "axe-trade-review-notes-v1";
-  var TAGS = ["edge is real", "exit too early", "entry is bad", "keep 1:1", "drop 1:1", "look again"];
-  var notes = {};
-  try { var raw = localStorage.getItem(NOTE_KEY); if (raw) notes = JSON.parse(raw) || {}; }
-  catch (e) { notes = {}; }
-  function saveNotes(){ try { localStorage.setItem(NOTE_KEY, JSON.stringify(notes)); } catch (e) {} }
-
   var state = { side:"all", sort:"time", shared:"all", tagged:"all",
                 arms:{symmetric:true, trailing:true, time:true, reversal:true}, i:0 };
   var view = [];
@@ -402,28 +515,29 @@ textarea{width:100%;font:inherit;font-size:13px;background:var(--sunk);color:var
     view = D.entries.filter(function(r){
       if (state.side !== "all" && r.d !== state.side) return false;
       if (state.shared === "4" && r._nArms < 4) return false;
-      if (state.tagged === "yes" && !hasNote(r)) return false;
+      if (state.tagged === "yes" && !notesFor(r._key).length) return false;
       return true;
     });
     var by = {
       "time":    function(a,b){ return a.e < b.e ? -1 : 1; },
-      "hz-best": function(a,b){ return (b._hz === null ? -1e9 : b._hz) - (a._hz === null ? -1e9 : a._hz); },
-      "hz-worst":function(a,b){ return (a._hz === null ? 1e9 : a._hz) - (b._hz === null ? 1e9 : b._hz); },
+      "hz-best": function(a,b){ return (b._hz===null?-1e9:b._hz) - (a._hz===null?-1e9:a._hz); },
+      "hz-worst":function(a,b){ return (a._hz===null?1e9:a._hz) - (b._hz===null?1e9:b._hz); },
       "spread":  function(a,b){ return b._spread - a._spread; },
-      "left":    function(a,b){ return (b._left === null ? -1e9 : b._left) - (a._left === null ? -1e9 : a._left); }
+      "left":    function(a,b){ return (b._left===null?-1e9:b._left) - (a._left===null?-1e9:a._left); }
     };
     view.sort(by[state.sort]);
     if (state.i >= view.length) state.i = 0;
     document.getElementById("filterCount").textContent =
       view.length + " of " + D.entries.length + " entries";
+    fitView();
     render();
   }
-  function hasNote(r){ var n = notes[r.e + "|" + r.d]; return !!(n && (n.t && n.t.length || n.x)); }
-  function noteOf(r){ return notes[r.e + "|" + r.d] || {t:[], x:""}; }
+  function rec(){ return view[state.i] || null; }
 
   /* ---------- arm table ---------- */
   function armTable(){
     var tb = document.getElementById("armTable");
+    tb.textContent = "";
     ARMS.forEach(function(a){
       var s = D.summaries[a.k], ci = s.expectancy_r_ci95;
       var crosses = ci[0] < 0 && ci[1] > 0;
@@ -450,6 +564,8 @@ textarea{width:100%;font:inherit;font-size:13px;background:var(--sunk);color:var
 
   /* ---------- horizon chart ---------- */
   function horizonChart(){
+    var host = document.getElementById("horizonChart");
+    host.textContent = "";
     var W = 760, H = 300, m = {t:22, r:26, b:64, l:56};
     var iw = W - m.l - m.r, ih = H - m.t - m.b;
     var svg = el("svg", {viewBox:"0 0 " + W + " " + H, role:"img",
@@ -462,31 +578,26 @@ textarea{width:100%;font:inherit;font-size:13px;background:var(--sunk);color:var
     var yMax = 0.16;
     function y(v){ return m.t + ih - (v / yMax) * ih; }
 
-    // y grid + ticks
     [0, 0.04, 0.08, 0.12, 0.16].forEach(function(v){
       svg.appendChild(el("line", {x1:m.l, y1:y(v), x2:m.l + iw, y2:y(v),
         stroke:"var(--line)", "stroke-width":v === 0 ? 1.5 : 1}));
       svg.appendChild(el("text", {x:m.l - 9, y:y(v) + 4, "text-anchor":"end",
-        "font-size":11, fill:"var(--ink-3)", "font-family":"IBM Plex Mono, monospace"},
-        v.toFixed(2)));
+        "font-size":11, fill:"var(--ink-3)", "font-family":"IBM Plex Mono, monospace"}, v.toFixed(2)));
     });
     svg.appendChild(el("text", {x:m.l - 42, y:m.t + ih / 2, "text-anchor":"middle",
-      "font-size":11, fill:"var(--ink-3)", transform:"rotate(-90 " + (m.l - 42) + " " + (m.t + ih / 2) + ")"},
-      "edge (points)"));
+      "font-size":11, fill:"var(--ink-3)",
+      transform:"rotate(-90 " + (m.l - 42) + " " + (m.t + ih / 2) + ")"}, "edge (points)"));
 
-    // the spread, as the bar any edge must clear
     svg.appendChild(el("line", {x1:m.l, y1:y(SPREAD), x2:m.l + iw, y2:y(SPREAD),
       stroke:"var(--loss)", "stroke-width":1.5, "stroke-dasharray":"5 4"}));
     svg.appendChild(el("text", {x:m.l + iw, y:y(SPREAD) - 7, "text-anchor":"end",
       "font-size":10.5, fill:"var(--loss)", "font-weight":600}, "spread 0.0351 — the bar to clear"));
 
-    // x ticks at the measured horizons
     HORIZON.forEach(function(p){
       svg.appendChild(el("text", {x:x(p.hours), y:m.t + ih + 18, "text-anchor":"middle",
         "font-size":11, fill:"var(--ink-3)", "font-family":"IBM Plex Mono, monospace"}, p.label));
     });
 
-    // the edge curve
     var d = HORIZON.map(function(p, i){ return (i ? "L" : "M") + x(p.hours) + " " + y(p.edge); }).join(" ");
     svg.appendChild(el("path", {d:d, fill:"none", stroke:"var(--horizon)", "stroke-width":2,
       "stroke-linejoin":"round"}));
@@ -499,7 +610,6 @@ textarea{width:100%;font:inherit;font-size:13px;background:var(--sunk);color:var
         "font-family":"IBM Plex Mono, monospace"}, "p" + p.pct.toFixed(1)));
     });
 
-    // arm mean holds, as ticks under the axis
     ARMS.forEach(function(a, i){
       var h = D.summaries[a.k].risk.mean_holding_hours;
       var px = x(h), base = m.t + ih;
@@ -510,125 +620,486 @@ textarea{width:100%;font:inherit;font-size:13px;background:var(--sunk);color:var
         "font-size":10, fill:a.color, "font-weight":600},
         a.label.replace(" 1:1", "") + " " + h.toFixed(2) + "h"));
     });
-
-    document.getElementById("horizonChart").appendChild(svg);
-  }
-
-  /* ---------- candle chart ---------- */
-  function candleChart(rec){
-    var host = document.getElementById("candleChart");
-    host.textContent = "";
-    var b = rec.b, n = b.length;
-    var W = 700, H = 360, m = {t:16, r:62, b:26, l:8};
-    var iw = W - m.l - m.r, ih = H - m.t - m.b;
-    var lows = [], highs = [];
-    b.forEach(function(c){ lows.push(c[3]); highs.push(c[2]); });
-    var levels = [rec.ep];
-    for (var k in rec.arms){ if (!state.arms[k]) continue;
-      levels.push(rec.arms[k].xp, rec.arms[k].sp);
-      if (rec.arms[k].tp !== null) levels.push(rec.arms[k].tp); }
-    levels.forEach(function(v){ if (v !== null) { lows.push(v); highs.push(v); } });
-    var lo = Math.min.apply(null, lows), hi = Math.max.apply(null, highs);
-    var pad = (hi - lo) * 0.07 || 0.1; lo -= pad; hi += pad;
-    function y(v){ return m.t + ih - (v - lo) / (hi - lo) * ih; }
-    var step = iw / n, cw = Math.max(1.6, Math.min(9, step * 0.62));
-    function x(i){ return m.l + step * (i + 0.5); }
-
-    var svg = el("svg", {viewBox:"0 0 " + W + " " + H, role:"img",
-      "aria-label":"Candle window for the " + rec.d + " entry at " + rec.e +
-        ", with each arm's exit marked and the 4-hour horizon line."});
-
-    // price gridlines
-    var ticks = 4;
-    for (var g = 0; g <= ticks; g++){
-      var v = lo + (hi - lo) * g / ticks;
-      svg.appendChild(el("line", {x1:m.l, y1:y(v), x2:m.l + iw, y2:y(v),
-        stroke:"var(--line)", "stroke-width":1, opacity:.65}));
-      svg.appendChild(el("text", {x:m.l + iw + 6, y:y(v) + 4, "font-size":10.5,
-        fill:"var(--ink-3)", "font-family":"IBM Plex Mono, monospace"}, v.toFixed(2)));
-    }
-
-    // candles
-    b.forEach(function(c, i){
-      var up = c[4] >= c[1];
-      var col = up ? "var(--gain)" : "var(--loss)";
-      var dim = i < rec.eb ? .42 : 1;
-      svg.appendChild(el("line", {x1:x(i), y1:y(c[2]), x2:x(i), y2:y(c[3]),
-        stroke:col, "stroke-width":1, opacity:dim}));
-      var top = y(Math.max(c[1], c[4])), bot = y(Math.min(c[1], c[4]));
-      svg.appendChild(el("rect", {x:x(i) - cw / 2, y:top, width:cw,
-        height:Math.max(1, bot - top), fill:up ? "var(--surface)" : col,
-        stroke:col, "stroke-width":1, opacity:dim}));
-    });
-
-    // entry marker
-    var ex = x(rec.eb);
-    svg.appendChild(el("line", {x1:ex, y1:m.t, x2:ex, y2:m.t + ih, stroke:"var(--ink)",
-      "stroke-width":1.5}));
-    svg.appendChild(el("path", {d:"M" + ex + " " + (y(rec.ep) + (rec.d === "LONG" ? 11 : -11)) +
-      " L" + (ex - 5.5) + " " + (y(rec.ep) + (rec.d === "LONG" ? 20 : -20)) +
-      " L" + (ex + 5.5) + " " + (y(rec.ep) + (rec.d === "LONG" ? 20 : -20)) + " Z",
-      fill:"var(--ink)"}));
-    svg.appendChild(el("text", {x:ex + 7, y:m.t + 11, "font-size":10.5, fill:"var(--ink)",
-      "font-weight":700}, rec.d + " entry"));
-
-    // the 4h horizon the edge was measured at
-    if (rec.h < n){
-      var hx = x(rec.h);
-      svg.appendChild(el("line", {x1:hx, y1:m.t, x2:hx, y2:m.t + ih, stroke:"var(--horizon)",
-        "stroke-width":2, "stroke-dasharray":"6 4"}));
-      svg.appendChild(el("text", {x:hx - 6, y:m.t + 11, "text-anchor":"end", "font-size":10.5,
-        fill:"var(--horizon)", "font-weight":700}, "4h horizon"));
-      var hp = b[rec.h][4];
-      svg.appendChild(el("circle", {cx:hx, cy:y(hp), r:4, fill:"var(--horizon)",
-        stroke:"var(--surface)", "stroke-width":1.5}));
-    }
-
-    // per-arm exits
-    ARMS.forEach(function(a){
-      var t = rec.arms[a.k];
-      if (!t || !state.arms[a.k]) return;
-      var px = x(Math.min(t.xb, n - 1)), py = y(t.xp);
-      // stop line, only across the life of the trade
-      svg.appendChild(el("line", {x1:ex, y1:y(t.sp), x2:px, y2:y(t.sp), stroke:a.color,
-        "stroke-width":1, "stroke-dasharray":"3 3", opacity:.55}));
-      if (t.tp !== null)
-        svg.appendChild(el("line", {x1:ex, y1:y(t.tp), x2:px, y2:y(t.tp), stroke:a.color,
-          "stroke-width":1, "stroke-dasharray":"1 3", opacity:.8}));
-      svg.appendChild(el("line", {x1:px, y1:m.t, x2:px, y2:m.t + ih, stroke:a.color,
-        "stroke-width":1, opacity:.3}));
-      svg.appendChild(el("circle", {cx:px, cy:py, r:5.5, fill:a.color, stroke:"var(--surface)",
-        "stroke-width":2}));
-      svg.appendChild(el("title", null, a.label + ": " + t.xr + " at " + t.xp + ", " +
-        signed(t.r) + "R after " + t.hold_h + "h"));
-    });
-
-    svg.appendChild(el("text", {x:m.l, y:H - 6, "font-size":10, fill:"var(--ink-3)"},
-      n + " bars of 15m · dimmed bars precede the entry"));
     host.appendChild(svg);
   }
 
+  /* ---------- canvas chart ---------- */
+  var cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  var PAD = {t:14, r:58, b:22, l:10};
+  var viewport = {start:0, count:0};
+  var frame = null, hover = null;
+  var noteMode = true, runMode = false, runStart = null, runCursor = null, drag = null;
+
+  function sizeCanvas(){
+    var r = cv.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    var w = Math.max(200, Math.round(r.width)), h = Math.max(160, Math.round(r.height));
+    if (cv.width !== w * dpr || cv.height !== h * dpr){
+      cv.width = w * dpr; cv.height = h * dpr;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return {w:w, h:h};
+  }
+  function fitView(){
+    var r = rec(); if (!r) return;
+    viewport.start = 0; viewport.count = r.b.length;
+  }
+
+  function draw(){
+    var r = rec();
+    var size = sizeCanvas(), W = size.w, H = size.h;
+    ctx.clearRect(0, 0, W, H);
+    if (!r) return;
+    var bars = r.b;
+    var i0 = Math.max(0, Math.floor(viewport.start));
+    var i1 = Math.min(bars.length, Math.ceil(viewport.start + viewport.count));
+    if (i1 <= i0) return;
+
+    var ink = cssVar("--ink"), ink3 = cssVar("--ink-3"), line = cssVar("--line");
+    var gain = cssVar("--gain"), loss = cssVar("--loss"), accent = cssVar("--accent");
+    var horizonC = cssVar("--horizon"), surface = cssVar("--surface");
+    var plotW = W - PAD.l - PAD.r, plotH = H - PAD.t - PAD.b;
+
+    var lo = Infinity, hi = -Infinity, i;
+    for (i = i0; i < i1; i++){ if (bars[i][3] < lo) lo = bars[i][3]; if (bars[i][2] > hi) hi = bars[i][2]; }
+    var levels = [r.ep];
+    ARMS.forEach(function(a){
+      var tr = r.arms[a.k]; if (!tr || !state.arms[a.k]) return;
+      levels.push(tr.xp, tr.sp); if (tr.tp !== null) levels.push(tr.tp);
+    });
+    levels.forEach(function(v){ if (v < lo) lo = v; if (v > hi) hi = v; });
+    var span = (hi - lo) || 1; lo -= span * 0.08; hi += span * 0.08; span = hi - lo;
+
+    function xOf(idx){ return PAD.l + (idx - viewport.start) / viewport.count * plotW; }
+    function yOf(p){ return PAD.t + (hi - p) / span * plotH; }
+    function priceAt(y){ return hi - (y - PAD.t) / plotH * span; }
+    function idxAt(x){ return viewport.start + (x - PAD.l) / plotW * viewport.count; }
+    frame = {xOf:xOf, yOf:yOf, priceAt:priceAt, idxAt:idxAt, W:W, H:H};
+
+    ctx.font = '11px "IBM Plex Mono", monospace';
+    ctx.textBaseline = "middle";
+    for (var g = 0; g <= 5; g++){
+      var pv = lo + span * g / 5, gy = yOf(pv);
+      ctx.strokeStyle = line; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(PAD.l, Math.round(gy) + 0.5);
+      ctx.lineTo(W - PAD.r, Math.round(gy) + 0.5); ctx.stroke();
+      ctx.fillStyle = ink3; ctx.textAlign = "left";
+      ctx.fillText(pv.toFixed(2), W - PAD.r + 6, gy);
+    }
+
+    ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+    var stepT = Math.max(1, Math.round(viewport.count / 6));
+    for (var k = i0; k < i1; k += stepT){
+      var lx = xOf(k + 0.5);
+      if (lx < PAD.l + 34 || lx > W - PAD.r - 34) continue;
+      ctx.fillStyle = ink3;
+      ctx.fillText(shortTime(bars[k][0]), lx, H - 5);
+    }
+
+    // the window each arm was in the trade, lightly shaded behind everything
+    var lastExit = r.eb;
+    ARMS.forEach(function(a){ var tr = r.arms[a.k];
+      if (tr && state.arms[a.k] && tr.xb > lastExit) lastExit = tr.xb; });
+    ctx.save();
+    ctx.globalAlpha = 0.07; ctx.fillStyle = accent;
+    ctx.fillRect(xOf(r.eb), PAD.t, Math.max(2, xOf(lastExit + 1) - xOf(r.eb)), plotH);
+    ctx.restore();
+
+    // candles
+    var bw = plotW / viewport.count;
+    var body = Math.max(1, Math.min(9, bw * 0.62));
+    ctx.lineWidth = 1;
+    for (var c = i0; c < i1; c++){
+      var b = bars[c], cx = xOf(c + 0.5);
+      var up = b[4] >= b[1], col = up ? gain : loss;
+      ctx.save();
+      if (c < r.eb) ctx.globalAlpha = 0.45;
+      ctx.strokeStyle = col; ctx.fillStyle = up ? surface : col;
+      ctx.beginPath();
+      ctx.moveTo(Math.round(cx) + 0.5, yOf(b[2]));
+      ctx.lineTo(Math.round(cx) + 0.5, yOf(b[3]));
+      ctx.stroke();
+      var top = yOf(Math.max(b[1], b[4])), bot = yOf(Math.min(b[1], b[4]));
+      ctx.beginPath();
+      ctx.rect(cx - body / 2, top, body, Math.max(1, bot - top));
+      ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+
+    function levelLine(price, color, label, dash, x1, x2){
+      var y = yOf(price);
+      if (y < PAD.t - 2 || y > PAD.t + plotH + 2) return;
+      ctx.save();
+      ctx.strokeStyle = color; ctx.lineWidth = 1.25; ctx.setLineDash(dash || [5, 4]);
+      ctx.beginPath(); ctx.moveTo(x1 === undefined ? PAD.l : x1, y);
+      ctx.lineTo(x2 === undefined ? W - PAD.r : x2, y); ctx.stroke();
+      ctx.restore();
+      if (label){
+        ctx.fillStyle = color; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+        ctx.font = '600 10px Archivo, sans-serif';
+        ctx.fillText(label, (x1 === undefined ? PAD.l : x1) + 4, y - 7);
+      }
+    }
+
+    // the entry
+    var ex = xOf(r.eb + 0.5);
+    ctx.save();
+    ctx.strokeStyle = ink; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(ex, PAD.t); ctx.lineTo(ex, PAD.t + plotH); ctx.stroke();
+    ctx.restore();
+    levelLine(r.ep, ink, r.d + " entry " + fmt(r.ep, 2), [2, 2]);
+
+    // the horizon the edge was measured at
+    if (r.h < bars.length){
+      var hx = xOf(r.h + 0.5);
+      ctx.save();
+      ctx.strokeStyle = horizonC; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+      ctx.beginPath(); ctx.moveTo(hx, PAD.t); ctx.lineTo(hx, PAD.t + plotH); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = horizonC; ctx.textAlign = "right"; ctx.textBaseline = "top";
+      ctx.font = '700 10px Archivo, sans-serif';
+      ctx.fillText("4h horizon", hx - 5, PAD.t + 2);
+      ctx.beginPath(); ctx.arc(hx, yOf(bars[r.h][4]), 4, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // each arm's stop, target and exit
+    ARMS.forEach(function(a){
+      var tr = r.arms[a.k];
+      if (!tr || !state.arms[a.k]) return;
+      var col = cssVar(a.color.replace("var(", "").replace(")", ""));
+      var xe = xOf(Math.min(tr.xb, bars.length - 1) + 0.5);
+      levelLine(tr.sp, col, null, [3, 3], ex, xe);
+      if (tr.tp !== null) levelLine(tr.tp, col, null, [1, 3], ex, xe);
+      ctx.save();
+      ctx.globalAlpha = .35; ctx.strokeStyle = col; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(xe, PAD.t); ctx.lineTo(xe, PAD.t + plotH); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = col; ctx.strokeStyle = surface; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(xe, yOf(tr.xp), 5.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    });
+
+    function drawRun(bi1, p1, bi2, p2, dir, label, ghost){
+      var x1 = xOf(bi1 + 0.5), y1 = yOf(p1), x2 = xOf(bi2 + 0.5), y2 = yOf(p2);
+      var col = dir === "SHORT" ? loss : dir === "LONG" ? gain : (p2 <= p1 ? loss : gain);
+      ctx.save();
+      ctx.strokeStyle = col; ctx.fillStyle = col;
+      ctx.lineWidth = ghost ? 1.5 : 2.5;
+      ctx.globalAlpha = ghost ? 0.75 : 1;
+      if (ghost) ctx.setLineDash([5, 4]);
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.setLineDash([]);
+      var ang = Math.atan2(y2 - y1, x2 - x1), s = 10;
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - s * Math.cos(ang - 0.42), y2 - s * Math.sin(ang - 0.42));
+      ctx.lineTo(x2 - s * Math.cos(ang + 0.42), y2 - s * Math.sin(ang + 0.42));
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.arc(x1, y1, 3.5, 0, Math.PI * 2); ctx.fill();
+      ctx.font = '700 10px Archivo, sans-serif';
+      ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+      ctx.fillText((label ? "[" + label + "] " : "") + signed(p2 - p1, 2) + " pts",
+        (x1 + x2) / 2, Math.min(y1, y2) - 7);
+      ctx.restore();
+    }
+
+    // the marks already made here — drawn on the chart, so they never go missing
+    var mine = notesFor(r._key);
+    mine.forEach(function(n, idx){
+      var k = kindOf(n.kind);
+      if (n.span){
+        drawRun(n.bi, n.price, n.span.bi2, n.span.price2, n.dir, k ? k.label : n.kind, false);
+        return;
+      }
+      var mx = xOf(n.bi + 0.5), my = yOf(n.price);
+      ctx.save();
+      ctx.fillStyle = accent; ctx.strokeStyle = surface; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(mx, my, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = surface; ctx.font = '700 10px "IBM Plex Mono", monospace';
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(String(idx + 1), mx, my + 0.5);
+      ctx.restore();
+    });
+
+    // the run being drawn right now
+    if (runStart && runCursor)
+      drawRun(runStart.bi, runStart.price, runCursor.bi, runCursor.price, null, null, true);
+
+    // crosshair readout
+    if (hover && frame){
+      var hi2 = Math.floor(idxAt(hover.x));
+      if (hi2 >= 0 && hi2 < bars.length){
+        var hb = bars[hi2];
+        ctx.save();
+        ctx.strokeStyle = ink3; ctx.lineWidth = 1; ctx.setLineDash([2, 3]);
+        ctx.beginPath(); ctx.moveTo(hover.x, PAD.t); ctx.lineTo(hover.x, PAD.t + plotH);
+        ctx.moveTo(PAD.l, hover.y); ctx.lineTo(W - PAD.r, hover.y); ctx.stroke();
+        ctx.restore();
+        ctx.fillStyle = ink; ctx.textAlign = "left"; ctx.textBaseline = "top";
+        ctx.font = '11px "IBM Plex Mono", monospace';
+        var fromEntry = (r.d === "LONG" ? hb[4] - r.ep : r.ep - hb[4]);
+        ctx.fillText(isoMin(hb[0]) + "  O " + fmt(hb[1]) + " H " + fmt(hb[2]) +
+          " L " + fmt(hb[3]) + " C " + fmt(hb[4]) + "   ·  " + signed(fromEntry, 2) +
+          " pts from entry" + (r.atr ? " (" + signed(fromEntry / r.atr, 2) + " ATR)" : ""),
+          PAD.l + 2, PAD.t + 2);
+      }
+    }
+  }
+
+  /* ---------- canvas interaction ---------- */
+  function localPos(e){
+    var r = cv.getBoundingClientRect();
+    return {x:e.clientX - r.left, y:e.clientY - r.top};
+  }
+  function barAt(pos){
+    if (!frame) return null;
+    var r = rec(); if (!r) return null;
+    var idx = Math.floor(frame.idxAt(pos.x));
+    if (idx < 0 || idx >= r.b.length) return null;
+    var bar = r.b[idx];
+    // A marked price must be one the bar actually traded, or the point isn't real.
+    var price = Math.max(bar[3], Math.min(bar[2], frame.priceAt(pos.y)));
+    return {bi:idx, price:price};
+  }
+
+  cv.addEventListener("pointerdown", function(e){
+    var pos = localPos(e);
+    cv.setPointerCapture(e.pointerId);
+    if (runMode){
+      var at = barAt(pos);
+      if (!at) return;
+      if (!runStart){ runStart = at; runCursor = at; }
+      drag = {mode:"run", moved:false};
+    } else {
+      drag = {mode:"pan", x:pos.x, start:viewport.start, moved:false};
+    }
+    draw();
+  });
+
+  cv.addEventListener("pointermove", function(e){
+    var pos = localPos(e);
+    hover = pos;
+    if (drag && drag.mode === "pan"){
+      var plotW = cv.getBoundingClientRect().width - PAD.l - PAD.r;
+      var dx = pos.x - drag.x;
+      if (Math.abs(dx) > 3) drag.moved = true;
+      var r = rec();
+      if (r) viewport.start = Math.max(-viewport.count * 0.2,
+        Math.min(r.b.length - viewport.count * 0.2, drag.start - dx / plotW * viewport.count));
+    } else if (runMode && runStart){
+      var at = barAt(pos);
+      if (at){ runCursor = at; if (at.bi !== runStart.bi) drag && (drag.moved = true); }
+    }
+    draw();
+  });
+
+  cv.addEventListener("pointerup", function(e){
+    var pos = localPos(e);
+    var wasPanning = drag && drag.mode === "pan" && drag.moved;
+    var wasDrawing = drag && drag.mode === "run";
+    drag = null;
+    if (wasPanning) return;
+
+    var at = barAt(pos);
+    if (!at) return;
+
+    if (runMode && runStart){
+      // A drag that ended on another bar completes the run; a click leaves the start set so a
+      // second click can finish it, which is easier on a trackpad.
+      if (at.bi === runStart.bi && !wasDrawing) return;
+      if (at.bi === runStart.bi){ setHint("Start set. Now click where the move ran out."); draw(); return; }
+      openComposer({bi:runStart.bi, price:runStart.price,
+                    span:{bi2:at.bi, price2:at.price},
+                    dir:at.price >= runStart.price ? "LONG" : "SHORT"}, pos);
+      runStart = null; runCursor = null;
+      draw();
+      return;
+    }
+    if (noteMode) openComposer({bi:at.bi, price:at.price}, pos);
+  });
+
+  cv.addEventListener("pointercancel", function(){ drag = null; draw(); });
+  cv.addEventListener("pointerleave", function(){ hover = null; drag = null; draw(); });
+  cv.addEventListener("wheel", function(e){
+    e.preventDefault();
+    var r = rec(); if (!r || !frame) return;
+    var pos = localPos(e);
+    var plotW = cv.getBoundingClientRect().width - PAD.l - PAD.r;
+    var at = viewport.start + (pos.x - PAD.l) / plotW * viewport.count;
+    var f = e.deltaY > 0 ? 1.15 : 1 / 1.15;
+    var next = Math.max(8, Math.min(r.b.length * 1.5, viewport.count * f));
+    viewport.start = at - (at - viewport.start) * (next / viewport.count);
+    viewport.count = next;
+    draw();
+  }, {passive:false});
+
+  function setHint(html){ document.getElementById("cvHint").innerHTML = html; }
+
+  /* ---------- composer ---------- */
+  var composerEl = null;
+  function closeComposer(){
+    if (composerEl && composerEl.parentNode) composerEl.parentNode.removeChild(composerEl);
+    composerEl = null;
+  }
+
+  function openComposer(pending, pos){
+    closeComposer();
+    var r = rec(); if (!r) return;
+    var bar = r.b[pending.bi];
+    var m = runMetrics(r, pending);
+
+    composerEl = document.createElement("div");
+    composerEl.className = "composer";
+    var wrapW = document.getElementById("cvWrap").getBoundingClientRect().width;
+    composerEl.style.left = Math.max(4, Math.min(wrapW - 308, pos.x - 150)) + "px";
+    composerEl.style.top = Math.max(4, pos.y - 30) + "px";
+
+    var html = '<div class="at">' + esc(isoMin(bar[0])) + " · " + fmt(pending.price, 3);
+    if (pending.span) html += " → " + esc(isoMin(r.b[pending.span.bi2][0])) + " · " +
+      fmt(pending.span.price2, 3);
+    html += '</div>';
+
+    if (m){
+      html += '<div class="measured">' + signed(m.move, 2) + " pts" +
+        (m.atrMult ? " · " + fmt(m.atrMult, 1) + "x ATR" : "") +
+        " · " + m.bars + " bars (" + m.minutes + " min)" +
+        (m.vsArms.length ? "<br>vs taken: " + esc(m.vsArms.join("  ")) : "") + '</div>';
+      html += '<div class="dirrow">' +
+        '<button class="chip" type="button" data-dir="LONG" aria-pressed="' +
+          (pending.dir === "LONG") + '">Missed LONG</button>' +
+        '<button class="chip" type="button" data-dir="SHORT" aria-pressed="' +
+          (pending.dir === "SHORT") + '">Missed SHORT</button></div>';
+    }
+
+    html += '<div class="seclabel">What is it?</div><div class="kindgrid">';
+    KINDS.forEach(function(k){
+      if (pending.span && !(k.id === "missed-run" || k.id === "better-entry" || k.id === "note")) return;
+      html += '<button class="chip" type="button" data-kind="' + k.id + '" aria-pressed="' +
+        (pending.span && k.id === "missed-run" ? "true" : "false") + '">' + esc(k.label) + '</button>';
+    });
+    html += '</div>';
+
+    // Which arm's exit — only this four-arm view can tell them apart, so a note about an exit
+    // that doesn't name one is ambiguous.
+    html += '<div class="seclabel" data-armsec hidden>Whose exit?</div><div class="armgrid" data-armsec hidden>';
+    ARMS.forEach(function(a){
+      if (!r.arms[a.k]) return;
+      html += '<button class="chip" type="button" data-arm="' + a.k +
+        '" aria-pressed="false" style="border-color:' + a.color + '">' + esc(a.label) + '</button>';
+    });
+    html += '</div>';
+
+    if (pending.span){
+      html += '<div class="seclabel">What kind of move? (optional)</div><div class="causegrid">';
+      CAUSES.forEach(function(c){
+        html += '<button class="chip" type="button" data-cause="' + c.id +
+          '" aria-pressed="false">' + esc(c.label) + '</button>';
+      });
+      html += '</div><div class="causehint"></div>';
+    }
+
+    html += '<textarea placeholder="What do you see here?"></textarea>' +
+      '<div class="acts"><button class="btn" type="button" data-act="cancel">Cancel</button>' +
+      '<button class="btn primary" type="button" data-act="add">Add mark</button></div>';
+    composerEl.innerHTML = html;
+    document.getElementById("cvWrap").appendChild(composerEl);
+    var ta = composerEl.querySelector("textarea");
+    if (ta) ta.focus();
+
+    function syncArmSection(){
+      var k = composerEl.querySelector('[data-kind][aria-pressed="true"]');
+      var kd = k ? kindOf(k.getAttribute("data-kind")) : null;
+      var show = !!(kd && kd.arm);
+      Array.prototype.forEach.call(composerEl.querySelectorAll("[data-armsec]"), function(n){
+        n.hidden = !show;
+      });
+    }
+    syncArmSection();
+
+    composerEl.addEventListener("click", function(ev){
+      var b = ev.target.closest("button");
+      if (!b) return;
+      if (b.hasAttribute("data-dir")){
+        Array.prototype.forEach.call(composerEl.querySelectorAll("[data-dir]"), function(n){
+          n.setAttribute("aria-pressed", n === b ? "true" : "false"); });
+        pending.dir = b.getAttribute("data-dir");
+        draw();
+        return;
+      }
+      if (b.hasAttribute("data-kind")){
+        var on = b.getAttribute("aria-pressed") === "true";
+        Array.prototype.forEach.call(composerEl.querySelectorAll("[data-kind]"), function(n){
+          n.setAttribute("aria-pressed", "false"); });
+        b.setAttribute("aria-pressed", on ? "false" : "true");
+        syncArmSection();
+        return;
+      }
+      if (b.hasAttribute("data-arm")){
+        var wasA = b.getAttribute("aria-pressed") === "true";
+        Array.prototype.forEach.call(composerEl.querySelectorAll("[data-arm]"), function(n){
+          n.setAttribute("aria-pressed", "false"); n.style.background = ""; });
+        b.setAttribute("aria-pressed", wasA ? "false" : "true");
+        b.style.background = wasA ? "" : b.style.borderColor;
+        return;
+      }
+      if (b.hasAttribute("data-cause")){
+        var wasC = b.getAttribute("aria-pressed") === "true";
+        Array.prototype.forEach.call(composerEl.querySelectorAll("[data-cause]"), function(n){
+          n.setAttribute("aria-pressed", "false"); });
+        b.setAttribute("aria-pressed", wasC ? "false" : "true");
+        var c = causeOf(b.getAttribute("data-cause"));
+        composerEl.querySelector(".causehint").textContent = (!wasC && c) ? c.hint : "";
+        return;
+      }
+      if (b.getAttribute("data-act") === "cancel"){
+        runStart = null; runCursor = null; closeComposer(); draw(); return;
+      }
+      if (b.getAttribute("data-act") === "add") commit();
+    });
+
+    function commit(){
+      var kindBtn = composerEl.querySelector('[data-kind][aria-pressed="true"]');
+      var armBtn = composerEl.querySelector('[data-arm][aria-pressed="true"]');
+      var causeBtn = composerEl.querySelector('[data-cause][aria-pressed="true"]');
+      var text = (composerEl.querySelector("textarea").value || "").trim();
+      var kind = kindBtn ? kindBtn.getAttribute("data-kind") : (pending.span ? "missed-run" : "note");
+      var kd = kindOf(kind);
+      if (kd && kd.arm && !armBtn){
+        setHint('<b>Which arm’s exit?</b> Pick one so the mark is not ambiguous.');
+        return;
+      }
+      notes.push({
+        key:r._key, ti:r.i, bi:pending.bi, price:pending.price,
+        span:pending.span || null, dir:pending.dir || null,
+        kind:kind, arm:armBtn ? armBtn.getAttribute("data-arm") : null,
+        cause:causeBtn ? causeBtn.getAttribute("data-cause") : null,
+        text:text, at:new Date().toISOString()
+      });
+      saveNotes(); closeComposer();
+      renderNotes(); markedCount(); draw();
+      setHint("Mark added. Click the next bar, or <b>Send tagged trades</b> when you are done.");
+    }
+  }
+
   /* ---------- side panels ---------- */
-  function renderSide(rec){
+  function renderSide(r){
     var kv = document.getElementById("entryKv");
-    var hz = rec._hz;
+    var hz = r._hz;
     kv.innerHTML =
-      '<dt>Time</dt><dd>' + esc(rec.e.replace("T", " ").replace("Z", "")) + '</dd>' +
-      '<dt>Side</dt><dd>' + rec.d + '</dd>' +
-      '<dt>Entry</dt><dd>' + fmt(rec.ep, 3) + '</dd>' +
-      '<dt>ATR</dt><dd>' + fmt(rec.atr, 4) + '</dd>' +
-      '<dt>Confluence</dt><dd>' + rec.conf + ' of 4</dd>' +
-      '<dt>Hour (UTC)</dt><dd>' + rec.hr + ':00</dd>' +
+      '<dt>Time</dt><dd>' + esc(r.e.replace("T", " ").replace("Z", "")) + '</dd>' +
+      '<dt>Side</dt><dd>' + r.d + '</dd>' +
+      '<dt>Entry</dt><dd>' + fmt(r.ep, 3) + '</dd>' +
+      '<dt>ATR</dt><dd>' + fmt(r.atr, 4) + '</dd>' +
+      '<dt>Confluence</dt><dd>' + r.conf + ' of 4</dd>' +
+      '<dt>Hour (UTC)</dt><dd>' + r.hr + ':00</dd>' +
       '<dt>At 4h horizon</dt><dd class="' + cls(hz) + '">' +
         (hz === null ? "—" : signed(hz) + " ATR") + '</dd>' +
-      '<dt>Arms taking it</dt><dd>' + rec._nArms + ' of 4</dd>';
+      '<dt>Arms taking it</dt><dd>' + r._nArms + ' of 4</dd>';
 
     var vl = document.getElementById("voteList");
     vl.textContent = "";
     ["RSI+BB", "Candle", "S/R", "Vol+Trend"].forEach(function(nm){
-      var on = rec.pil.indexOf(nm) >= 0;
       var s = document.createElement("span");
-      s.className = "vote" + (on ? " on" : "");
+      s.className = "vote" + (r.pil.indexOf(nm) >= 0 ? " on" : "");
       s.textContent = nm;
       vl.appendChild(s);
     });
@@ -636,71 +1107,89 @@ textarea{width:100%;font:inherit;font-size:13px;background:var(--sunk);color:var
     var box = document.getElementById("armExits");
     box.textContent = "";
     ARMS.forEach(function(a){
-      var t = rec.arms[a.k];
+      var tr = r.arms[a.k];
       var row = document.createElement("div");
       row.className = "armrow";
-      if (!t){
+      if (!tr){
         row.innerHTML = '<span class="swatch" style="background:' + a.color + ';opacity:.3"></span>' +
           '<span class="nm" style="color:var(--ink-3)">' + esc(a.label) + '</span>' +
           '<span class="xr">not taken</span>';
       } else {
         row.innerHTML = '<span class="swatch" style="background:' + a.color + '"></span>' +
-          '<span class="nm">' + esc(a.label) + '<br><span class="xr">' + esc(t.xr) + " · " +
-          t.hold_h + 'h</span></span>' +
-          '<span class="r ' + cls(t.r) + '">' + signed(t.r) + 'R</span>';
+          '<span class="nm">' + esc(a.label) + '<br><span class="xr">' + esc(tr.xr) + " · " +
+          tr.hold_h + 'h</span></span>' +
+          '<span class="r ' + cls(tr.r) + '">' + signed(tr.r) + 'R</span>';
       }
       box.appendChild(row);
     });
   }
 
-  function renderNote(rec){
-    var n = noteOf(rec);
-    var row = document.getElementById("tagRow");
-    row.textContent = "";
-    TAGS.forEach(function(t){
-      var btn = document.createElement("button");
-      btn.className = "tag"; btn.type = "button";
-      btn.setAttribute("aria-pressed", n.t.indexOf(t) >= 0 ? "true" : "false");
-      btn.textContent = t;
-      btn.addEventListener("click", function(){
-        var cur = noteOf(rec), tags = cur.t.slice(), at = tags.indexOf(t);
-        if (at >= 0) tags.splice(at, 1); else tags.push(t);
-        notes[rec.e + "|" + rec.d] = {t:tags, x:cur.x || ""};
-        saveNotes(); renderNote(rec); markedCount();
+  function noteLabel(n){
+    var k = kindOf(n.kind), c = causeOf(n.cause);
+    return (k ? k.label : n.kind) + (n.dir ? " · " + n.dir : "") +
+      (n.arm ? " · " + n.arm : "") + (c ? " · " + c.label : "");
+  }
+
+  function renderNotes(){
+    var r = rec();
+    var list = document.getElementById("noteList");
+    var empty = document.getElementById("noteEmpty");
+    list.textContent = "";
+    var mine = r ? notesFor(r._key) : [];
+    empty.hidden = mine.length > 0;
+    mine.forEach(function(n, idx){
+      var bar = r.b[n.bi];
+      var li = document.createElement("li");
+      li.innerHTML = '<span class="idx">' + (idx + 1) + '</span>' +
+        '<span class="body"><span class="kind">' + esc(noteLabel(n)) + '</span>' +
+        '<div class="head">' + esc(bar ? isoMin(bar[0]) : "") + '</div>' +
+        (n.text ? '<div class="txt">' + esc(n.text) + '</div>' : '') + '</span>' +
+        '<button class="del" type="button">del</button>';
+      li.querySelector(".del").addEventListener("click", function(ev){
+        ev.stopPropagation();
+        var at = notes.indexOf(n);
+        if (at >= 0) notes.splice(at, 1);
+        saveNotes(); renderNotes(); markedCount(); draw();
       });
-      row.appendChild(btn);
+      li.addEventListener("click", function(){
+        // bring the mark into view
+        viewport.count = Math.min(r.b.length, 60);
+        viewport.start = Math.max(0, n.bi - viewport.count / 2);
+        draw();
+      });
+      list.appendChild(li);
     });
-    document.getElementById("noteBox").value = n.x || "";
-    document.getElementById("noteStatus").textContent =
-      (n.t.length || n.x) ? "tagged" : "";
   }
 
   function markedCount(){
-    var c = 0;
-    for (var k in notes){ var n = notes[k]; if (n && (n.t.length || n.x)) c++; }
-    document.getElementById("markedCount").textContent = c + " tagged";
-    var btn = document.getElementById("sendBtn");
-    btn.disabled = !(c > 0 && canSend);
-    return c;
+    var keys = {};
+    notes.forEach(function(n){ keys[n.key] = 1; });
+    var trades = Object.keys(keys).length;
+    document.getElementById("markedCount").textContent =
+      notes.length + " mark" + (notes.length === 1 ? "" : "s") + " on " + trades +
+      " trade" + (trades === 1 ? "" : "s");
+    document.getElementById("sendBtn").disabled = !(notes.length > 0 && canSend);
+    return notes.length;
   }
 
   function render(){
-    if (!view.length){
+    closeComposer();
+    runStart = null; runCursor = null;
+    var r = rec();
+    if (!r){
       document.getElementById("tTitle").textContent = "No entries match";
       document.getElementById("tSub").textContent = "";
-      document.getElementById("candleChart").textContent = "";
       document.getElementById("posLabel").textContent = "0 of 0";
+      renderNotes(); draw();
       return;
     }
-    var rec = view[state.i];
     document.getElementById("tTitle").textContent =
-      rec.d + " · " + rec.e.replace("T", " ").replace("Z", "") + " UTC";
-    var bits = [rec.conf + "/4 confluence", rec.pil.join(" + ") || "no pillars"];
-    if (rec._hz !== null) bits.push("4h horizon " + signed(rec._hz) + " ATR");
+      r.d + " · " + r.e.replace("T", " ").replace("Z", "") + " UTC";
+    var bits = [r.conf + "/4 confluence", r.pil.join(" + ") || "no pillars"];
+    if (r._hz !== null) bits.push("4h horizon " + signed(r._hz) + " ATR");
     document.getElementById("tSub").textContent = bits.join(" · ");
-    document.getElementById("posLabel").textContent =
-      (state.i + 1) + " of " + view.length;
-    candleChart(rec); renderSide(rec); renderNote(rec);
+    document.getElementById("posLabel").textContent = (state.i + 1) + " of " + view.length;
+    renderSide(r); renderNotes(); draw();
   }
 
   /* ---------- wiring ---------- */
@@ -720,75 +1209,95 @@ textarea{width:100%;font:inherit;font-size:13px;background:var(--sunk);color:var
     b.addEventListener("click", function(){
       state.arms[a.k] = !state.arms[a.k];
       b.setAttribute("aria-pressed", state.arms[a.k] ? "true" : "false");
-      render();
+      draw();
     });
     tog.appendChild(b);
   });
 
-  function step(d){ if (!view.length) return;
-    state.i = (state.i + d + view.length) % view.length; render(); }
+  function step(d){
+    if (!view.length) return;
+    state.i = (state.i + d + view.length) % view.length;
+    fitView(); render();
+  }
   document.getElementById("prevBtn").addEventListener("click", function(){ step(-1); });
   document.getElementById("nextBtn").addEventListener("click", function(){ step(1); });
-  document.addEventListener("keydown", function(ev){
-    if (ev.target.tagName === "TEXTAREA" || ev.target.tagName === "SELECT") return;
-    if (ev.key === "ArrowLeft") { step(-1); ev.preventDefault(); }
-    if (ev.key === "ArrowRight") { step(1); ev.preventDefault(); }
-  });
+  document.getElementById("fitBtn").addEventListener("click", function(){ fitView(); draw(); });
 
-  document.getElementById("saveBtn").addEventListener("click", function(){
-    var rec = view[state.i]; if (!rec) return;
-    var cur = noteOf(rec);
-    notes[rec.e + "|" + rec.d] = {t:cur.t.slice(), x:document.getElementById("noteBox").value.trim()};
-    saveNotes(); renderNote(rec); markedCount();
-    document.getElementById("noteStatus").innerHTML = "<b>Saved.</b> Kept in this browser until sent.";
+  var noteBtn = document.getElementById("noteMode"), runBtn = document.getElementById("runMode");
+  noteBtn.addEventListener("click", function(){
+    noteMode = !noteMode;
+    noteBtn.setAttribute("aria-pressed", String(noteMode));
+    noteBtn.textContent = "Click-to-note: " + (noteMode ? "on" : "off");
+    cv.style.cursor = noteMode ? "copy" : "crosshair";
+    if (!noteMode) closeComposer();
+    setHint(noteMode ? "Click any bar to mark it." : "Click-to-note off — drag to pan, scroll to zoom.");
+  });
+  runBtn.addEventListener("click", function(){
+    runMode = !runMode;
+    runBtn.setAttribute("aria-pressed", String(runMode));
+    runBtn.textContent = runMode ? "Drawing a run…" : "Draw a run";
+    runStart = null; runCursor = null;
+    cv.style.cursor = runMode ? "crosshair" : (noteMode ? "copy" : "crosshair");
+    setHint(runMode
+      ? "Drag from where the move <b>could have started</b> to where it <b>ran out</b> — or click each end. Up = missed long, down = missed short."
+      : "Run marking off.");
+    draw();
+  });
+  cv.style.cursor = "copy";
+
+  document.addEventListener("keydown", function(ev){
+    var tag = ev.target.tagName;
+    if (tag === "TEXTAREA" || tag === "SELECT" || tag === "INPUT") return;
+    if (ev.key === "ArrowLeft"){ step(-1); ev.preventDefault(); }
+    if (ev.key === "ArrowRight"){ step(1); ev.preventDefault(); }
+    if (ev.key === "Escape"){ runStart = null; runCursor = null; closeComposer(); draw(); }
   });
 
   document.getElementById("themeBtn").addEventListener("click", function(){
-    var r = document.documentElement;
-    var dark = r.getAttribute("data-theme") === "dark" ||
-      (!r.getAttribute("data-theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
-    r.setAttribute("data-theme", dark ? "light" : "dark");
-    document.getElementById("candleChart").textContent = "";
-    document.getElementById("horizonChart").textContent = "";
-    horizonChart(); render();
+    var root = document.documentElement;
+    var dark = root.getAttribute("data-theme") === "dark" ||
+      (!root.getAttribute("data-theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    root.setAttribute("data-theme", dark ? "light" : "dark");
+    horizonChart(); draw();
+  });
+
+  var resizeTimer = null;
+  window.addEventListener("resize", function(){
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function(){ closeComposer(); draw(); }, 120);
   });
 
   /* ---------- comments ---------- */
   var comments = null, canSend = false;
-  document.getElementById("commentBtn").addEventListener("click", function(){
-    var rec = view[state.i]; if (!rec || !comments) return;
-    comments.openComposer({element:document.getElementById("candleChart")})
-      .then(function(r){
-        document.getElementById("noteStatus").textContent = r.opened
-          ? "Composer open — it anchors to this chart."
-          : "A composer is already open.";
-      })
-      .catch(function(err){
-        document.getElementById("noteStatus").textContent =
-          err && err.code === "unavailable" ? "Commenting is off in this view." : "Could not open the composer.";
-      });
-  });
 
   function batches(){
-    var out = [], cur = "", head = "Trade review — OIL_CRUDE 15m exit arms\n";
-    var keys = Object.keys(notes).filter(function(k){
-      var n = notes[k]; return n && (n.t.length || n.x); });
-    keys.forEach(function(k){
-      var n = notes[k], parts = k.split("|");
-      var rec = null;
-      for (var i = 0; i < D.entries.length; i++)
-        if (D.entries[i].e === parts[0] && D.entries[i].d === parts[1]) { rec = D.entries[i]; break; }
-      var line = "\n• " + parts[1] + " " + parts[0].replace("T", " ").replace("Z", "");
-      if (rec){
-        line += " | conf " + rec.conf + "/4 | 4h " + (rec._hz === null ? "—" : signed(rec._hz) + " ATR");
-        ARMS.forEach(function(a){ var t = rec.arms[a.k];
-          if (t) line += " | " + a.k + " " + t.xr + " " + signed(t.r) + "R"; });
+    var out = [], cur = "";
+    var head = "Trade review — OIL_CRUDE 15m exit arms\n";
+    var byKey = {};
+    notes.forEach(function(n){ (byKey[n.key] = byKey[n.key] || []).push(n); });
+    Object.keys(byKey).forEach(function(key){
+      var r = BY_KEY[key];
+      var block = "\n• " + key.split("|")[1] + " " + key.split("|")[0].replace("T", " ").replace("Z", "");
+      if (r){
+        block += " | conf " + r.conf + "/4 | 4h " + (r._hz === null ? "—" : signed(r._hz) + " ATR");
+        ARMS.forEach(function(a){
+          var tr = r.arms[a.k];
+          if (tr) block += " | " + a.k + " " + tr.xr + " " + signed(tr.r) + "R";
+        });
       }
-      if (n.t.length) line += "\n  tags: " + n.t.join(", ");
-      if (n.x) line += "\n  note: " + n.x;
-      line += "\n";
-      if ((cur + line).length > 3400){ out.push(head + cur); cur = ""; }
-      cur += line;
+      byKey[key].forEach(function(n){
+        var bar = r && r.b[n.bi];
+        block += "\n  - " + noteLabel(n);
+        if (bar) block += " @ " + isoMin(bar[0]) + " " + fmt(n.price, 3);
+        var m = r ? runMetrics(r, n) : null;
+        if (m) block += " → " + (r.b[n.span.bi2] ? isoMin(r.b[n.span.bi2][0]) : "") + " " +
+          fmt(n.span.price2, 3) + " (" + signed(m.move, 2) + " pts" +
+          (m.atrMult ? ", " + fmt(m.atrMult, 1) + "x ATR" : "") + ", " + m.minutes + " min)";
+        if (n.text) block += "\n    " + n.text;
+      });
+      block += "\n";
+      if ((cur + block).length > 3400){ if (cur) out.push(head + cur); cur = ""; }
+      cur += block;
     });
     if (cur) out.push(head + cur);
     return out;
@@ -799,9 +1308,9 @@ textarea{width:100%;font:inherit;font-size:13px;background:var(--sunk);color:var
     var chunks = batches();
     if (!chunks.length) return;
     var btn = document.getElementById("sendBtn"), st = document.getElementById("sendStatus");
-    btn.disabled = true; st.textContent = "sending 1 of " + chunks.length + "…";
-    var target = document.getElementById("candleChart");
-    comments.anchorFor(target).then(function(anchor){
+    btn.disabled = true;
+    st.textContent = "sending 1 of " + chunks.length + "…";
+    comments.anchorFor(document.getElementById("cvWrap")).then(function(anchor){
       var sent = 0;
       function next(){
         if (sent >= chunks.length){
@@ -818,7 +1327,7 @@ textarea{width:100%;font:inherit;font-size:13px;background:var(--sunk);color:var
           st.textContent = code === "consent_required"
             ? "Not sent — allow this page to comment as you, then try again."
             : code === "rate_limited" ? "Rate limited — wait a moment and send again."
-            : "Not sent (" + (code || "error") + "). Your notes are still saved here.";
+            : "Not sent (" + (code || "error") + "). Your marks are still saved here.";
           btn.disabled = false;
         });
       }

@@ -36,8 +36,19 @@ taken by all four arms — so the arms are comparable candle by candle, and the 
 where each got out.
 
 Each window also reaches the **4h horizon** where H-0005 measured this entry's edge, so "the exit
-cut the measured edge short" is visible rather than inferred. Tagging a trade and sending it becomes
-a `source: owner-comment` hypothesis (spec §5.3), via the `comments` capability's `sendToClaude`.
+cut the measured edge short" is visible rather than inferred.
+
+**The annotation layer is ported from `research/review-spike/`** and is the point of the page — a
+canvas chart with pan/zoom where you *click any bar* to mark it, or *drag a line* from where a move
+could have started to where it ran out. A drawn run comes back **measured** (points, x ATR,
+bars/minutes, and how it compares with what each arm actually took), so a mark is evidence rather
+than a doodle. Mark kinds: missed run, better/bad/late entry, better/early/late exit, chop, "this
+was right", note. Exit kinds must name **which arm's** exit — only this four-arm view can tell them
+apart. Runs can also carry a cause (spike-correction, stretched-trend, breakout, reversal, unsure),
+each with the hint that travels to the reader.
+
+Marks live in `localStorage` until sent; sending batches them under 4 KiB through the `comments`
+capability's `sendToClaude`, and each becomes a `source: owner-comment` hypothesis (spec §5.3).
 
 Rebuild its data (gitignored, ~1.4 MB, reproducible):
 
