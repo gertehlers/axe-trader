@@ -4,7 +4,7 @@ title: A volatility-compression breakout converts H-0007's timing into an edge
 source: prior-lead
 instruments: [OIL_CRUDE, OIL_BRENT, US500]
 timeframe: 15min
-status: "pre-registered"
+status: "rejected: no signal"
 created: 2026-09-19
 parent: H-0007
 trial_count: 13
@@ -67,7 +67,61 @@ Inherits H-0007's 12 and adds this one configuration. It does **not** inherit th
 chain: the confluence entry is not used here in any form. That entry is a mean-reversion design
 and this is a continuation design; they share only the instrument.
 
+## Result — 2026-09-19: **FAILS**, on three of four criteria
+
+`research/experiments/2026-09-19-compression-breakout.py`. The criteria above were committed before
+the run and are unchanged.
+
+**Primary — OIL_CRUDE, validation:**
+
+| criterion | required | observed | |
+|---|---|---|---|
+| trades | ≥ 100 | 283 | pass |
+| net expectancy | > 0 | **−0.0851R** | **fail** |
+| bootstrap 95% CI | entirely > 0 | **[−0.1872, +0.0191]** | **fail** |
+| placebo percentile | ≥ 95 | **74.5** | **fail** |
+
+Criterion 4 is the one that mattered and it is not close. The setup beats 74.5% of hour-matched
+placebo draws — better than a coin flip, nowhere near significance. **H-0007's filter adds nothing
+reliable to a plain breakout.**
+
+**Every slice, every instrument, negative:**
+
+| | OIL_CRUDE | OIL_BRENT | US500 |
+|---|---|---|---|
+| discovery | −0.2104R (pct 3.5) | −0.2323R (pct 1.5) | −0.1237R (pct 2.0) |
+| validation | −0.0851R (pct 74.5) | −0.1358R (pct 35.0) | −0.1118R (pct 14.0) |
+| holdout | −0.2449R (pct 22.5) | −0.2321R (pct 40.0) | −0.1903R (pct 19.5) |
+
+The placebo percentile has no consistent sign — 3.5, 74.5, 22.5 on OIL_CRUDE — which is what noise
+looks like. On discovery the setup did **worse** than its own placebo.
+
+**It is not a cost problem.** At zero slippage the validation expectancy is −0.0357R; costs move it
+to −0.0851R at the pre-registered 10 ticks. Removing costs entirely does not make it positive.
+
+**The placebo loses too** (−0.11 to −0.21R). Breakouts on 15m oil are negative-expectancy whether or
+not the compression filter is applied. That is the finding, and it is larger than this hypothesis.
+
+## Two implementation bugs, recorded because the first numbers were published to nobody but nearly were
+
+Both were found by disbelieving a result rather than by a test, which is the uncomfortable part.
+
+1. **The stop was checked on the entry bar's own 15-minute low.** A bar that breaks upward out of a
+   range has its low back *inside* the range, from price action *before* the fill. It stopped 72% of
+   trades out on movement that had already happened, giving a 12.7% win rate and −0.77R. The stop
+   scan now starts at the minute after the fill.
+2. **Minutes were mapped to bars by dividing elapsed time by the bar width.** That assumes a
+   contiguous series. Oil closes overnight and at weekends: the validation slice holds 19,636 bars
+   where a gapless span would hold ~29,000, so minutes were attached to the wrong bars entirely.
+   Now mapped by `searchsorted` on the real bar index and verified against the raw bid series
+   (0 mismatches in 400 bars).
+
+**Any figure from before those fixes is void.** The lesson for the next strategy that needs intrabar
+fills: verify the minute-to-bar mapping against the aggregated bars *before* interpreting anything,
+and never test a stop against a bar that contains the entry.
+
 ## Status
 
-`pre-registered`. **Not run.** No result may be recorded in this file without the run that produces
-it, and the criteria above may not be edited afterwards — an edit invalidates the entry.
+`rejected: no signal`. **This specification is closed.** Per the pre-registration, a different range
+length, a target, a trailing stop or other session hours is a **new hypothesis with a new id** — not
+a re-run of this one. No variant is proposed here, deliberately: the result is not "nearly worked".

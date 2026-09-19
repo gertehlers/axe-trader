@@ -14,7 +14,7 @@ are cumulative down a parent/child chain (spec §6.2.3) and feed the Bonferroni 
 | [H-0005](H-0005-confluence-entry-signal.md) | The 4-pillar confluence entry predicts forward returns | US500, OIL_CRUDE, OIL_BRENT | 15min | `signal present` | 30 | 2026-09-19 |
 | [H-0006](H-0006-confluence-entry-direction.md) | The confluence entry has the wrong sign on OIL_CRUDE | OIL_CRUDE | 15min | `inconclusive` | 50 | 2026-09-19 |
 | [H-0007](H-0007-run-census-timing.md) | Fast runs are predictable in timing but not direction | OIL_CRUDE, OIL_BRENT, US500 | 15min | `signal present` | 12 | 2026-09-19 |
-| [H-0008](H-0008-compression-breakout.md) | A volatility-compression breakout converts H-0007's timing into an edge | OIL_CRUDE, OIL_BRENT, US500 | 15min | `pre-registered` | 13 | 2026-09-19 |
+| [H-0008](H-0008-compression-breakout.md) | A volatility-compression breakout converts H-0007's timing into an edge | OIL_CRUDE, OIL_BRENT, US500 | 15min | `rejected: no signal` | 13 | 2026-09-19 |
 
 ## Notes
 
@@ -60,14 +60,15 @@ are cumulative down a parent/child chain (spec §6.2.3) and feed the Bonferroni 
   [[H-0006-confluence-entry-direction]]: the move is findable, the side is not. The only shape the
   evidence supports is a breakout, where the market declares direction.
 
-- **H-0008** is H-0007's one supported follow-up and is **pre-registered but not run**. A breakout
-  is the only structure that spends a timing signal with no directional content: the setup picks
-  the moment, the market declares the side. Spec at
-  `docs/superpowers/specs/2026-09-19-compression-breakout-design.md`, fixed and committed before any
-  run, with no free parameters left. The criterion that carries it is **percentile ≥ 95 against an
-  hour-matched placebo without the quiet and volume conditions** — oil breaks out anyway, and the
-  question is whether H-0007's setup adds to that. It is also the **first strategy here to model
-  slippage as non-zero** (10 ticks), which a stop-entry design cannot honestly skip.
+- **H-0008** was H-0007's one supported follow-up, pre-registered before the run and **rejected**.
+  The breakout fails three of four criteria on OIL_CRUDE validation: −0.0851R expectancy, a CI that
+  crosses zero, and a placebo percentile of **74.5** against a required 95. Negative on every slice
+  and every instrument, and the placebo loses too (−0.11 to −0.21R), so **breakouts on 15m oil are
+  negative-expectancy with or without the compression filter**. Not a cost problem: at zero
+  slippage validation is still −0.0357R. Two implementation bugs were found and fixed mid-run (a
+  stop tested against the entry bar's own low; minutes mapped to bars by elapsed-time arithmetic
+  across a series with weekend gaps) — the pre-fix figures are void and the fixes are written up in
+  the entry. **Closed, with no variant proposed**: the result is not "nearly worked".
 
 - **H-0005** is the first result in this project with an economically meaningful edge.
   **OIL_CRUDE SHORT**: 222 entries, positive at all 5 horizons, percentile 100.0 at 4h, edge
