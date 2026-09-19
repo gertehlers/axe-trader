@@ -1,12 +1,20 @@
 ---
 date: 2026-09-19
-status: open
+status: superseded
+superseded_by: docs/handoffs/2026-09-19-confluence-arms-runnable.md
 branch: main
 head: aa7f0e6
 next: Run known-effect B — Brent-WTI spread mean reversion — starting with whether daily spread changes even exceed the 0.0765-pt two-leg cost
 ---
 
 # The search was aimed at the wrong ground, and now it is measured
+
+> **Superseded 2026-09-19 by `2026-09-19-confluence-arms-runnable.md`.** Its next action — the
+> Brent–WTI kill test — was **not** performed. The owner redirected the session to the strategy and
+> review-page path instead: seeing entries and exits on a chart was the priority, not another
+> hypothesis. Brent–WTI remains a live, untouched candidate in
+> `research/sources/known-effects.md` (entry B) and the 0.0765-pt two-leg cost figure in it is
+> still the right first measurement. Everything else below is accurate as recorded.
 
 Two hypotheses were closed and two things were built that had never existed: the spec's own
 cost-reality ranking, and a hypothesis source that is not a variation on the archived Java config.

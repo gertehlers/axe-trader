@@ -7,7 +7,52 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
 (not scalping), reproducible via 5-pillar confluence, with each instrument tuned as its own
 "personality" rather than one shared config.
 
-## ⭐ SESSION STATE — 2026-09-19: the search was pointed at the wrong ground
+## ⭐ SESSION STATE — 2026-09-19 (later): the engine produces trades, and 1:1 is the worst exit
+
+**Read this first.** Work is on branch `feat/confluence-exit-matrix`, pushed, 8 commits ahead of
+`main`. The owner switched to push-per-commit this session. The 253 MB
+`data/axe-trader.sqlite.gz` has never been staged and must not be — **never `git add -u` here.**
+
+### The headline: a strategy has run through the Python simulator for the first time
+
+Every prior result in this project was layer-1 diagnosis with no trades. Part 1 of the exit-matrix
+plan is complete — the frozen confluence entry and all four exit arms, 130 tests passing.
+
+First real runs, OIL_CRUDE 15m, both sides, $2,000 at 1% risk:
+
+| arm | trades | expectancy | net | max DD | mean hold |
+|---|---|---|---|---|---|
+| **symmetric 1:1** | 482 | **−0.218R** | **−66.3%** | **68.6%** | 0.7h |
+| trailing | 456 | −0.036R | −15.1% | 15.4% | 2.2h |
+| time | 429 | −0.011R | −4.8% | 6.5% | 1.5h |
+| reversal | 492 | −0.011R | −5.1% | 5.2% | 0.3h |
+
+**The 1:1 symmetric arm is by far the worst** — 20× the expectancy loss and 13× the drawdown of the
+wide-brake arms. The old "narrow target, wide stop" geometry was right to distrust, but inverting it
+to 1:1 makes things worse on this ground: a 1-ATR stop at 15m means 0.7-hour trades, and oil's round
+trip eats 21% of a typical 15m bar's range. **The near-stopless disaster-brake idea is the one that
+holds up.** Everything is still negative; nothing here is tradeable.
+
+**H-0005 found the first economically meaningful edge in this project.** OIL_CRUDE SHORT at 15m:
+222 entries, positive at all five horizons, percentile 100.0 at the 4h horizon, edge **+0.1385 pts
+against a 0.0351 spread = 3.9 spreads** (H-0002 managed 1.01; H-0003 ceilinged at 1.55). Caveats
+that must travel with it: Brent and WTI are not independent evidence, and it does not clearly clear
+Bonferroni at 30 trials. **A lead to test, not a finding.** The time arm's SHORT side (+0.006R) is
+the only positive cell — same instrument, same side.
+
+**The confluence fires on ~0.6% of bars**, so 4h produced only 11–25 entries per instrument and the
+first H-0005 run was `inconclusive` on power alone. The matrix moved to 15m with the entry frozen.
+
+### Next action
+
+**Decide whether the 51-config matrix runs as specced**, then write Part 2 of the plan. The spec
+gives a third of the matrix to the symmetric arm; the first runs argue that is wasted, but D7 is an
+explicit owner decision and one run is not grounds to overturn it. See
+`docs/handoffs/2026-09-19-confluence-arms-runnable.md`.
+
+---
+
+## SESSION STATE — 2026-09-19 (earlier): the search was pointed at the wrong ground
 
 **Read this first.** Commit per task, do not push (owner's standing choice). 21 commits sit on
 `main`, unpushed. The 242 MB `data/axe-trader.sqlite.gz` has never been staged and must not be.
