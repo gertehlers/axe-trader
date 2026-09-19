@@ -101,6 +101,20 @@ visible rather than assumed to be contributing.
 
 **Pillar 3 uses the extremes of `close`, not of `high`/`low`.** Also replicated as-is.
 
+**Pillar 2's hammer and shooting star carry a hidden ADX dependency.** `HammerIndicator` and
+`ShootingStarIndicator` in ta4j 0.22.6 are not shape-only: each requires a trend filter
+(`DownTrendIndicator` / `UpTrendIndicator`) built from **ADX with period 5 and a strength threshold
+of 25**, comparing `+DI` and `−DI` **at the previous bar**, on top of the wick-ratio test
+(bottom wick ÷ body > 2 and upper wick ÷ body ≤ 1 for a hammer; mirrored for a shooting star).
+
+A "long lower wick" port would therefore be a *different strategy*, not a simplification. The port
+must implement Wilder-smoothed `+DI`, `−DI` and `ADX` to reproduce it. Engulfing and harami have no
+such dependency and are pure two-bar shape tests.
+
+Division guard: a doji has zero body height, so the wick ratios divide by zero. ta4j's `Num`
+arithmetic makes this a non-finite comparison; the port defines both patterns as **false** when body
+height is zero, and a test pins that.
+
 ### 3.3 Both sides enabled (D9)
 
 The archived config sets `enable-short: false`. That is overridden here for two independent
@@ -277,15 +291,21 @@ exit reason and R.
 
 | # | step | note |
 |---|---|---|
-| 1 | Layer-1 test of the confluence entry (§2), logged as H-0005 | ~1h; gates interpretation, not the build |
+| 1 | Indicator gaps: ATR, rolling extremes, Wilder ±DI/ADX, candle patterns | `indicators.py` has only sma/ema/rsi/bollinger |
 | 2 | Port the 4 pillars to Python, with fire-rate instrumentation (§3) | the frozen entry |
-| 3 | Exit arms E1–E4 as `Strategy` implementations (§4) | no simulator change |
-| 4 | Reporting in R and % + skipped/risk measurements (§5, §6) | changes `run.py` |
-| 5 | Wire `run.py`'s CLI | currently a stub that raises `SystemExit` |
-| 6 | Run the 51-config matrix + placebo grid | cheap once 2–5 exist |
-| 7 | Trade-review page (§7.3) | the deliverable |
+| 3 | Layer-1 test of the confluence entry (§2), logged as H-0005 | gates interpretation, not the build |
+| 4 | Exit arms E1–E4 as `Strategy` implementations (§4) | no simulator change |
+| 5 | Reporting in R and % + skipped/risk/per-side measurements (§5, §6, §3.3) | changes `run.py` |
+| 6 | Wire `run.py`'s CLI | currently a stub that raises `SystemExit` |
+| 7 | Run the 51-config matrix + placebo grid, logged as H-0006 | cheap once 1–6 exist |
+| 8 | Trade-review page (§7.3) | the deliverable |
 
-Steps 2–5 are where the work is. Test-first throughout: the pillars get unit tests against
+**Correction to an earlier ordering.** A previous draft put the layer-1 entry test first. It cannot
+be: computing confluence entries requires the pillars, so the port (steps 1–2) must precede it.
+Implementing the pillars twice — once throwaway for the test, once for real — is exactly how two
+implementations silently diverge, which is this project's recurring failure mode.
+
+Steps 1, 2, 4 and 5 are where the work is. Test-first throughout: the pillars get unit tests against
 hand-checked bars, and each exit arm gets a test asserting its intents on a constructed series.
 
 **Lookahead:** every strategy must be passed to `check_lookahead` **as a factory, not an instance** —
