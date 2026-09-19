@@ -1,0 +1,134 @@
+{
+  "min_atr": 4.0,
+  "window_bars": [
+    4,
+    28
+  ],
+  "epics": {
+    "OIL_CRUDE": {
+      "discovery": {
+        "bars": 41427,
+        "days": 638,
+        "runs": 1186,
+        "runs_per_day": 1.859,
+        "long": 597,
+        "short": 589,
+        "disp_atr_median": 4.811267956497201,
+        "duration_bars_median": 26.0,
+        "mae_atr_median": 0.788361850174887,
+        "clean_share": 0.5598650927487352,
+        "clean_per_day": 1.041
+      },
+      "features_discovery": {
+        "rsi7": {
+          "run": 49.36540220089307,
+          "base": 50.60230471113866
+        },
+        "atr_percentile": {
+          "run": 0.372,
+          "base": 0.498
+        },
+        "bb_width_atr": {
+          "run": 4.195064866741372,
+          "base": 3.9301076521634313
+        },
+        "vol_ratio": {
+          "run": 1.3322151830275724,
+          "base": 0.9741471354709349
+        },
+        "dist_ema50_atr": {
+          "run": 0.07854360612225858,
+          "base": 0.12204396147798724
+        },
+        "dist_ema200_atr": {
+          "run": 0.26009070125737466,
+          "base": 0.28230866405855926
+        },
+        "room_to_swing_hi": {
+          "run": 0.7612732192440176,
+          "base": 0.8256380713880741
+        },
+        "room_to_swing_lo": {
+          "run": 0.7057415722795166,
+          "base": 0.890918605547748
+        },
+        "hour_lift_top5": {
+          "8": 1.93,
+          "9": 1.89,
+          "1": 1.8,
+          "7": 1.72,
+          "0": 1.62
+        }
+      },
+      "validation": {
+        "bars": 19636,
+        "days": 303,
+        "runs": 553,
+        "runs_per_day": 1.825,
+        "long": 276,
+        "short": 277,
+        "disp_atr_median": 4.615357176869851,
+        "duration_bars_median": 26.0,
+        "mae_atr_median": 0.761869629776414,
+        "clean_share": 0.5786618444846293,
+        "clean_per_day": 1.056
+      }
+    },
+    "US500": {
+      "discovery": {
+        "bars": 41757,
+        "days": 638,
+        "runs": 1196,
+        "runs_per_day": 1.875,
+        "long": 624,
+        "short": 572,
+        "disp_atr_median": 4.923840542872334,
+        "duration_bars_median": 25.0,
+        "mae_atr_median": 0.927109032420921,
+        "clean_share": 0.5275919732441472,
+        "clean_per_day": 0.989
+      },
+      "validation": {
+        "bars": 20413,
+        "days": 303,
+        "runs": 551,
+        "runs_per_day": 1.818,
+        "long": 282,
+        "short": 269,
+        "disp_atr_median": 4.767028685659901,
+        "duration_bars_median": 26.0,
+        "mae_atr_median": 0.8070310563978736,
+        "clean_share": 0.5553539019963702,
+        "clean_per_day": 1.01
+      }
+    },
+    "OIL_BRENT": {
+      "discovery": {
+        "bars": 39896,
+        "days": 637,
+        "runs": 1158,
+        "runs_per_day": 1.818,
+        "long": 577,
+        "short": 581,
+        "disp_atr_median": 4.772555975740609,
+        "duration_bars_median": 26.0,
+        "mae_atr_median": 0.7921205566618763,
+        "clean_share": 0.5768566493955095,
+        "clean_per_day": 1.049
+      },
+      "validation": {
+        "bars": 18982,
+        "days": 303,
+        "runs": 545,
+        "runs_per_day": 1.799,
+        "long": 272,
+        "short": 273,
+        "disp_atr_median": 4.638535846151329,
+        "duration_bars_median": 25.0,
+        "mae_atr_median": 0.7719360176434943,
+        "clean_share": 0.5577981651376147,
+        "clean_per_day": 1.003
+      }
+    }
+  }
+}

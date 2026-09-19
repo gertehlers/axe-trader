@@ -3,7 +3,7 @@
 Running count of everything tried, so the multiple-testing bar can only ever go up. Trial counts
 are cumulative down a parent/child chain (spec §6.2.3) and feed the Bonferroni adjustment at G1.
 
-**Hypotheses: 6 · Variants tried: 343 · Reached G1: 0 · Reached G2: 0**
+**Hypotheses: 7 · Variants tried: 355 · Reached G1: 0 · Reached G2: 0**
 
 | id | title | instruments | tf | status | trials | created |
 |---|---|---|---|---|---|---|
@@ -13,6 +13,7 @@ are cumulative down a parent/child chain (spec §6.2.3) and feed the Bonferroni 
 | [H-0004](H-0004-us500-overnight-premium.md) | The US500 overnight premium survives CFD financing | US500 | 1d | `inconclusive` | 4 | 2026-09-19 |
 | [H-0005](H-0005-confluence-entry-signal.md) | The 4-pillar confluence entry predicts forward returns | US500, OIL_CRUDE, OIL_BRENT | 15min | `signal present` | 30 | 2026-09-19 |
 | [H-0006](H-0006-confluence-entry-direction.md) | The confluence entry has the wrong sign on OIL_CRUDE | OIL_CRUDE | 15min | `inconclusive` | 50 | 2026-09-19 |
+| [H-0007](H-0007-run-census-timing.md) | Fast runs are predictable in timing but not direction | OIL_CRUDE, OIL_BRENT, US500 | 15min | `signal present` | 12 | 2026-09-19 |
 
 ## Notes
 
@@ -46,6 +47,17 @@ are cumulative down a parent/child chain (spec §6.2.3) and feed the Bonferroni 
   +1.67 ATR against median MAE +2.08 ATR on the LONG side. No exit rule fixes MAE > MFE, which
   makes the 51-config exit matrix the wrong next step and turns the live question into whether any
   entry on this instrument has MFE > MAE.
+
+- **H-0007** inverts the search at the owner's suggestion: find the good runs first, then look back
+  at what preceded them. Run definition taken from the 12 runs he drew by hand (≥5 ATR within 9
+  bars; his median is 5.1 ATR in 9). A first pass at ≥4 ATR within **28** bars was discarded as a
+  **calibration error** — that is a 50% base rate, the market's ordinary state. Quiet volatility +
+  above-average volume + the 00–09 UTC session roughly **doubles** the odds of a fast run on both
+  oils and **holds from discovery into validation** (×1.66→×1.90 OIL_CRUDE), but **inverts on
+  US500**, where those hours are not the session. Direction is a **coin flip in every oil cell**
+  (47.9–52.6% LONG). This is the second independent route to the same wall as
+  [[H-0006-confluence-entry-direction]]: the move is findable, the side is not. The only shape the
+  evidence supports is a breakout, where the market declares direction.
 
 - **H-0005** is the first result in this project with an economically meaningful edge.
   **OIL_CRUDE SHORT**: 222 entries, positive at all 5 horizons, percentile 100.0 at 4h, edge

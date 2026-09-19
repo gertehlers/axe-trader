@@ -1,0 +1,27 @@
+{
+  "source": "owner-comment",
+  "artifact": "https://claude.ai/artifact/GrqdRANKK6AnzCGcgRyXiU",
+  "thread": "78cc1bbd-1082-4cc4-90d2-14c2a69a9cba",
+  "marked": "2026-09-19",
+  "epic": "OIL_CRUDE",
+  "timeframe": "15min",
+  "note": "Runs the owner drew by hand on the trade-review page. These are the specification of what he considers a tradeable move; the scan thresholds are calibrated from them, not invented. Preserved here because an artifact comment thread is not durable storage.",
+  "runs": [
+    {"kind": "better-entry",  "dir": "LONG",  "from": "2024-01-11T00:15Z", "to": "2024-01-11T02:30Z", "pts":  0.41, "atr_mult":  2.6, "minutes": 135, "cause": null, "text": "and better exit"},
+    {"kind": "missed-run",    "dir": "LONG",  "from": "2024-01-11T00:15Z", "to": "2024-01-11T07:15Z", "pts":  0.79, "atr_mult":  5.1, "minutes": 420, "cause": null, "text": "alternative longer better run that was missed"},
+    {"kind": "missed-run",    "dir": "LONG",  "from": "2024-01-11T08:45Z", "to": "2024-01-11T10:00Z", "pts":  1.35, "atr_mult": 11.6, "minutes":  75, "cause": "breakout"},
+    {"kind": "missed-run",    "dir": "SHORT", "from": "2024-01-11T10:15Z", "to": "2024-01-11T11:15Z", "pts": -0.45, "atr_mult":  3.9, "minutes":  60, "cause": "spike-correction"},
+    {"kind": "missed-run",    "dir": "LONG",  "from": "2024-01-11T11:15Z", "to": "2024-01-11T12:30Z", "pts":  0.47, "atr_mult":  4.1, "minutes":  75, "cause": "reversal"},
+    {"kind": "missed-run",    "dir": "SHORT", "from": "2024-01-11T07:15Z", "to": "2024-01-11T08:45Z", "pts": -0.58, "atr_mult":  5.0, "minutes":  90, "cause": "reversal"},
+    {"kind": "missed-run",    "dir": "LONG",  "from": "2024-01-11T00:15Z", "to": "2024-01-11T07:15Z", "pts":  0.75, "atr_mult":  6.4, "minutes": 420, "cause": "stretched-trend"},
+    {"kind": "missed-run",    "dir": "LONG",  "from": "2024-01-12T09:15Z", "to": "2024-01-12T11:30Z", "pts":  1.42, "atr_mult":  5.1, "minutes": 135, "cause": null},
+    {"kind": "missed-run",    "dir": "SHORT", "from": "2024-01-12T11:30Z", "to": "2024-01-12T17:30Z", "pts": -2.53, "atr_mult":  9.1, "minutes": 360, "cause": "reversal"},
+    {"kind": "missed-run",    "dir": "SHORT", "from": "2024-01-17T06:30Z", "to": "2024-01-17T09:15Z", "pts": -0.89, "atr_mult":  5.2, "minutes": 165, "cause": null},
+    {"kind": "missed-run",    "dir": "LONG",  "from": "2024-01-18T13:45Z", "to": "2024-01-18T16:00Z", "pts":  0.89, "atr_mult":  5.9, "minutes": 135, "cause": null},
+    {"kind": "missed-run",    "dir": "SHORT", "from": "2024-01-18T11:15Z", "to": "2024-01-18T13:45Z", "pts": -0.64, "atr_mult":  4.2, "minutes": 150, "cause": null}
+  ],
+  "chop_marks": [
+    {"at": "2024-01-17T02:15Z", "note": "choppy / no trend"},
+    {"at": "2024-01-18T09:00Z", "note": "choppy / no trend"}
+  ]
+}
