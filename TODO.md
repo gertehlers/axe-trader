@@ -28,8 +28,10 @@ is a one-off repricing rather than a drift. There is no horizon at which the sig
 
 **The cost reality check** (spec §6.1 step 1, never run before) explains all three failures at once.
 Ranking every instrument × timeframe we hold by the share of a typical bar's range one round trip
-consumes: **US500 5m — where all three hypotheses were tested — is rank 13 of 19, at 20.7%.**
-US500 4h is 3.5%, US500 1d is 3.0%, OIL_CRUDE 1d is 2.4%. Spread is near-constant in points while
+consumes: **US500 5m — where all three hypotheses were tested — is rank 11 of 15, at 20.7%.**
+US500 4h is 3.5%, US500 1d is 3.0%, OIL_CRUDE 1d is 2.4%. **NATURALGAS is excluded from research
+permanently** (owner, 2026-09-19) — `research/EXCLUDED-INSTRUMENTS.md`. Usable instruments are
+US500, OIL_CRUDE, OIL_BRENT. Spread is near-constant in points while
 the range grows, so slowing down is a six-fold cost improvement that needs no new idea. Full table:
 `research/cost-reality/2026-09-19.md`.
 
@@ -124,9 +126,11 @@ Full write-ups with numbers: `research/ledger/` (INDEX.md + H-0001 + H-0002).
   re-running one strategy instance on truncated data cannot catch a strategy that precomputed an
   indicator over the whole series in `__init__`. `check_lookahead` also accepts a factory and
   rebuilds per truncation. Both leak shapes are tested.
-- **NATURALGAS FAILS data quality** at 16.2% missing core minutes — but it is illiquidity, not a
-  broken import: 30–41% missing 00:00–06:00 UTC against 1.5–2.4% during US hours. Usable only
-  inside roughly 11:00–19:00 UTC. Re-importing cannot fix it; Capital.com's gaps are permanent.
+- **NATURALGAS FAILS data quality** at 16.2% missing core minutes — illiquidity, not a broken
+  import: 30–41% missing 00:00–06:00 UTC against 1.5–2.4% during US hours. Re-importing cannot fix
+  it; Capital.com's gaps are permanent. _(Superseded 2026-09-19: the "usable inside 11:00–19:00 UTC"
+  workaround was dropped — the instrument is now **excluded from research permanently**. See
+  `research/EXCLUDED-INSTRUMENTS.md`.)_
 - **The 12-instrument seed was stopped.** NATURALGAS completed (801,226 rows, merged). GOLD was
   killed mid-staging; its staging file is resumable. Each instrument costs ~5–6 hours, almost all
   of it re-requesting permanently-empty gaps.

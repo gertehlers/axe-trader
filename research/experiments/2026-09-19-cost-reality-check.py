@@ -30,9 +30,9 @@ and the thing it is measured against:
 strategy at that timeframe must capture more than `cost_share` of a typical bar's range before it
 earns anything at all. Lower is a better hunting ground.
 
-NATURALGAS is reported twice. It fails data quality overall (16.2% missing core minutes) but the
-shape of the gaps is illiquidity, not a broken import, so it is usable inside roughly 11:00-19:00
-UTC; both the all-hours and the restricted numbers are shown and only the restricted one counts.
+NATURALGAS is deliberately absent. It is excluded from research permanently (owner, 2026-09-19) --
+16.2% missing core minutes that Capital.com cannot supply, and it was never the cheapest ground at
+any timeframe anyway. See research/EXCLUDED-INSTRUMENTS.md; do not add it back.
 
 Run:
     cd research/engine && PYTHONPATH=. .venv/bin/python ../experiments/2026-09-19-cost-reality-check.py
@@ -66,8 +66,6 @@ TARGETS = [
     ("US500", "US500", None),
     ("OIL_BRENT", "OIL_BRENT", None),
     ("OIL_CRUDE", "OIL_CRUDE", None),
-    ("NATURALGAS", "NATURALGAS (all hours, FAILS data quality)", None),
-    ("NATURALGAS", "NATURALGAS (11-19 UTC only)", (11, 19)),
 ]
 
 

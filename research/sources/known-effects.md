@@ -26,7 +26,7 @@ structurally-constrained participant.
 [[2026-09-19]] (`research/cost-reality/2026-09-19.md`) ranked every instrument × timeframe we hold
 by the share of a typical bar's range one round trip consumes. The four cheapest grounds are
 **OIL_CRUDE 1d (2.4%)**, **US500 1d (3.0%)**, **US500 4h (3.5%)** and **OIL_BRENT 1d (4.0%)**.
-US500 5m — where all three dead hypotheses were tested — is 13th of 19 at 20.7%.
+US500 5m — where all three dead hypotheses were tested — is 11th of 15 at 20.7%.
 
 Candidates below are therefore only listed where they can be tested at 4h or slower. An effect that
 lives at 5-minute resolution has to be about five times larger to be worth the same money, and we
@@ -34,7 +34,8 @@ have no evidence any effect here is that large.
 
 ## Instruments we hold
 
-US500, OIL_BRENT, OIL_CRUDE (all pass data quality); NATURALGAS (fails, usable ~11:00–19:00 UTC only).
+US500, OIL_BRENT, OIL_CRUDE — all pass data quality. **NATURALGAS is excluded from research
+permanently** (owner, 2026-09-19); see `research/EXCLUDED-INSTRUMENTS.md` and do not propose it.
 Effects requiring FX, gold, US100 or an options surface are listed at the bottom as blocked.
 
 ---

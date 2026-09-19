@@ -231,147 +231,6 @@
           "spread_bps_of_price": 5.254563841821487
         }
       }
-    },
-    "NATURALGAS (all hours, FAILS data quality)": {
-      "epic": "NATURALGAS",
-      "hours_utc": null,
-      "timeframes": {
-        "5m": {
-          "bars": 167708,
-          "typical_minutes_per_bar": 5.0,
-          "median_price": 3.0824,
-          "spread_pts": 0.005001335058554153,
-          "financing_pts": 0.0,
-          "financed_share_of_bars": 0.0,
-          "hurdle_pts": 0.005001335058554153,
-          "median_tr_pts": 0.006000000000000227,
-          "median_atr14_pts": 0.006781419954591245,
-          "cost_share_of_tr": 0.8335558430923272,
-          "cost_share_of_atr": 0.7375055802535992,
-          "spread_bps_of_price": 16.225457625727202
-        },
-        "15m": {
-          "bars": 59112,
-          "typical_minutes_per_bar": 14.0,
-          "median_price": 3.0755,
-          "spread_pts": 0.005001955609690079,
-          "financing_pts": 0.0,
-          "financed_share_of_bars": 0.0,
-          "hurdle_pts": 0.005001955609690079,
-          "median_tr_pts": 0.010500000000000398,
-          "median_atr14_pts": 0.012550111694635106,
-          "cost_share_of_tr": 0.47637672473237036,
-          "cost_share_of_atr": 0.39855865281488323,
-          "spread_bps_of_price": 16.263877774963674
-        },
-        "1h": {
-          "bars": 14932,
-          "typical_minutes_per_bar": 55.0,
-          "median_price": 3.0789,
-          "spread_pts": 0.004998138226627374,
-          "financing_pts": 0.0,
-          "financed_share_of_bars": 0.0,
-          "hurdle_pts": 0.004998138226627374,
-          "median_tr_pts": 0.022600000000000176,
-          "median_atr14_pts": 0.026855989151816646,
-          "cost_share_of_tr": 0.22115655870032458,
-          "cost_share_of_atr": 0.18610888611746704,
-          "spread_bps_of_price": 16.233519200452676
-        },
-        "4h": {
-          "bars": 3897,
-          "typical_minutes_per_bar": 203.0,
-          "median_price": 3.0764,
-          "spread_pts": 0.005003002309468821,
-          "financing_pts": 4.0665003027970233e-05,
-          "financed_share_of_bars": 0.1206055940467026,
-          "hurdle_pts": 0.0050436673124967905,
-          "median_tr_pts": 0.04720000000000013,
-          "median_atr14_pts": 0.054660739502850726,
-          "cost_share_of_tr": 0.10685735831560968,
-          "cost_share_of_atr": 0.09227221143310269,
-          "spread_bps_of_price": 16.26252213453654
-        },
-        "1d": {
-          "bars": 700,
-          "typical_minutes_per_bar": 1098.0,
-          "median_price": 3.0466499999999996,
-          "spread_pts": 0.004976285714285723,
-          "financing_pts": 0.0003339128399999999,
-          "financed_share_of_bars": 1.0,
-          "hurdle_pts": 0.005310198554285723,
-          "median_tr_pts": 0.14000000000000012,
-          "median_atr14_pts": 0.14495360523904588,
-          "cost_share_of_tr": 0.037929989673469416,
-          "cost_share_of_atr": 0.03663378048119996,
-          "spread_bps_of_price": 16.333631084258855
-        }
-      }
-    },
-    "NATURALGAS (11-19 UTC only)": {
-      "epic": "NATURALGAS",
-      "hours_utc": [
-        11,
-        19
-      ],
-      "timeframes": {
-        "5m": {
-          "bars": 66903,
-          "typical_minutes_per_bar": 5.0,
-          "median_price": 3.0415,
-          "spread_pts": 0.0050018250302676995,
-          "financing_pts": 0.0,
-          "financed_share_of_bars": 0.0,
-          "hurdle_pts": 0.0050018250302676995,
-          "median_tr_pts": 0.010000000000000231,
-          "median_atr14_pts": 0.011341287576742359,
-          "cost_share_of_tr": 0.5001825030267584,
-          "cost_share_of_atr": 0.44102796939255556,
-          "spread_bps_of_price": 16.445257373886896
-        },
-        "15m": {
-          "bars": 22366,
-          "typical_minutes_per_bar": 14.0,
-          "median_price": 3.0403000000000002,
-          "spread_pts": 0.005005360815523562,
-          "financing_pts": 0.0,
-          "financed_share_of_bars": 0.0,
-          "hurdle_pts": 0.005005360815523562,
-          "median_tr_pts": 0.019000000000000128,
-          "median_atr14_pts": 0.020809206233791875,
-          "cost_share_of_tr": 0.26344004292229095,
-          "cost_share_of_atr": 0.2405358839394558,
-          "spread_bps_of_price": 16.46337800718206
-        },
-        "1h": {
-          "bars": 5590,
-          "typical_minutes_per_bar": 55.0,
-          "median_price": 3.04145,
-          "spread_pts": 0.005005903398926653,
-          "financing_pts": 0.0,
-          "financed_share_of_bars": 0.0,
-          "hurdle_pts": 0.005005903398926653,
-          "median_tr_pts": 0.040999999999999925,
-          "median_atr14_pts": 0.04452124863399742,
-          "cost_share_of_tr": 0.12209520485186981,
-          "cost_share_of_atr": 0.11243852211063175,
-          "spread_bps_of_price": 16.458937016642235
-        },
-        "4h": {
-          "bars": 1398,
-          "typical_minutes_per_bar": 203.0,
-          "median_price": 3.03855,
-          "spread_pts": 0.005000643776824034,
-          "financing_pts": 0.0,
-          "financed_share_of_bars": 0.0,
-          "hurdle_pts": 0.005000643776824034,
-          "median_tr_pts": 0.08400000000000007,
-          "median_atr14_pts": 0.08905011908326288,
-          "cost_share_of_tr": 0.0595314735336194,
-          "cost_share_of_atr": 0.05615538562220646,
-          "spread_bps_of_price": 16.457335824074097
-        }
-      }
     }
   },
   "ranking": [
@@ -419,75 +278,51 @@
     },
     {
       "rank": 8,
-      "instrument": "NATURALGAS (11-19 UTC only)",
-      "timeframe": "4h",
-      "cost_share_of_tr": 0.0595314735336194
-    },
-    {
-      "rank": 9,
       "instrument": "OIL_CRUDE",
       "timeframe": "1h",
       "cost_share_of_tr": 0.10246011850065581
     },
     {
-      "rank": 10,
+      "rank": 9,
       "instrument": "US500",
       "timeframe": "15m",
       "cost_share_of_tr": 0.11722913194658208
     },
     {
-      "rank": 11,
+      "rank": 10,
       "instrument": "OIL_BRENT",
       "timeframe": "1h",
       "cost_share_of_tr": 0.11959902491628295
     },
     {
-      "rank": 12,
-      "instrument": "NATURALGAS (11-19 UTC only)",
-      "timeframe": "1h",
-      "cost_share_of_tr": 0.12209520485186981
-    },
-    {
-      "rank": 13,
+      "rank": 11,
       "instrument": "US500",
       "timeframe": "5m",
       "cost_share_of_tr": 0.20687765400166397
     },
     {
-      "rank": 14,
+      "rank": 12,
       "instrument": "OIL_CRUDE",
       "timeframe": "15m",
       "cost_share_of_tr": 0.2138153953350273
     },
     {
-      "rank": 15,
+      "rank": 13,
       "instrument": "OIL_BRENT",
       "timeframe": "15m",
       "cost_share_of_tr": 0.24939106626915974
     },
     {
-      "rank": 16,
-      "instrument": "NATURALGAS (11-19 UTC only)",
-      "timeframe": "15m",
-      "cost_share_of_tr": 0.26344004292229095
-    },
-    {
-      "rank": 17,
+      "rank": 14,
       "instrument": "OIL_CRUDE",
       "timeframe": "5m",
       "cost_share_of_tr": 0.382402034873539
     },
     {
-      "rank": 18,
+      "rank": 15,
       "instrument": "OIL_BRENT",
       "timeframe": "5m",
       "cost_share_of_tr": 0.44977661925781476
-    },
-    {
-      "rank": 19,
-      "instrument": "NATURALGAS (11-19 UTC only)",
-      "timeframe": "5m",
-      "cost_share_of_tr": 0.5001825030267584
     }
   ]
 }
