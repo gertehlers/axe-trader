@@ -141,3 +141,38 @@ def test_risk_measures_are_attached_to_the_summary():
     summary = summarise(trades, equity_curve(trades, 2000.0), config, {})
     assert "risk" in summary
     assert "max_drawdown_pct" in summary["risk"]
+
+
+# --- the CLI (task 12) ---------------------------------------------------------------------
+
+import pytest
+
+from conftest import make_bar_frame
+from engine.run import ARMS, build_strategy
+from engine.strategies.confluence import ReversalExit, SymmetricExit, TimeExit, TrailingExit
+
+
+def test_every_arm_in_the_spec_is_reachable_by_name():
+    assert set(ARMS) == {"trailing", "time", "reversal", "symmetric"}
+    assert ARMS["trailing"] is TrailingExit
+    assert ARMS["time"] is TimeExit
+    assert ARMS["reversal"] is ReversalExit
+    assert ARMS["symmetric"] is SymmetricExit
+
+
+def test_build_strategy_passes_arm_parameters_through():
+    strategy = build_strategy("trailing", make_bar_frame(), brake_atr=14.0, trail_atr=3.0)
+    assert isinstance(strategy, TrailingExit)
+    assert strategy.brake_atr == 14.0
+    assert strategy.trail_atr == 3.0
+
+
+def test_unknown_arm_is_rejected_by_name():
+    with pytest.raises(ValueError, match="unknown arm"):
+        build_strategy("nonsense", make_bar_frame())
+
+
+def test_an_irrelevant_parameter_is_an_error_not_a_silent_no_op():
+    # Passing --trail-atr to the time arm should say so rather than be quietly ignored.
+    with pytest.raises(ValueError, match="does not take"):
+        build_strategy("time", make_bar_frame(), trail_atr=3.0)

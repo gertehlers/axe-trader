@@ -17,6 +17,25 @@ import numpy as np
 import pandas as pd
 
 from engine.simulator import SimConfig, Trade
+from engine.strategies.confluence import ReversalExit, SymmetricExit, TimeExit, TrailingExit
+
+ARMS = {"trailing": TrailingExit, "time": TimeExit,
+        "reversal": ReversalExit, "symmetric": SymmetricExit}
+
+# Which keyword arguments each arm accepts, so an irrelevant flag is a clear error rather than
+# a silently ignored one.
+ARM_PARAMETERS = {"trailing": {"brake_atr", "trail_atr"}, "time": {"brake_atr", "max_bars"},
+                  "reversal": {"brake_atr"}, "symmetric": {"stop_atr"}}
+
+
+def build_strategy(name: str, frame: pd.DataFrame, **kwargs):
+    if name not in ARMS:
+        raise ValueError(f"unknown arm {name!r}; expected one of {sorted(ARMS)}")
+    allowed = ARM_PARAMETERS[name]
+    unknown = set(kwargs) - allowed
+    if unknown:
+        raise ValueError(f"arm {name!r} does not take {sorted(unknown)}; it takes {sorted(allowed)}")
+    return ARMS[name](frame, **kwargs)
 
 
 def _git_commit() -> str:
@@ -189,12 +208,51 @@ def write_run(run_dir: Path, trades: list[Trade], equity: pd.DataFrame, summary:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Run a strategy and write its evidence")
+    parser = argparse.ArgumentParser(description="Run a confluence exit arm and write its evidence")
     parser.add_argument("--db", type=Path, required=True)
     parser.add_argument("--epic", required=True)
-    parser.add_argument("--timeframe", default="5min")
+    parser.add_argument("--timeframe", default="15min")
+    parser.add_argument("--arm", required=True, choices=sorted(ARMS))
+    parser.add_argument("--brake-atr", type=float, default=10.0)
+    parser.add_argument("--trail-atr", type=float, default=2.0)
+    parser.add_argument("--max-bars", type=int, default=6)
+    parser.add_argument("--stop-atr", type=float, default=1.0)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--balance", type=float, default=2000.0)
     parser.add_argument("--risk-pct", type=float, default=1.0)
-    parser.parse_args(argv)
-    raise SystemExit("no strategy is wired to the CLI yet; import engine.run from a research script")
+    args = parser.parse_args(argv)
+
+    from engine.bars import resample
+    from engine.cache import load_cached_minutes
+    from engine.instruments import load_instruments
+    from engine.pillars import PillarConfig, compute_pillars, fire_rates
+    from engine.simulator import simulate
+    from engine.strategies.confluence import WARMUP_BARS
+
+    engine_dir = Path(__file__).resolve().parents[1]      # research/engine
+    minutes = load_cached_minutes(args.db, args.epic, engine_dir / ".cache")
+    signal_bars = resample(minutes, args.timeframe)
+    spec = load_instruments(engine_dir / "instruments.yaml")[args.epic]
+
+    kwargs = {k: v for k, v in {
+        "brake_atr": args.brake_atr, "trail_atr": args.trail_atr,
+        "max_bars": args.max_bars, "stop_atr": args.stop_atr,
+    }.items() if k in ARM_PARAMETERS[args.arm]}
+    strategy = build_strategy(args.arm, signal_bars, **kwargs)
+
+    config = SimConfig(starting_balance_usd=args.balance, risk_pct=args.risk_pct)
+    trades, skipped = simulate(strategy, minutes, signal_bars, spec, config)
+    equity = equity_curve(trades, args.balance)
+    summary = summarise(trades, equity, config,
+                        {"epic": args.epic, "arm": args.arm, "timeframe": args.timeframe, **kwargs},
+                        skipped=skipped,
+                        pillar_report=fire_rates(compute_pillars(signal_bars, PillarConfig()),
+                                                 WARMUP_BARS))
+    write_run(args.out, trades, equity, summary)
+    print(f"{args.epic} {args.arm}: {summary['trades']} trades, {skipped} skipped, "
+          f"expectancy {summary['expectancy_r']:+.3f}R, net {summary['net_pct']:+.2f}%, "
+          f"max DD {summary['risk']['max_drawdown_pct']:.1f}%")
+
+
+if __name__ == "__main__":
+    main()
