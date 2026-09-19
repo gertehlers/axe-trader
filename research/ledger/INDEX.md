@@ -3,7 +3,7 @@
 Running count of everything tried, so the multiple-testing bar can only ever go up. Trial counts
 are cumulative down a parent/child chain (spec §6.2.3) and feed the Bonferroni adjustment at G1.
 
-**Hypotheses: 6 · Variants tried: 333 · Reached G1: 0 · Reached G2: 0**
+**Hypotheses: 6 · Variants tried: 343 · Reached G1: 0 · Reached G2: 0**
 
 | id | title | instruments | tf | status | trials | created |
 |---|---|---|---|---|---|---|
@@ -12,7 +12,7 @@ are cumulative down a parent/child chain (spec §6.2.3) and feed the Bonferroni 
 | [H-0003](H-0003-continuation-longer-horizon.md) | The continuation effect clears costs at a longer horizon | US500 | 5min | `rejected: no signal` | 289 | 2026-09-19 |
 | [H-0004](H-0004-us500-overnight-premium.md) | The US500 overnight premium survives CFD financing | US500 | 1d | `inconclusive` | 4 | 2026-09-19 |
 | [H-0005](H-0005-confluence-entry-signal.md) | The 4-pillar confluence entry predicts forward returns | US500, OIL_CRUDE, OIL_BRENT | 15min | `signal present` | 30 | 2026-09-19 |
-| [H-0006](H-0006-confluence-entry-direction.md) | The confluence entry has the wrong sign on OIL_CRUDE | OIL_CRUDE | 15min | `signal present` | 40 | 2026-09-19 |
+| [H-0006](H-0006-confluence-entry-direction.md) | The confluence entry has the wrong sign on OIL_CRUDE | OIL_CRUDE | 15min | `inconclusive` | 50 | 2026-09-19 |
 
 ## Notes
 
@@ -37,13 +37,15 @@ are cumulative down a parent/child chain (spec §6.2.3) and feed the Bonferroni 
   Its one solid result is a prohibition: **holding US500 short overnight loses reliably** (−3.774
   net, CI entirely below zero, 2/11 quarters positive).
 - **H-0006** is the first hypothesis raised by the **owner's own eye** (`source: owner-comment`):
-  he marked five trades on the review page and three of them had the entry pointing the wrong way.
-  Tested on all 506 OIL_CRUDE 15m entries, **both sides are negative at the median at every
-  horizon** and win under 50% — H-0005's SHORT edge is a mean-only, tail-driven effect. Fading the
-  **LONG** signal is positive in mean, median and win rate **in and out of sample** (+0.29/+0.29
-  IS, +0.43/+0.57 OOS at 4h) and survives the 0.230-ATR round-trip spread; fading SHORT does not.
-  No placebo yet, so it is a lead. It also means **the exit matrix is currently tuning exits for an
-  entry with no median edge on either side.**
+  he marked five trades on the review page and three had the entry pointing the wrong way. The
+  pre-registered placebo **failed** — percentile 6.2 against a required 5.0, a near miss that is
+  recorded as a miss, and the fade line is closed rather than re-run. Its lasting value is the
+  diagnostics: the entry is **not late**, it fires *against* a completed ~1.1 ATR move on both
+  sides by design; the chop is **the instrument, not the signal** (forward efficiency 0.21–0.24
+  against a 0.230 baseline for any bar); and the excursion profile is **upside down** — median MFE
+  +1.67 ATR against median MAE +2.08 ATR on the LONG side. No exit rule fixes MAE > MFE, which
+  makes the 51-config exit matrix the wrong next step and turns the live question into whether any
+  entry on this instrument has MFE > MAE.
 
 - **H-0005** is the first result in this project with an economically meaningful edge.
   **OIL_CRUDE SHORT**: 222 entries, positive at all 5 horizons, percentile 100.0 at 4h, edge

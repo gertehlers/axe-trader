@@ -1,0 +1,169 @@
+{
+  "epic": "OIL_CRUDE",
+  "timeframe": "15min",
+  "spread_pts": 0.0351,
+  "primary_horizon_bars": 16,
+  "placebo_sets": 200,
+  "dev": {
+    "LONG": {
+      "entries": 279,
+      "horizons": {
+        "1bar": {
+          "mean": -0.013578853046594851,
+          "median": -0.0009999999999976694,
+          "win_rate": 0.4838709677419355,
+          "placebo_mean": 0.000781827134351358,
+          "edge": -0.01436068018094621,
+          "percentile": 12.359550561797752,
+          "placebo_sets_used": 178,
+          "n": 279
+        },
+        "4bar": {
+          "mean": -0.026944444444444694,
+          "median": -0.009000000000000341,
+          "win_rate": 0.4838709677419355,
+          "placebo_mean": 0.0004970154289711919,
+          "edge": -0.027441459873415886,
+          "percentile": 20.224719101123593,
+          "placebo_sets_used": 178,
+          "n": 279
+        },
+        "8bar": {
+          "mean": -0.033096774193548166,
+          "median": -0.013999999999995794,
+          "win_rate": 0.46953405017921146,
+          "placebo_mean": -0.007428082946668021,
+          "edge": -0.025668691246880145,
+          "percentile": 30.337078651685395,
+          "placebo_sets_used": 178,
+          "n": 279
+        },
+        "16bar": {
+          "mean": -0.09065053763440885,
+          "median": -0.046999999999997044,
+          "win_rate": 0.44086021505376344,
+          "placebo_mean": -0.0010676817454808544,
+          "edge": -0.08958285588892799,
+          "percentile": 6.179775280898876,
+          "placebo_sets_used": 178,
+          "n": 279
+        },
+        "32bar": {
+          "mean": -0.1211236559139786,
+          "median": -0.0589999999999975,
+          "win_rate": 0.46236559139784944,
+          "placebo_mean": -0.0017210692761941214,
+          "edge": -0.11940258663778448,
+          "percentile": 11.797752808988763,
+          "placebo_sets_used": 178,
+          "n": 279
+        }
+      }
+    },
+    "SHORT": {
+      "entries": 222,
+      "horizons": {
+        "1bar": {
+          "mean": 2.2522522523590255e-06,
+          "median": -0.0030000000000036664,
+          "win_rate": 0.49099099099099097,
+          "placebo_mean": -0.0006261526945756077,
+          "edge": 0.0006284049468279667,
+          "percentile": 50.0,
+          "placebo_sets_used": 188,
+          "n": 222
+        },
+        "4bar": {
+          "mean": 0.016650900900900805,
+          "median": -0.009500000000002728,
+          "win_rate": 0.4774774774774775,
+          "placebo_mean": 0.0016977178775827548,
+          "edge": 0.01495318302331805,
+          "percentile": 72.87234042553192,
+          "placebo_sets_used": 188,
+          "n": 222
+        },
+        "8bar": {
+          "mean": 0.07911936936936925,
+          "median": -0.021499999999996078,
+          "win_rate": 0.481981981981982,
+          "placebo_mean": 0.009150724761119862,
+          "edge": 0.06996864460824939,
+          "percentile": 97.87234042553192,
+          "placebo_sets_used": 188,
+          "n": 222
+        },
+        "16bar": {
+          "mean": 0.14210135135135177,
+          "median": -0.053500000000006764,
+          "win_rate": 0.44144144144144143,
+          "placebo_mean": 0.003566410904943864,
+          "edge": 0.1385349404464079,
+          "percentile": 100.0,
+          "placebo_sets_used": 188,
+          "n": 222
+        },
+        "32bar": {
+          "mean": 0.12394144144144102,
+          "median": -0.0659999999999954,
+          "win_rate": 0.481981981981982,
+          "placebo_mean": 0.0023898235136830255,
+          "edge": 0.121551617927758,
+          "percentile": 89.36170212765957,
+          "placebo_sets_used": 188,
+          "n": 222
+        }
+      }
+    }
+  },
+  "holdout": {
+    "LONG": {
+      "entries": 12,
+      "n": 12,
+      "mean": -0.013333333333335418,
+      "median": -0.2650000000000077,
+      "win_rate": 0.4166666666666667
+    },
+    "SHORT": {
+      "entries": 5,
+      "n": 5,
+      "mean": 0.2920000000000016,
+      "median": 0.3199999999999932,
+      "win_rate": 0.8
+    }
+  },
+  "diagnostics": {
+    "LONG": {
+      "prior_move_atr_median": -1.1206528995551266,
+      "prior_move_atr_median_baseline": 0.042408762167165506,
+      "prior_move_share_above_1atr": 0.0,
+      "forward_efficiency_median": 0.23890784982935998,
+      "forward_efficiency_median_baseline": 0.23012900540991396,
+      "mfe_atr_median": 1.6684918292497424,
+      "mae_atr_median": 2.0757892323095177
+    },
+    "SHORT": {
+      "prior_move_atr_median": -1.1162138251199667,
+      "prior_move_atr_median_baseline": -0.042408762167165506,
+      "prior_move_share_above_1atr": 0.0,
+      "forward_efficiency_median": 0.21058340970656886,
+      "forward_efficiency_median_baseline": 0.23012900540991396,
+      "mfe_atr_median": 1.9723638950445537,
+      "mae_atr_median": 1.9254142761237114
+    }
+  },
+  "primary": {
+    "mean": -0.09065053763440885,
+    "median": -0.046999999999997044,
+    "win_rate": 0.44086021505376344,
+    "placebo_mean": -0.0010676817454808544,
+    "edge": -0.08958285588892799,
+    "percentile": 6.179775280898876,
+    "placebo_sets_used": 178,
+    "n": 279,
+    "percentile_le_5": false,
+    "median_negative": true,
+    "edge_beats_spread": true,
+    "passes": false
+  }
+}

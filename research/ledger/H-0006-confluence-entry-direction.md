@@ -4,10 +4,10 @@ title: The confluence entry has the wrong sign on OIL_CRUDE
 source: owner-comment
 instruments: [OIL_CRUDE]
 timeframe: 15min
-status: "signal present"
+status: "inconclusive"
 created: 2026-09-19
 parent: H-0005
-trial_count: 40
+trial_count: 50
 ---
 
 ## Where this came from
@@ -131,3 +131,83 @@ no pass/fail and cannot promote anything:
 A mechanism worth naming before it is tested, so it cannot be claimed as a prediction afterwards:
 if the confluence fires **after** a move has run, then "fading it" is capturing reversion, and the
 sign error and the chop are the same finding. The prior-move diagnostic is what would show that.
+
+
+## Run 2 — 2026-09-19, the pre-registered placebo: **the primary FAILS**
+
+`research/experiments/2026-09-19-confluence-direction.py`, development window only, 279 LONG and
+222 SHORT entries, 200 whole-week shifts.
+
+| criterion | required | observed | |
+|---|---|---|---|
+| percentile of the real LONG mean | ≤ 5.0 | **6.2** (178 sets) | **fail** |
+| LONG median | < 0 | −0.0470 | pass |
+| \|edge\| vs 0.0351 spread | > spread | 0.0896 | pass |
+
+**Two of three is a failure, because all three were required.** The percentile missed by 1.2
+points. That is a near miss and it must be recorded as a miss: the bar was set before the data was
+touched, and moving it now is the exact failure this project restarted to avoid. **The fade line is
+closed.** It must not be re-run on this data hoping for 4.9 — a second look at the same cell is
+not a second piece of evidence.
+
+The earlier in/out-of-sample figures in run 1 (+0.4263 OOS mean) **overstated this**. That split
+was 60/40 by entry count over the full window, not the project's boundary. On the real boundary the
+holdout holds **12 LONG entries**, which measures nothing. Run 1's enthusiasm was mine, not the
+data's.
+
+H-0005 reproduces exactly on the SHORT side (mean +0.1421, edge +0.1385, percentile 100.0), so
+nothing here disturbs it — but at a **44.1% win rate and a −0.0535 median**, it remains an effect
+that the typical trade never sees.
+
+## What the diagnostics found instead — the owner's two observations
+
+**1. "Entries keep starting in choppy waters — missed spike, or shitty confluence?" Neither.**
+
+| | LONG | SHORT | baseline (any bar) |
+|---|---|---|---|
+| prior 8-bar (2h) move, signed into the trade | **−1.121 ATR** | **−1.116 ATR** | ±0.04 ATR |
+| forward efficiency ratio over 4h | 0.239 | 0.211 | **0.230** |
+
+The entry is **not late and has not missed anything**: it fires *against* a completed ~1.1 ATR
+move, on both sides — LONG after a fall, SHORT after a rise. That is what this entry is built to
+do (RSI oversold + lower Bollinger band + "near support" are three mean-reversion conditions), so
+the behaviour is by design, not a defect.
+
+And the chop is **not in the entries**. Forward efficiency after an entry (0.21–0.24) is
+indistinguishable from a random bar (0.230). OIL_CRUDE at 15m moves about 4.3 points of path for
+every 1 point of displacement *everywhere*. The owner is seeing the instrument, not the signal.
+
+**2. "The exits are way too tiny — we need bigger moves." Correct, and the reason is worse than
+the exits.**
+
+Within 4h of entry, median excursions:
+
+| side | favourable (MFE) | adverse (MAE) |
+|---|---|---|
+| LONG | +1.67 ATR | **+2.08 ATR** |
+| SHORT | +1.97 ATR | **+1.93 ATR** |
+
+**The typical trade must survive more adverse movement than the favourable movement it is
+chasing.** That is an upside-down excursion profile, and no exit rule fixes it:
+
+- The symmetric 1:1 arm places its stop at 1.0 ATR against a median 2.08 ATR adverse excursion. It
+  is stopped out before the favourable move arrives in most trades **by construction** — which is
+  its 36.1% win rate, and it is not bad luck.
+- The wide-brake arms survive the adverse excursion but then leave on a clock or a fading signal,
+  banking a fraction of the 1.67 ATR that was there.
+
+So "we need bigger moves" is right, and the move is *available* — 1.67 ATR is 11 spreads. The
+obstacle is that capturing it requires surviving 2.08 ATR against, which costs more than the move
+is worth. **This is an entry-timing problem, not an exit problem**, and it is the strongest reason
+yet that the 51-config exit matrix is the wrong next step.
+
+## Status and what follows
+
+`inconclusive` on the sign question, by its own pre-registered rule. The fade line is closed on
+this data.
+
+The live question is now the excursion profile: **can any entry be found whose MFE exceeds its MAE
+on this instrument?** That is a layer-0/1 question about entries, measurable without any exit, and
+it subsumes both the sign question and the exit matrix. Anything proposed there needs its own
+hypothesis id and its own pre-registration — this entry has now been examined at 50 cells and
+cannot absorb another look.
