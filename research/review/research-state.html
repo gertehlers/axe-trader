@@ -1,0 +1,906 @@
+<title>Four Dead Hypotheses</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,500;0,600;0,700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --ground:      #eef1f4;
+    --surface:     #ffffff;
+    --surface-2:   #f6f8fa;
+    --line:        #d8dee4;
+    --line-soft:   #e7ecf0;
+    --ink:         #0e1418;
+    --ink-2:       #4d5862;
+    --ink-3:       #7b8791;
+
+    --s1:          #0a6d9e;   /* validated categorical 1 */
+    --s2:          #b57018;   /* validated categorical 2 */
+    --s1-soft:     #d8e8f1;
+    --s2-soft:     #f2e5d2;
+
+    --st-rejected:     #a6342f;
+    --st-uneconomic:   #9a5a1f;
+    --st-inconclusive: #7d6a1e;
+    --st-pass:         #2c6b48;
+    --st-rejected-bg:     #f6e4e2;
+    --st-uneconomic-bg:   #f6ead8;
+    --st-inconclusive-bg: #f2eed7;
+    --st-pass-bg:         #dfeee6;
+
+    --display: 'Archivo', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground:    #0f1317;
+      --surface:   #171d23;
+      --surface-2: #1d242b;
+      --line:      #2d363e;
+      --line-soft: #232b32;
+      --ink:       #e4e9ee;
+      --ink-2:     #a3aeb8;
+      --ink-3:     #78848e;
+
+      --s1:        #2f93c4;
+      --s2:        #bd8a33;
+      --s1-soft:   #1b3846;
+      --s2-soft:   #3a2f1a;
+
+      --st-rejected:     #e08078;
+      --st-uneconomic:   #d09553;
+      --st-inconclusive: #c6b256;
+      --st-pass:         #67bb8e;
+      --st-rejected-bg:     #35211f;
+      --st-uneconomic-bg:   #332615;
+      --st-inconclusive-bg: #2f2b16;
+      --st-pass-bg:         #18301f;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:    #0f1317;
+    --surface:   #171d23;
+    --surface-2: #1d242b;
+    --line:      #2d363e;
+    --line-soft: #232b32;
+    --ink:       #e4e9ee;
+    --ink-2:     #a3aeb8;
+    --ink-3:     #78848e;
+
+    --s1:        #2f93c4;
+    --s2:        #bd8a33;
+    --s1-soft:   #1b3846;
+    --s2-soft:   #3a2f1a;
+
+    --st-rejected:     #e08078;
+    --st-uneconomic:   #d09553;
+    --st-inconclusive: #c6b256;
+    --st-pass:         #67bb8e;
+    --st-rejected-bg:     #35211f;
+    --st-uneconomic-bg:   #332615;
+    --st-inconclusive-bg: #2f2b16;
+    --st-pass-bg:         #18301f;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--display);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding-inline: 20px;
+    padding-block: 0 72px;
+  }
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  p { margin: 0; max-width: 68ch; }
+
+  /* ---------- masthead ---------- */
+  .masthead {
+    border-bottom: 2px solid var(--ink);
+    padding-block: 34px 18px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 18px 28px;
+  }
+  .masthead h1 {
+    font-size: clamp(30px, 5.2vw, 46px);
+    font-weight: 700;
+    letter-spacing: -0.022em;
+    line-height: 1.02;
+  }
+  .masthead .sub {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-top: 10px;
+  }
+  .stamp {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-2);
+    text-align: right;
+    line-height: 1.7;
+    white-space: nowrap;
+  }
+  .stamp b { color: var(--ink); font-weight: 600; }
+
+  .lede {
+    padding-block: 26px 4px;
+    font-size: 17.5px;
+    line-height: 1.5;
+    color: var(--ink-2);
+    max-width: 66ch;
+  }
+  .lede strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- sections ---------- */
+  section { padding-block: 34px 0; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 9px;
+  }
+  .eyebrow::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+  h2 {
+    font-size: clamp(21px, 3.2vw, 26px);
+    font-weight: 600;
+    letter-spacing: -0.017em;
+    margin-bottom: 8px;
+  }
+  .note { color: var(--ink-2); font-size: 14.5px; margin-top: 10px; }
+
+  /* ---------- ledger ---------- */
+  .ledger { margin-top: 16px; display: flex; flex-direction: column; gap: 2px; }
+  .hyp {
+    display: grid;
+    grid-template-columns: 4px 74px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0 16px;
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    border-left: none;
+    padding: 13px 16px 13px 0;
+  }
+  .hyp .stripe { align-self: stretch; background: var(--ink-3); }
+  .hyp .id {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-2);
+    padding-left: 16px;
+  }
+  .hyp .title { font-size: 14.5px; font-weight: 500; }
+  .hyp .title span { display: block; color: var(--ink-3); font-size: 12.5px; font-weight: 400; margin-top: 2px; }
+  .chip {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.055em;
+    text-transform: uppercase;
+    padding: 4px 9px;
+    white-space: nowrap;
+    border: 1px solid currentColor;
+  }
+  .r  .stripe { background: var(--st-rejected); }
+  .r  .chip { color: var(--st-rejected); background: var(--st-rejected-bg); }
+  .u  .stripe { background: var(--st-uneconomic); }
+  .u  .chip { color: var(--st-uneconomic); background: var(--st-uneconomic-bg); }
+  .i  .stripe { background: var(--st-inconclusive); }
+  .i  .chip { color: var(--st-inconclusive); background: var(--st-inconclusive-bg); }
+
+  /* ---------- figure shell ---------- */
+  figure {
+    margin: 18px 0 0;
+    background: var(--surface);
+    border: 1px solid var(--line-soft);
+    padding: 20px 20px 16px;
+  }
+  figcaption {
+    font-size: 13.5px;
+    color: var(--ink-2);
+    margin-top: 14px;
+    padding-top: 13px;
+    border-top: 1px solid var(--line-soft);
+    max-width: 74ch;
+  }
+  figcaption b { color: var(--ink); font-weight: 600; }
+  .fig-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px 18px;
+    margin-bottom: 16px;
+  }
+  .fig-head h3 { font-size: 15.5px; font-weight: 600; letter-spacing: -0.01em; }
+  .fig-head .unit { font-family: var(--mono); font-size: 11px; color: var(--ink-3); letter-spacing: 0.06em; text-transform: uppercase; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-bottom: 14px; }
+  .legend span { display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); }
+  .legend i { width: 11px; height: 11px; display: block; border-radius: 2px; }
+
+  /* ---------- cost ranking ---------- */
+  .rank { display: flex; flex-direction: column; gap: 3px; }
+  .rank-row {
+    display: grid;
+    grid-template-columns: 22px minmax(112px, 176px) minmax(0, 1fr) 54px;
+    align-items: center;
+    gap: 12px;
+    padding: 3px 4px;
+    cursor: default;
+  }
+  .rank-row:hover { background: var(--surface-2); }
+  .rank-row .n { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); text-align: right; }
+  .rank-row .who { font-family: var(--mono); font-size: 11.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rank-row .track { height: 15px; background: var(--line-soft); position: relative; }
+  .rank-row .bar { height: 100%; background: var(--s1); border-radius: 0 3px 3px 0; }
+  .rank-row .v { font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; text-align: right; color: var(--ink-2); }
+  .rank-row.hot .who, .rank-row.hot .v { color: var(--s2); font-weight: 600; }
+  .rank-row.hot .bar { background: var(--s2); }
+  .rank-row.hot { background: var(--s2-soft); }
+  .rank-note {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--s2);
+    padding: 7px 4px 2px 38px;
+    letter-spacing: 0.01em;
+  }
+
+  /* ---------- split figure ---------- */
+  .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 22px; }
+  .leg-block .leg-name { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 4px; }
+  .leg-block .leg-hours { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-bottom: 12px; }
+  .stackbar { display: flex; height: 30px; gap: 2px; margin-bottom: 8px; background: var(--line-soft); }
+  .stackbar div { height: 100%; }
+  .seg-net { background: var(--s1); }
+  .seg-spread { background: var(--ink-3); }
+  .seg-fin { background: var(--s2); }
+  .leg-block.b .seg-net { background: var(--s1); }
+  .stacklabels { display: flex; flex-wrap: wrap; gap: 4px 16px; font-family: var(--mono); font-size: 11px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .stacklabels b { color: var(--ink); font-weight: 600; }
+  .bignum { font-family: var(--mono); font-size: 27px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+
+  /* ---------- generic table ---------- */
+  .tablewrap { overflow-x: auto; margin-top: 4px; }
+  table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 7px 10px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+  th { color: var(--ink-3); font-weight: 500; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase; }
+  td:first-child, th:first-child { text-align: left; }
+  tbody tr:hover { background: var(--surface-2); }
+  .neg { color: var(--st-rejected); }
+  .pos { color: var(--st-pass); }
+
+  /* ---------- callout ---------- */
+  .callout {
+    margin-top: 18px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--st-rejected);
+    padding: 16px 18px;
+  }
+  .callout .k {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.11em;
+    text-transform: uppercase; color: var(--st-rejected); font-weight: 600; margin-bottom: 6px;
+  }
+  .callout p { font-size: 14.5px; color: var(--ink-2); }
+  .callout p b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- next ---------- */
+  .steps { margin-top: 16px; display: flex; flex-direction: column; gap: 2px; counter-reset: s; }
+  .step {
+    background: var(--surface); border: 1px solid var(--line-soft);
+    padding: 15px 18px; display: grid; grid-template-columns: 26px minmax(0,1fr); gap: 14px; align-items: start;
+  }
+  .step::before {
+    counter-increment: s; content: counter(s);
+    font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ink-3);
+    border: 1px solid var(--line); width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .step h4 { margin: 0 0 4px; font-size: 14.5px; font-weight: 600; }
+  .step p { font-size: 13.5px; color: var(--ink-2); }
+  .step .cost { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-top: 6px; display: block; }
+  .step.parked { opacity: 0.62; }
+
+  /* ---------- comment affordance ---------- */
+  .say {
+    margin-top: 14px; display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--ink-2); background: var(--surface-2);
+    border: 1px solid var(--line); padding: 7px 12px; cursor: pointer;
+  }
+  .say:hover { color: var(--ink); border-color: var(--ink-3); }
+  .say:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+  .say::before { content: ""; width: 7px; height: 7px; background: var(--s1); border-radius: 50%; }
+
+  /* ---------- tooltip ---------- */
+  #tip {
+    position: fixed; z-index: 50; pointer-events: none;
+    background: var(--ink); color: var(--ground);
+    font-family: var(--mono); font-size: 11.5px; line-height: 1.5;
+    padding: 7px 10px; max-width: 260px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.22);
+    font-variant-numeric: tabular-nums;
+  }
+
+  footer {
+    margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--line);
+    font-family: var(--mono); font-size: 11px; color: var(--ink-3); line-height: 1.8;
+  }
+
+  /* SVG styling lives here, not in presentation attributes: var() inside an SVG
+     attribute is not reliable across browsers, and these must follow the theme. */
+  svg text { font-family: var(--mono); fill: var(--ink-3); }
+  svg text.tick { font-size: 10px; }
+  svg text.qlabel { font-size: 9.5px; }
+  svg text.hlabel { font-size: 11px; fill: var(--ink-2); }
+  svg text.hvalue { font-size: 11px; font-weight: 600; fill: #ffffff; }
+  svg text.req { font-size: 10px; fill: var(--st-rejected); }
+  svg text.req.strong { font-weight: 600; }
+  svg line.grid { stroke: var(--line-soft); }
+  svg line.zero { stroke: var(--line); }
+  svg line.req { stroke: var(--st-rejected); stroke-width: 2; stroke-dasharray: 5 4; }
+  svg rect.long { fill: var(--s1); }
+  svg rect.short { fill: var(--st-rejected); }
+  svg rect.hbar { fill: var(--s1); }
+  svg .qbar:hover, svg .hbar:hover { opacity: 0.82; }
+
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  @media (max-width: 560px) {
+    .hyp { grid-template-columns: 4px minmax(0,1fr); row-gap: 8px; padding-right: 14px; }
+    .hyp .id { grid-column: 2; padding-left: 14px; }
+    .hyp .title { grid-column: 2; padding-left: 14px; }
+    .hyp .chip { grid-column: 2; margin-left: 14px; justify-self: start; }
+    .rank-row { grid-template-columns: 20px minmax(96px, 1fr) 46px; }
+    .rank-row .track { display: none; }
+    .rank-note { padding-left: 24px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div>
+      <h1>Four Dead Hypotheses</h1>
+      <div class="sub">axe-trader &middot; research ledger &middot; US500 / oil</div>
+    </div>
+    <div class="stamp">
+      run <b>2026-09-19</b><br>
+      commit <b>49b2a7a</b> &middot; branch <b>main</b><br>
+      dev window <b>2024-01-01 → 2026-07-31</b><br>
+      holdout <b>unscored</b>
+    </div>
+  </header>
+
+  <p class="lede">
+    Four hypotheses have been tested and none survived. That is the expected outcome and not the
+    news. The news is <strong>why</strong>: three of them were aimed at the most expensive ground
+    on the board, and until today nobody had measured which ground was which.
+  </p>
+
+  <!-- ══════════════ LEDGER ══════════════ -->
+  <section id="ledger">
+    <div class="eyebrow">the ledger</div>
+    <h2>What has been tried, and what it cost to find out</h2>
+    <p class="note">
+      Trial counts are cumulative down a parent/child chain, so the multiple-testing bar can only go
+      up. H-0004 starts fresh at 4 because it came from a source never mined before.
+    </p>
+
+    <div class="ledger">
+      <article class="hyp r">
+        <div class="stripe"></div>
+        <div class="id">H-0001</div>
+        <div class="title">RSI/Bollinger mean reversion with the trend
+          <span>The archived Java engine's entry rule &middot; 1 trial &middot; US500 5m</span></div>
+        <div class="chip">rejected: no signal</div>
+      </article>
+      <article class="hyp u">
+        <div class="stripe"></div>
+        <div class="id">H-0002</div>
+        <div class="title">Short-horizon extremes continue, not revert
+          <span>Its inversion, as a 96-cell grid &middot; 97 trials &middot; US500 5m</span></div>
+        <div class="chip">uneconomic</div>
+      </article>
+      <article class="hyp r">
+        <div class="stripe"></div>
+        <div class="id">H-0003</div>
+        <div class="title">…and it clears costs at a longer horizon
+          <span>Same grid at 120m and 240m &middot; 289 trials &middot; US500 5m</span></div>
+        <div class="chip">rejected: no signal</div>
+      </article>
+      <article class="hyp i">
+        <div class="stripe"></div>
+        <div class="id">H-0004</div>
+        <div class="title">The US500 overnight premium survives CFD financing
+          <span>First from the known-effect source &middot; 4 trials &middot; US500 daily</span></div>
+        <div class="chip">inconclusive</div>
+      </article>
+    </div>
+
+    <div class="callout">
+      <div class="k">the common cause</div>
+      <p>
+        H-0001 had no signal. H-0002 and H-0003 both found a <b>real direction</b> whose entire edge
+        was eaten by the spread. All three were run on <b>US500 5-minute bars</b> — a choice nobody
+        ever justified, inherited from the archived Java config.
+      </p>
+    </div>
+    <button class="say" data-anchor="ledger">Comment on the ledger</button>
+  </section>
+
+  <!-- ══════════════ COST RANKING ══════════════ -->
+  <section id="cost">
+    <div class="eyebrow">the finding &middot; spec §6.1 step 1</div>
+    <h2>We were hunting on the 13th-cheapest of 19 grounds</h2>
+    <p class="note">
+      For each instrument and timeframe: what share of a typical bar's range does one round trip
+      consume? A strategy must capture more than this before it earns anything at all. Lower is
+      better hunting.
+    </p>
+
+    <figure>
+      <div class="fig-head">
+        <h3>Round-trip cost as a share of a typical bar's true range</h3>
+        <span class="unit">spread + financing ÷ median TR</span>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--s1)"></i> available ground</span>
+        <span><i style="background:var(--s2)"></i> where all four hypotheses were tested</span>
+      </div>
+      <div class="rank" id="rank"></div>
+      <figcaption>
+        US500 at 4h costs <b>3.5%</b>; the same instrument and the same data at 5m costs
+        <b>20.7%</b>. The spread barely moves in points — 0.559 at 5m against 0.548 at 4h — while
+        the median range goes from 2.70 to 21.40. Slowing down is a <b>six-fold cost improvement
+        that required no new idea</b>. Financing is a floor, not a ceiling: slippage is not in these
+        numbers because there is no data source for it.
+      </figcaption>
+    </figure>
+    <button class="say" data-anchor="cost">Comment on the ranking</button>
+  </section>
+
+  <!-- ══════════════ H-0004 ══════════════ -->
+  <section id="overnight">
+    <div class="eyebrow">H-0004 &middot; known-effect source</div>
+    <h2>The overnight premium is real. Financing takes 46% of it.</h2>
+    <p class="note">
+      The most replicated equity anomaly says the whole index return accrues while the cash market
+      is shut. This broker charges 1.45 points a night to hold it. That is a question with a number
+      on both sides, and 665 cash sessions to answer it.
+    </p>
+
+    <figure>
+      <div class="fig-head">
+        <h3>Where a US500 day's return actually accrues, and what is left after costs</h3>
+        <span class="unit">points per session · long side</span>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--s1)"></i> net, kept</span>
+        <span><i style="background:var(--s2)"></i> financing</span>
+        <span><i style="background:var(--ink-3)"></i> spread</span>
+      </div>
+      <div class="split">
+        <div class="leg-block" id="leg-on"></div>
+        <div class="leg-block b" id="leg-in"></div>
+      </div>
+      <figcaption>
+        <b>77% of the daily return accrues in the 27.5 hours the cash market is shut</b>, against
+        23% in the 6.5 hours it is open — so this is the overnight premium and not index drift
+        smeared evenly across the clock. Verified by telescoping: the two legs sum to 2,754 points
+        against an actual index move of 2,702 (4,774 → 7,476), the residual being dropped stub
+        sessions and the window edges.
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="fig-head">
+        <h3>Net result per quarter, after spread and financing</h3>
+        <span class="unit">points · 11 quarters</span>
+      </div>
+      <div class="legend">
+        <span><i style="background:var(--s1)"></i> overnight, long</span>
+        <span><i style="background:var(--st-rejected)"></i> overnight, short</span>
+      </div>
+      <div id="quarters"></div>
+      <figcaption>
+        The long leg is positive in <b>8 of 11 quarters</b> and its total is positive — and it still
+        means nothing, because the per-session standard deviation is <b>36.6 points against a
+        +1.168 mean</b>. The short leg is the one solid result on this page: negative in 9 of 11
+        quarters with a confidence interval entirely below zero.
+      </figcaption>
+    </figure>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>leg</th><th>n</th><th>gross</th><th>spread</th><th>financing</th><th>net</th><th>CI 95% low</th><th>CI 95% high</th><th>quarters +</th></tr>
+        </thead>
+        <tbody id="legtable"></tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <div class="k">why it is parked, not banked</div>
+      <p>
+        The <b>+1.168 points per session</b> that survives costs sits against a standard deviation
+        of <b>36.6</b>. Resolving an edge that small at 80% power needs <b>7,689 sessions — about 31
+        years</b>. We have 664. Under the spec's diagnosis layers, layer 2 <b>passes</b> (costs do
+        not eat the edge, they eat 46% of it) and layer 0 <b>fails</b>, so the status is
+        <b>inconclusive</b>: park until more data exists. The parked condition is a longer history,
+        not a better idea — and re-cutting the same 664 sessions by weekday or regime only makes the
+        power worse.
+      </p>
+    </div>
+    <button class="say" data-anchor="overnight">Comment on H-0004</button>
+  </section>
+
+  <!-- ══════════════ H-0003 ══════════════ -->
+  <section id="horizon">
+    <div class="eyebrow">H-0003 &middot; layer-2 follow-up</div>
+    <h2>Holding longer does not outrun the spread</h2>
+    <p class="note">
+      Spread is paid once however long a trade is held, so a longer hold should earn more against
+      the same fixed cost. The same 96-cell grid, re-run at each horizon with its own placebo.
+    </p>
+
+    <figure>
+      <div class="fig-head">
+        <h3>Family edge as a multiple of the spread, by holding horizon</h3>
+        <span class="unit">configurations with ≥ 500 fires</span>
+      </div>
+      <div id="horizons"></div>
+      <figcaption>
+        The ratio improves once and then <b>flatlines</b> — 1.55 at two hours, 1.54 at four. That is
+        the signature of a <b>one-off repricing, not a drift</b>: essentially all of the continuation
+        has happened within two hours, and holding twice as long adds variance without adding edge.
+        There is no horizon at which this signal clears its costs, so the family is closed.
+      </figcaption>
+    </figure>
+    <button class="say" data-anchor="horizon">Comment on H-0003</button>
+  </section>
+
+  <!-- ══════════════ NEXT ══════════════ -->
+  <section id="next">
+    <div class="eyebrow">what happens next</div>
+    <h2>Aimed at 4h and daily, from a source that has never been mined</h2>
+    <p class="note">
+      <code style="font-family:var(--mono);font-size:12.5px">research/sources/known-effects.md</code>
+      lists five candidates, each recording its economic reason, its losing side, and the power we
+      actually have. An effect with no identifiable loser is a pattern in a sample.
+    </p>
+
+    <div class="steps">
+      <div class="step">
+        <div>
+          <h4>Brent–WTI spread mean reversion</h4>
+          <p>
+            The only candidate using two instruments we both hold at minute resolution, and close to
+            market-neutral — so index drift cannot contaminate the reading, which is exactly what
+            flattered H-0003. Killable fast: first measure whether daily spread changes even exceed
+            the 0.0765-point two-leg cost, before building anything.
+          </p>
+          <span class="cost">~1 hour to a verdict &middot; OIL_CRUDE + OIL_BRENT &middot; daily and 4h</span>
+        </div>
+      </div>
+      <div class="step">
+        <div>
+          <h4>EIA Wednesday reaction on OIL_CRUDE</h4>
+          <p>
+            A scheduled information release that forces position adjustment at a known moment. No
+            external calendar needed for a first look — "Wednesday 15:30 UTC" is right most weeks,
+            and the US-holiday shift weakens a measured effect rather than inventing one.
+          </p>
+          <span class="cost">~135 Wednesdays &middot; expect a layer-0 power problem &middot; 4h</span>
+        </div>
+      </div>
+      <div class="step parked">
+        <div>
+          <h4>Turn-of-the-month, and opening-range breakout</h4>
+          <p>
+            Recorded, not scheduled. The turn-of-month effect has ~31 month-turns in our window —
+            <em>inconclusive</em> before it starts. Opening-range breakout has the weakest losing
+            side on the list and needs 15m or 5m bars, the most expensive ground on the board.
+          </p>
+          <span class="cost">parked &middot; not attempted</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout" style="border-left-color: var(--st-pass)">
+      <div class="k" style="color: var(--st-pass)">carry this forward</div>
+      <p>
+        One result is statistically solid and it is a prohibition rather than an edge:
+        <b>holding US500 short overnight loses reliably</b> — −3.774 points per session, confidence
+        interval entirely below zero, positive in only 2 of 11 quarters. Bank it as a risk control
+        for any future strategy on this instrument.
+      </p>
+    </div>
+    <button class="say" data-anchor="next">Propose a hypothesis</button>
+  </section>
+
+  <footer>
+    Every hypothesis was written to <code>research/ledger/</code> with its pass/fail criteria set
+    <em>before</em> its run. No threshold has been moved, before or after any result.<br>
+    The 2026-08-01 holdout has never been touched by any of the four.<br>
+    Sources: <code>research/cost-reality/2026-09-19.md</code> &middot;
+    <code>research/ledger/INDEX.md</code> &middot;
+    <code>research/sources/known-effects.md</code>
+  </footer>
+</div>
+
+<div id="tip" hidden></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---- data, transcribed from the committed run artefacts ----
+  const RANK = [
+    ["OIL_CRUDE", "1d", 2.4, 0.0454, 1.9170],
+    ["US500", "1d", 3.0, 1.9883, 66.8250],
+    ["US500", "4h", 3.5, 0.7430, 21.4000],
+    ["OIL_BRENT", "1d", 4.0, 0.0732, 1.8117],
+    ["OIL_CRUDE", "4h", 5.0, 0.0362, 0.7210],
+    ["US500", "1h", 5.7, 0.5745, 10.1000],
+    ["OIL_BRENT", "4h", 5.8, 0.0422, 0.7295],
+    ["NATURALGAS*", "4h", 6.0, 0.0050, 0.0840],
+    ["OIL_CRUDE", "1h", 10.2, 0.0351, 0.3430],
+    ["US500", "15m", 11.7, 0.5627, 4.8000],
+    ["OIL_BRENT", "1h", 12.0, 0.0414, 0.3465],
+    ["NATURALGAS*", "1h", 12.2, 0.0050, 0.0410],
+    ["US500", "5m", 20.7, 0.5586, 2.7000],
+    ["OIL_CRUDE", "15m", 21.4, 0.0351, 0.1640],
+    ["OIL_BRENT", "15m", 24.9, 0.0413, 0.1655],
+    ["NATURALGAS*", "15m", 26.3, 0.0050, 0.0190],
+    ["OIL_CRUDE", "5m", 38.2, 0.0350, 0.0915],
+    ["OIL_BRENT", "5m", 45.0, 0.0412, 0.0915],
+    ["NATURALGAS*", "5m", 50.0, 0.0050, 0.0100]
+  ];
+  const HOT = 12; // US500 5m
+
+  const LEGS = [
+    ["overnight", "long",  664,  3.173, 0.555, 1.450,  1.168, -1.616,  3.896, 8, 11, 27.5],
+    ["overnight", "short", 664, -3.173, 0.555, 0.046, -3.774, -6.488, -0.979, 2, 11, 27.5],
+    ["intraday",  "long",  665,  0.974, 0.555, 0.000,  0.418, -3.034,  3.930, 4, 11,  6.5],
+    ["intraday",  "short", 665, -0.974, 0.555, 0.000, -1.529, -5.041,  1.923, 6, 11,  6.5]
+  ];
+
+  const QUARTERS = [
+    ["2024 Q1",  170.5, -282.1], ["2024 Q2",   98.7, -278.1],
+    ["2024 Q3",  271.6, -460.6], ["2024 Q4",   83.7, -228.9],
+    ["2025 Q1", -232.1,  106.3], ["2025 Q2", -163.4,  -23.4],
+    ["2025 Q3",  116.9, -321.5], ["2025 Q4",  250.1, -406.5],
+    ["2026 Q1", -188.5,   51.2], ["2026 Q2",  365.9, -583.6],
+    ["2026 Q3",    2.0,  -79.1]
+  ];
+
+  const HORIZONS = [["60m", 1.01, 0.565], ["120m", 1.55, 0.870], ["240m", 1.54, 0.864]];
+  const REQUIRED = 2.0;
+
+  const fmt = (n, d) => (n >= 0 ? "+" : "−") + Math.abs(n).toFixed(d);
+
+  // ---- tooltip ----
+  const tip = document.getElementById("tip");
+  function showTip(html, ev) {
+    tip.innerHTML = html;
+    tip.hidden = false;
+    const pad = 14;
+    let x = ev.clientX + pad, y = ev.clientY + pad;
+    const r = tip.getBoundingClientRect();
+    if (x + r.width > window.innerWidth - 8) x = ev.clientX - r.width - pad;
+    if (y + r.height > window.innerHeight - 8) y = ev.clientY - r.height - pad;
+    tip.style.left = Math.max(8, x) + "px";
+    tip.style.top = Math.max(8, y) + "px";
+  }
+  function hideTip() { tip.hidden = true; }
+  function wireTip(el, html) {
+    el.addEventListener("mousemove", (ev) => showTip(html, ev));
+    el.addEventListener("mouseleave", hideTip);
+  }
+
+  // ---- cost ranking ----
+  const rankEl = document.getElementById("rank");
+  const maxCost = Math.max.apply(null, RANK.map(r => r[2]));
+  RANK.forEach((row, i) => {
+    const [epic, tf, share, hurdle, tr] = row;
+    const el = document.createElement("div");
+    el.className = "rank-row" + (i === HOT ? " hot" : "");
+    el.innerHTML =
+      '<div class="n">' + (i + 1) + '</div>' +
+      '<div class="who">' + epic + ' &nbsp;' + tf + '</div>' +
+      '<div class="track"><div class="bar" style="width:' +
+        (share / maxCost * 100).toFixed(2) + '%"></div></div>' +
+      '<div class="v">' + share.toFixed(1) + '%</div>';
+    wireTip(el,
+      "<b>" + epic + " " + tf + "</b><br>" +
+      "cost / range &nbsp;" + share.toFixed(1) + "%<br>" +
+      "hurdle &nbsp;" + hurdle.toFixed(4) + " pts<br>" +
+      "median TR &nbsp;" + tr.toFixed(4) + " pts");
+    rankEl.appendChild(el);
+    if (i === HOT) {
+      const note = document.createElement("div");
+      note.className = "rank-note";
+      note.textContent = "↑ H-0001, H-0002 and H-0003 were all tested here";
+      rankEl.appendChild(note);
+    }
+  });
+
+  // ---- H-0004 split ----
+  function renderLeg(target, legName) {
+    const row = LEGS.find(l => l[0] === legName && l[1] === "long");
+    const [, , n, gross, spread, fin, net, , , , , hours] = row;
+    const scale = 3.173; // both blocks share one scale so the bars are comparable
+    const w = v => (Math.max(v, 0) / scale * 100).toFixed(2) + "%";
+    const el = document.getElementById(target);
+    el.innerHTML =
+      '<div class="leg-name">' + legName + '</div>' +
+      '<div class="leg-hours">' + hours.toFixed(1) + 'h held &middot; ' + n + ' sessions</div>' +
+      '<div class="bignum" style="color:var(--s1)">' + fmt(gross, 3) + '</div>' +
+      '<div class="leg-hours" style="margin:2px 0 12px">gross, points per session</div>' +
+      '<div class="stackbar">' +
+        (net > 0 ? '<div class="seg-net" style="width:' + w(net) + '"></div>' : '') +
+        (fin > 0 ? '<div class="seg-fin" style="width:' + w(fin) + '"></div>' : '') +
+        (spread > 0 ? '<div class="seg-spread" style="width:' + w(spread) + '"></div>' : '') +
+      '</div>' +
+      '<div class="stacklabels">' +
+        '<span>net <b>' + fmt(net, 3) + '</b></span>' +
+        '<span>financing <b>−' + fin.toFixed(3) + '</b></span>' +
+        '<span>spread <b>−' + spread.toFixed(3) + '</b></span>' +
+      '</div>';
+    const bar = el.querySelector(".stackbar");
+    wireTip(bar,
+      "<b>" + legName + ", long</b><br>" +
+      "gross &nbsp;" + fmt(gross, 3) + " pts<br>" +
+      "spread &nbsp;−" + spread.toFixed(3) + "<br>" +
+      "financing &nbsp;−" + fin.toFixed(3) +
+      (gross > 0 ? " &nbsp;(" + Math.round(fin / gross * 100) + "% of gross)" : "") + "<br>" +
+      "net &nbsp;" + fmt(net, 3) + " pts");
+  }
+  renderLeg("leg-on", "overnight");
+  renderLeg("leg-in", "intraday");
+
+  // ---- quarterly diverging chart ----
+  (function () {
+    const host = document.getElementById("quarters");
+    const W = 720, H = 230, padL = 52, padR = 12, padT = 12, padB = 34;
+    const maxAbs = 600;
+    const iw = W - padL - padR, ih = H - padT - padB;
+    const y0 = padT + ih / 2;
+    const bandW = iw / QUARTERS.length;
+    const barW = Math.min(17, bandW / 2 - 3);
+    const yOf = v => y0 - (v / maxAbs) * (ih / 2);
+
+    let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" ' +
+            'aria-label="Net points per quarter for the overnight long and short legs" ' +
+            'style="max-width:100%;display:block;overflow:visible">';
+    [-600, -300, 0, 300, 600].forEach(v => {
+      const y = yOf(v);
+      s += '<line class="' + (v === 0 ? 'zero' : 'grid') + '" x1="' + padL + '" x2="' +
+           (W - padR) + '" y1="' + y + '" y2="' + y + '" stroke-width="1" fill="none"/>';
+      s += '<text class="tick" x="' + (padL - 9) + '" y="' + (y + 4) +
+           '" text-anchor="end">' + v + '</text>';
+    });
+    QUARTERS.forEach((q, i) => {
+      const cx = padL + bandW * i + bandW / 2;
+      const xL = cx - barW - 1.5, xS = cx + 1.5;
+      [[xL, q[1], "long"], [xS, q[2], "short"]].forEach(d => {
+        const [x, v, side] = d;
+        const top = v >= 0 ? yOf(v) : y0;
+        const h = Math.max(Math.abs(yOf(v) - y0), 1.5);
+        s += '<rect class="qbar ' + side + '" data-q="' + q[0] + '" data-side="' + side +
+             '" data-v="' + v + '" x="' + x + '" y="' + top + '" width="' + barW +
+             '" height="' + h + '" rx="2"/>';
+      });
+      s += '<text class="qlabel" x="' + cx + '" y="' + (H - 10) + '" text-anchor="middle">' +
+           q[0] + '</text>';
+    });
+    s += '</svg>';
+    host.innerHTML = s;
+    host.querySelectorAll(".qbar").forEach(r => {
+      const v = parseFloat(r.getAttribute("data-v"));
+      wireTip(r, "<b>" + r.getAttribute("data-q") + " &middot; overnight " +
+        r.getAttribute("data-side") + "</b><br>net " + fmt(v, 1) + " pts");
+    });
+  })();
+
+  // ---- leg table ----
+  (function () {
+    const tb = document.getElementById("legtable");
+    LEGS.forEach(l => {
+      const [leg, side, n, gross, spread, fin, net, lo, hi, qp, qt] = l;
+      const cls = net >= 0 ? "pos" : "neg";
+      const solid = hi < 0 || lo > 0;
+      tb.insertAdjacentHTML("beforeend",
+        "<tr><td>" + leg + " · " + side + "</td><td>" + n + "</td>" +
+        "<td>" + fmt(gross, 3) + "</td><td>−" + spread.toFixed(3) + "</td>" +
+        "<td>−" + fin.toFixed(3) + "</td>" +
+        "<td class='" + cls + "'><b>" + fmt(net, 3) + "</b></td>" +
+        "<td class='" + (solid ? cls : "") + "'>" + fmt(lo, 3) + "</td>" +
+        "<td class='" + (solid ? cls : "") + "'>" + fmt(hi, 3) + "</td>" +
+        "<td>" + qp + " / " + qt + "</td></tr>");
+    });
+  })();
+
+  // ---- horizon chart ----
+  (function () {
+    const host = document.getElementById("horizons");
+    const W = 720, H = 210, padL = 52, padR = 84, padT = 16, padB = 36;
+    const iw = W - padL - padR, ih = H - padT - padB;
+    const maxV = 2.4;
+    const xOf = v => padL + (v / maxV) * iw;
+    const rowH = ih / HORIZONS.length;
+
+    let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" ' +
+            'aria-label="Family edge as a multiple of the spread at 60, 120 and 240 minutes" ' +
+            'style="max-width:100%;display:block;overflow:visible">';
+    [0, 0.5, 1, 1.5, 2].forEach(v => {
+      s += '<line class="grid" x1="' + xOf(v) + '" x2="' + xOf(v) + '" y1="' + padT +
+           '" y2="' + (padT + ih) + '" stroke-width="1" fill="none"/>';
+      s += '<text class="tick" x="' + xOf(v) + '" y="' + (H - 14) +
+           '" text-anchor="middle">' + v.toFixed(1) + '\u00d7</text>';
+    });
+    // the bar every configuration had to clear
+    s += '<line class="req" x1="' + xOf(REQUIRED) + '" x2="' + xOf(REQUIRED) + '" y1="' +
+         (padT - 6) + '" y2="' + (padT + ih + 4) + '" fill="none"/>';
+    s += '<text class="req strong" x="' + (xOf(REQUIRED) + 8) + '" y="' + (padT + 6) +
+         '">required</text>';
+    s += '<text class="req" x="' + (xOf(REQUIRED) + 8) + '" y="' + (padT + 19) +
+         '">2.0\u00d7</text>';
+
+    HORIZONS.forEach((h, i) => {
+      const [label, mult, pts] = h;
+      const y = padT + rowH * i + rowH / 2;
+      const bh = 22;
+      s += '<rect class="hbar" data-l="' + label + '" data-m="' + mult + '" data-p="' + pts +
+           '" x="' + padL + '" y="' + (y - bh / 2) + '" width="' + Math.max(xOf(mult) - padL, 2) +
+           '" height="' + bh + '" rx="3"/>';
+      s += '<text class="hlabel" x="' + (padL - 9) + '" y="' + (y + 4) +
+           '" text-anchor="end">' + label + '</text>';
+      s += '<text class="hvalue" x="' + (xOf(mult) - 9) + '" y="' + (y + 4) +
+           '" text-anchor="end">' + mult.toFixed(2) + '\u00d7</text>';
+    });
+    s += '</svg>';
+    host.innerHTML = s;
+    host.querySelectorAll(".hbar").forEach(r => {
+      wireTip(r, "<b>hold " + r.getAttribute("data-l") + "</b><br>" +
+        "family edge &nbsp;+" + parseFloat(r.getAttribute("data-p")).toFixed(3) + " pts<br>" +
+        "spread &nbsp;0.561 pts<br>" +
+        "ratio &nbsp;" + r.getAttribute("data-m") + "× &nbsp;(2.0× required)");
+    });
+  })();
+
+  // ---- comment loop: a reading becomes an owner-comment hypothesis ----
+  (async function () {
+    const buttons = Array.prototype.slice.call(document.querySelectorAll(".say"));
+    const comments = await (window.claude && window.claude.use
+      ? window.claude.use("comments") : Promise.resolve(null));
+    if (!comments) { buttons.forEach(b => { b.hidden = true; }); return; }
+    buttons.forEach(b => {
+      b.addEventListener("click", () => {
+        const section = document.getElementById(b.getAttribute("data-anchor"));
+        try { comments.openComposer({ element: section || b }); } catch (e) { /* declined */ }
+      });
+    });
+  })();
+})();
+</script>

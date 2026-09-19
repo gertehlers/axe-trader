@@ -70,13 +70,18 @@ as a risk control for any future strategy on this instrument.
 
 ### On seeing this visually
 
-The review spike (`research/review-spike/`, published as an Artifact) renders per-trade candle
-charts and works, but it is fed by hand from an old **Java** run and is still untracked in git.
-There is nothing for it to show from the Python engine: every experiment so far is layer-1
-diagnosis (forward returns), and **no strategy has ever been run through the simulator**, because
-none has survived layer 1. A trade-review page needs a surviving strategy first. What *is*
-graphable today is the research state itself — the 19-row cost ranking, the H-0004 overnight split
-with its quarterly stability, and the H-0002/H-0003 grid surfaces with their plateau structure.
+**Published: https://claude.ai/artifact/YTkPaQr27cT4njL7uEnjx9 — "Four Dead Hypotheses".** Source
+kept at `research/review/research-state.html` (see `research/review/README.md`), so it can be
+rebuilt rather than only viewed. Republish by passing that URL as `url`, or it forks into a
+separate artifact. It carries the ledger, the 19-row cost ranking, H-0004's overnight/intraday
+split and quarterly stability, and H-0003's edge-to-cost ratio by horizon — with a comment
+affordance per section, so a reading becomes a `source: owner-comment` hypothesis (spec §5.3).
+
+**It is not the trade-review page of spec §5.2**, and cannot be yet. That one needs a strategy run
+through the simulator to have trades to show, and none has survived layer-1 diagnosis. The
+2026-09-18 spike (`research/review-spike/`, still untracked) proved the candle/comment mechanism
+against a run exported by hand from the old **Java** engine; wiring it to the Python engine's
+`Trade` output is roughly half a day and is only worth doing once a strategy earns it.
 
 ---
 
