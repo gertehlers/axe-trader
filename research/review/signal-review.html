@@ -1,0 +1,912 @@
+<title>Inside the Spread</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --paper:#F7F6F2; --surface:#FFFFFF; --surface-2:#F1F0EA; --sunk:#EAE8E0;
+  --ink:#141F1E; --ink-2:#4B5A57; --ink-3:#7A8783; --line:#DBD8CF; --line-2:#C6C2B6;
+  --accent:#8A5310;
+  --gain:#1C6B50; --loss:#A6372B;
+  --a-sym:#B5470F; --a-trail:#1566A8; --a-time:#3F7F1C; --a-rev:#8A4FA8; --horizon:#9A7B10;
+  --focus:#1566A8;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --paper:#10181A; --surface:#172124; --surface-2:#1D282B; --sunk:#0B1214;
+  --ink:#E7EBE6; --ink-2:#9BAAA6; --ink-3:#6E7D7A; --line:#273538; --line-2:#334348;
+  --accent:#D9A44E;
+  --gain:#3DA87E; --loss:#D96A52;
+  --a-sym:#D2682A; --a-trail:#4F94D4; --a-time:#6FA632; --a-rev:#AC76CE; --horizon:#9E8520;
+  --focus:#4F94D4;
+}}
+:root[data-theme="dark"]{
+  --paper:#10181A; --surface:#172124; --surface-2:#1D282B; --sunk:#0B1214;
+  --ink:#E7EBE6; --ink-2:#9BAAA6; --ink-3:#6E7D7A; --line:#273538; --line-2:#334348;
+  --accent:#D9A44E;
+  --gain:#3DA87E; --loss:#D96A52;
+  --a-sym:#D2682A; --a-trail:#4F94D4; --a-time:#6FA632; --a-rev:#AC76CE; --horizon:#9E8520;
+  --focus:#4F94D4;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:Archivo,"Helvetica Neue",Arial,sans-serif;font-size:15px;line-height:1.55;
+  -webkit-font-smoothing:antialiased}
+.num,code{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:20px;padding-block:0 64px}
+h1,h2,h3{text-wrap:balance;margin:0}
+h1{font-size:clamp(28px,5vw,46px);font-weight:700;letter-spacing:-.022em;line-height:1.06}
+h2{font-size:20px;font-weight:600;letter-spacing:-.01em}
+h3{font-size:14px;font-weight:600}
+p{margin:0}
+a{color:var(--focus)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:3px}
+
+/* utility bar */
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:40;background:var(--surface);
+  border-bottom:1px solid var(--line)}
+.bar-in{max-width:1180px;margin:0 auto;padding:7px 20px;display:flex;gap:8px 16px;
+  align-items:center;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2)}
+.bar-in b{color:var(--ink);font-weight:600}
+.bar .sep{color:var(--line-2)}
+.theme-btn{margin-left:auto;background:none;border:1px solid var(--line);color:var(--ink-2);
+  border-radius:5px;padding:3px 9px;font:inherit;font-size:11px;cursor:pointer}
+.theme-btn:hover{border-color:var(--line-2);color:var(--ink)}
+
+/* masthead */
+.mast{padding-block:36px 26px;border-bottom:2px solid var(--ink);margin-bottom:26px}
+.eyebrow{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);
+  font-weight:600;margin-bottom:12px}
+.standfirst{margin-top:14px;font-size:17px;color:var(--ink-2);max-width:62ch}
+
+/* verdict */
+.verdict{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);
+  border-radius:0 8px 8px 0;padding:20px 22px;margin-bottom:30px;display:grid;gap:12px}
+.verdict p{max-width:78ch}
+.verdict .lede{font-size:16.5px;font-weight:500}
+.kbd{background:var(--sunk);border:1px solid var(--line);border-radius:4px;padding:.5px 5px;
+  font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+
+section{margin-bottom:38px}
+.sec-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px;
+  padding-bottom:7px;border-bottom:1px solid var(--line)}
+.sec-note{font-size:13px;color:var(--ink-3);max-width:70ch;margin-bottom:14px}
+
+/* tables */
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:720px}
+th,td{padding:8px 11px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:10.5px;letter-spacing:.055em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600;background:var(--surface-2);position:sticky;top:0}
+th:first-child,td:first-child{text-align:left}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--surface-2)}
+.swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:7px;
+  vertical-align:baseline}
+.pos{color:var(--gain)} .neg{color:var(--loss)}
+.worst{background:color-mix(in srgb,var(--loss) 8%,transparent)}
+.pill{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:99px;
+  border:1px solid var(--line-2);color:var(--ink-2);font-weight:600;letter-spacing:.02em}
+.pill.zero{border-color:var(--accent);color:var(--accent)}
+
+/* horizon figure */
+.fig{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px}
+.fig-cap{font-size:12.5px;color:var(--ink-3);margin-top:12px;max-width:74ch}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);margin-bottom:12px}
+.legend span{display:flex;align-items:center;gap:6px}
+
+/* inspector */
+.tools{display:flex;gap:10px 14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px}
+.tool{display:flex;flex-direction:column;gap:4px}
+.tool label{font-size:10.5px;letter-spacing:.055em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600}
+select,.btn{font:inherit;font-size:13px;background:var(--surface);color:var(--ink);
+  border:1px solid var(--line-2);border-radius:6px;padding:5px 9px;cursor:pointer}
+select:hover,.btn:hover{border-color:var(--ink-3)}
+.btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:600}
+.btn.primary:hover{opacity:.88}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.armtoggles{display:flex;gap:6px;flex-wrap:wrap}
+.armtoggle{font:inherit;font-size:12px;border:1px solid var(--line-2);background:var(--surface);
+  border-radius:99px;padding:3px 11px;cursor:pointer;display:flex;align-items:center;gap:6px;
+  color:var(--ink-2)}
+.armtoggle[aria-pressed="true"]{color:var(--ink);border-color:currentColor;font-weight:600}
+.armtoggle[aria-pressed="false"] .swatch{opacity:.3}
+
+.inspector{display:grid;grid-template-columns:minmax(0,1fr) 286px;gap:16px;align-items:start}
+@media (max-width:860px){.inspector{grid-template-columns:minmax(0,1fr)}}
+.chartcard{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px}
+.chart-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:4px}
+.chart-head .title{font-weight:600;font-size:15px}
+.chart-head .sub{font-size:12px;color:var(--ink-3)}
+svg{display:block;width:100%;height:auto;max-width:100%;overflow:visible}
+.nav{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.nav .count{font-size:12px;color:var(--ink-3);margin-left:auto}
+
+.side{display:grid;gap:14px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px}
+.panel h3{margin-bottom:9px;color:var(--ink-2);font-size:10.5px;letter-spacing:.055em;
+  text-transform:uppercase}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:12.5px}
+.kv dt{color:var(--ink-3)} .kv dd{margin:0;text-align:right;font-family:"IBM Plex Mono",monospace;
+  font-variant-numeric:tabular-nums}
+.votes{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}
+.vote{font-size:10.5px;padding:1.5px 7px;border-radius:4px;background:var(--sunk);
+  border:1px solid var(--line);color:var(--ink-2);font-weight:600}
+.vote.on{background:color-mix(in srgb,var(--accent) 16%,transparent);border-color:var(--accent);
+  color:var(--ink)}
+.armrow{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:5px 0;
+  border-bottom:1px solid var(--line)}
+.armrow:last-child{border-bottom:none}
+.armrow .nm{flex:1;min-width:0}
+.armrow .r{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-weight:600}
+.armrow .xr{font-size:10px;color:var(--ink-3);letter-spacing:.04em}
+
+textarea{width:100%;font:inherit;font-size:13px;background:var(--sunk);color:var(--ink);
+  border:1px solid var(--line-2);border-radius:6px;padding:8px;resize:vertical;min-height:70px}
+.tagrow{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}
+.tag{font:inherit;font-size:11.5px;border:1px solid var(--line-2);background:var(--surface);
+  color:var(--ink-2);border-radius:99px;padding:3px 10px;cursor:pointer}
+.tag[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink);
+  font-weight:600}
+.status{font-size:12px;color:var(--ink-3);margin-top:8px;min-height:1.4em}
+.status b{color:var(--ink)}
+.marked{font-size:11.5px;color:var(--accent);font-weight:600}
+
+.caveats{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:16px 18px}
+.caveats ul{margin:8px 0 0;padding-left:18px;display:grid;gap:7px;font-size:13.5px;color:var(--ink-2)}
+.caveats li{max-width:76ch}
+.caveats b{color:var(--ink)}
+
+/* canvas inspector */
+.cvwrap{position:relative}
+canvas{display:block;width:100%;height:420px;touch-action:none;border-radius:4px}
+@media (max-width:860px){canvas{height:330px}}
+.cvtools{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:9px}
+.cvtools .spacer{flex:1}
+.chip{font:inherit;font-size:11.5px;border:1px solid var(--line-2);background:var(--surface);
+  color:var(--ink-2);border-radius:5px;padding:3px 9px;cursor:pointer}
+.chip:hover{border-color:var(--ink-3)}
+.chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--paper);
+  font-weight:600}
+.hint{font-size:11.5px;color:var(--ink-3);margin-top:8px;min-height:1.3em}
+.hint b{color:var(--ink)}
+
+.composer{position:absolute;z-index:20;width:302px;background:var(--surface);
+  border:1px solid var(--accent);border-radius:8px;box-shadow:0 8px 26px rgba(0,0,0,.22);
+  padding:11px;max-height:440px;overflow-y:auto}
+.composer .at{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-2);
+  margin-bottom:7px}
+.composer .measured{font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:700;
+  color:var(--accent);margin-bottom:8px;line-height:1.45}
+.composer .seclabel{font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--ink-3);font-weight:600;margin:9px 0 4px}
+.composer textarea{min-height:46px;margin-top:8px}
+.composer .acts{display:flex;gap:6px;margin-top:9px;justify-content:flex-end}
+.kindgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.kindgrid .chip{text-align:left}
+.kindgrid .chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);
+  color:#fff;font-weight:600}
+.dirrow{display:flex;gap:6px;margin-bottom:7px}
+.dirrow .chip{flex:1;text-align:center;font-weight:600}
+.dirrow .chip[data-dir="LONG"][aria-pressed="true"]{background:var(--gain);border-color:var(--gain);color:#fff}
+.dirrow .chip[data-dir="SHORT"][aria-pressed="true"]{background:var(--loss);border-color:var(--loss);color:#fff}
+.armgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.armgrid .chip[aria-pressed="true"]{color:var(--paper);font-weight:600}
+.causegrid{display:grid;gap:4px}
+.causegrid .chip{text-align:left}
+.causegrid .chip[aria-pressed="true"]{background:var(--horizon);border-color:var(--horizon);color:#fff;font-weight:600}
+.causehint{font-size:11px;color:var(--ink-3);margin-top:4px;min-height:13px}
+
+.notes{list-style:none;margin:0;padding:0;max-height:270px;overflow-y:auto}
+.notes li{display:grid;grid-template-columns:20px 1fr auto;gap:8px;padding:8px 2px;
+  border-bottom:1px solid var(--line);align-items:start;cursor:pointer}
+.notes li:last-child{border-bottom:none}
+.notes li:hover{background:var(--surface-2)}
+.notes .idx{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:700;color:var(--paper);
+  background:var(--accent);width:19px;height:19px;border-radius:50%;display:grid;place-items:center}
+.notes .body{min-width:0}
+.notes .kind{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;
+  color:var(--accent)}
+.notes .head{font-size:10.5px;color:var(--ink-3);font-family:"IBM Plex Mono",monospace}
+.notes .txt{font-size:12px;overflow-wrap:anywhere}
+.notes .del{font:inherit;font-size:11px;background:transparent;border:1px solid var(--line);
+  color:var(--ink-3);border-radius:4px;cursor:pointer;padding:1px 6px}
+.notes .del:hover{border-color:var(--loss);color:var(--loss)}
+.empty{font-size:12px;color:var(--ink-3);padding:6px 0}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style><style>
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:4px 0}
+.tile{background:var(--sunk);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.tile .tl{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.tile .tv{font-family:"IBM Plex Mono",monospace;font-size:26px;font-weight:600;line-height:1.2;
+  font-variant-numeric:tabular-nums;margin:2px 0}
+.tile .ts{font-size:11.5px;color:var(--ink-3)}
+</style>
+<div class="bar"><div class="bar-in">
+  <b>OIL_BRENT</b><span class="sep">/</span><span>5m</span>
+  <span class="sep">·</span><span id="barSig">—</span>
+  <span class="sep">·</span><span>H-0009</span>
+  <button class="theme-btn" id="themeBtn" type="button">theme</button>
+</div></div>
+
+<div class="wrap">
+  <header class="mast">
+    <div class="eyebrow">H-0009 · mean reversion · uneconomic</div>
+    <h1>Inside the spread</h1>
+    <p class="standfirst">The signal is real. When RSI(7) drops below 30 and price closes at or
+      below the lower Bollinger band, OIL_BRENT reverts — about ten times the base rate, in both
+      samples. It just doesn't revert far enough to pay the spread.</p>
+  </header>
+
+  <div class="verdict">
+    <p class="lede">Every chart below has a <b>break-even line</b>. That is the entry plus one
+      round-trip spread. Price has to close beyond it for the trade to make a penny.</p>
+    <p>Watch how often the move is real, obvious, in the right direction — and stops short of that
+      line. That is the whole finding, and it is the fourth time this project has met it.</p>
+    <div class="tiles" id="tiles"></div>
+    <p><b>What you are looking at.</b> 400 signals drawn at random (seed 20260919) from the 17,900
+      that fired, so the losers are here in proportion. Not a curated set.</p>
+    <p><b>What would change the verdict.</b> Ground where the round trip costs well under the
+      0.09–0.19 ATR this signal delivers. On the instruments we hold that means hourly bars or
+      slower, where there are only 100–500 signals per sample — too few to measure. If you see
+      something in these charts that says otherwise, mark it.</p>
+  </div>
+
+  <section>
+    <div class="sec-head"><h2>Signal inspector</h2><span class="pill" id="filterCount">—</span></div>
+    <p class="sec-note">The <b>solid dark line</b> is the entry. The <b>dashed red line</b> is
+      break-even — entry plus the round trip. The <b>gold dashed vertical</b> is the 24-bar horizon
+      where the edge was measured. The two dotted horizontals are the best and worst price reached
+      before that horizon. Click a bar to mark it, or <b>Draw a run</b> and drag to measure a move
+      you think was there. <span class="kbd">←</span> <span class="kbd">→</span> steps through.</p>
+
+    <div class="tools">
+      <div class="tool"><label for="fSide">Side</label>
+        <select id="fSide"><option value="all">Both sides</option><option value="LONG">LONG only</option><option value="SHORT">SHORT only</option></select></div>
+      <div class="tool"><label for="fSlice">Sample</label>
+        <select id="fSlice"><option value="all">Both</option><option value="discovery">Discovery</option><option value="validation">Validation</option></select></div>
+      <div class="tool"><label for="fSort">Sort by</label>
+        <select id="fSort">
+          <option value="time">Time</option>
+          <option value="hz-best">Best at horizon</option>
+          <option value="hz-worst">Worst at horizon</option>
+          <option value="mfe">Biggest favourable move</option>
+          <option value="clears">Cleared break-even by most</option>
+          <option value="short">Fell shortest of break-even</option>
+        </select></div>
+      <div class="tool"><label for="fClears">Outcome</label>
+        <select id="fClears"><option value="all">All</option><option value="yes">Cleared break-even</option><option value="no">Did not clear</option></select></div>
+    </div>
+
+    <div class="inspector">
+      <div class="chartcard">
+        <div class="chart-head">
+          <span class="title" id="tTitle">—</span>
+          <span class="sub" id="tSub">—</span>
+        </div>
+        <div class="cvtools">
+          <button class="chip" id="noteMode" type="button" aria-pressed="true">Click-to-note: on</button>
+          <button class="chip" id="runMode" type="button" aria-pressed="false">Draw a run</button>
+          <button class="chip" id="fitBtn" type="button">Fit</button>
+          <span class="spacer"></span>
+          <button class="btn" id="prevBtn" type="button">← Prev</button>
+          <button class="btn" id="nextBtn" type="button">Next →</button>
+          <span class="count" id="posLabel">—</span>
+        </div>
+        <div class="cvwrap" id="cvWrap"><canvas id="cv"></canvas></div>
+        <div class="hint" id="cvHint">Drag to pan · scroll to zoom · <b>click any bar</b> to mark it.</div>
+      </div>
+
+      <div class="side">
+        <div class="panel">
+          <h3>This signal</h3>
+          <dl class="kv" id="entryKv"></dl>
+        </div>
+        <div class="panel">
+          <h3>Did it pay?</h3>
+          <div id="payBox"></div>
+        </div>
+        <div class="panel">
+          <h3>Marks on this signal</h3>
+          <ul class="notes" id="noteList"></ul>
+          <div class="empty" id="noteEmpty">Nothing marked here yet.</div>
+        </div>
+        <div class="panel">
+          <h3>Send to Claude</h3>
+          <p style="font-size:12.5px;color:var(--ink-2);margin-bottom:9px">
+            <span class="marked" id="markedCount">0 marks</span> — sent as one batch, each becoming
+            a <code>source: owner-comment</code> hypothesis.</p>
+          <button class="btn primary" id="sendBtn" type="button" disabled>Send marks</button>
+          <div class="status" id="sendStatus">checking comment loop…</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>Why this is not a strategy</h2></div>
+    <div class="caveats"><ul>
+      <li><b>The edge is smaller than the spread at every fast timeframe.</b> 0.094 ATR against a
+        0.484 ATR round trip on discovery; 0.190 against 0.300 on validation. At best it breaks
+        even, and that is before slippage, which is not modelled here at all.</li>
+      <li><b>No ground clears its cost in both samples.</b> Across 24 instrument × timeframe ×
+        sample cells, every cell that cleared in one flipped sign in the other — OIL_CRUDE 4h went
+        2.39 to −2.87 on 220 then 108 observations. Those are small samples, not edges.</li>
+      <li><b>The first version of this analysis was nearly a mirage.</b> Scoring indicators against
+        ZigZag pivots showed a ×4.7 lift with 94% of runs going up. An up-leg starts at a swing low
+        by definition, and a swing low is where RSI is low and price is at the lower band — it
+        rediscovers the definition of a pivot. Forward returns are the honest measure and they are
+        far smaller.</li>
+      <li><b>This is exploratory.</b> The horizon was chosen as the best of four, 24 cells were
+        examined, and nothing here was pre-registered. It cannot promote anything on its own.</li>
+      <li><b>But it does correct one earlier claim.</b> Direction is not unavailable on oil — it is
+        unavailable to <em>continuation</em> designs, which is every momentum hypothesis in the
+        ledger. As mean reversion it exists.</li>
+    </ul></div>
+  </section>
+</div>
+<script src="signal-review-data.js"></script>
+<script>
+(function(){
+  "use strict";
+  var D = window.SIGNAL_DATA, SIG = D.signals;
+
+  var KINDS = [
+    {id:"good-entry",  label:"Good entry"},
+    {id:"bad-entry",   label:"Bad entry"},
+    {id:"too-early",   label:"Too early"},
+    {id:"too-late",    label:"Too late"},
+    {id:"missed-run",  label:"Missed run", dir:true},
+    {id:"chop",        label:"Choppy / no trend"},
+    {id:"good",        label:"This was right"},
+    {id:"note",        label:"Note"}
+  ];
+  function kindOf(id){ for (var i=0;i<KINDS.length;i++) if (KINDS[i].id===id) return KINDS[i]; return null; }
+  var CAUSES = [
+    {id:"spike-correction", label:"Spike correction", hint:"news-driven spike, this is the snap-back"},
+    {id:"stretched-trend",  label:"Stretched trend",  hint:"sustained move, a signal was probably there"},
+    {id:"breakout",         label:"Breakout",         hint:"ran from a level break"},
+    {id:"reversal",         label:"Reversal at level",hint:"turned at support/resistance"},
+    {id:"unsure",           label:"Unsure — dig in",  hint:"saw it, can't name it"}
+  ];
+  function causeOf(id){ for (var i=0;i<CAUSES.length;i++) if (CAUSES[i].id===id) return CAUSES[i]; return null; }
+
+  function fmt(v,d){ return (v===null||v===undefined||isNaN(v))?"—":Number(v).toFixed(d===undefined?2:d); }
+  function signed(v,d){ if(v===null||v===undefined||isNaN(v)) return "—";
+    return (v>0?"+":"")+Number(v).toFixed(d===undefined?3:d); }
+  function cls(v){ return v>0?"pos":(v<0?"neg":""); }
+  function esc(s){ return String(s).replace(/[&<>"]/g,function(c){
+    return ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"})[c]; }); }
+  function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+  function shortTime(sec){ var d=new Date(sec*1000),p=function(x){return String(x).padStart(2,"0");};
+    return p(d.getUTCDate())+" "+["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getUTCMonth()]
+      +" "+p(d.getUTCHours())+":"+p(d.getUTCMinutes()); }
+  function isoMin(sec){ return new Date(sec*1000).toISOString().slice(0,16)+"Z"; }
+
+  // Derived: the break-even price, and whether the move ever cleared it.
+  SIG.forEach(function(s){
+    s._costAtr = s.atr>0 ? s.spread/s.atr : null;
+    s._be = s.d==="LONG" ? s.ep + s.spread : s.ep - s.spread;   // one round trip
+    s._netHz = s._costAtr===null ? null : s.hz - s._costAtr;    // horizon result after cost
+    s._clearedMfe = s._costAtr===null ? null : s.mfe - s._costAtr; // best moment, after cost
+    s._key = s.e+"|"+s.d;
+  });
+  var BY_KEY = {}; SIG.forEach(function(s){ BY_KEY[s._key]=s; });
+
+  /* ---------- tiles ---------- */
+  (function(){
+    var host=document.getElementById("tiles"); host.textContent="";
+    [["discovery","Discovery"],["validation","Validation"]].forEach(function(p){
+      var st=D.stats[p[0]];
+      var d=document.createElement("div"); d.className="tile";
+      d.innerHTML='<div class="tl">'+p[1]+'</div>'+
+        '<div class="tv '+cls(st.edge_atr-st.cost_atr)+'">'+signed(st.edge_atr-st.cost_atr,3)+'</div>'+
+        '<div class="ts">ATR after cost · edge '+signed(st.edge_atr,3)+
+        ' vs spread '+fmt(st.cost_atr,3)+'</div>'+
+        '<div class="ts">'+st.signals.toLocaleString()+' signals · win '+
+        fmt(st.win_rate*100,1)+'%</div>';
+      host.appendChild(d);
+    });
+    document.getElementById("barSig").textContent =
+      SIG.length+" of "+(D.stats.discovery.signals+D.stats.validation.signals).toLocaleString()+" sampled";
+  })();
+
+  /* ---------- notes ---------- */
+  var NOTE_KEY="axe-signal-review-notes-v1", notes=[];
+  try { var raw=localStorage.getItem(NOTE_KEY); if(raw) notes=JSON.parse(raw)||[]; } catch(e){ notes=[]; }
+  if(!Array.isArray(notes)) notes=[];
+  function saveNotes(){ try{ localStorage.setItem(NOTE_KEY,JSON.stringify(notes)); }catch(e){} }
+  function notesFor(k){ return notes.filter(function(n){ return n.key===k; }); }
+
+  function runMetrics(s,n){
+    if(!n.span) return null;
+    var b1=s.b[n.bi], b2=s.b[n.span.bi2];
+    if(!b1||!b2) return null;
+    var mv=n.span.price2-n.price, bars=Math.abs(n.span.bi2-n.bi);
+    return {move:mv, bars:bars, minutes:bars*5,
+            atrMult: s.atr? Math.abs(mv)/s.atr : null,
+            vsSpread: s.spread? Math.abs(mv)/s.spread : null};
+  }
+
+  /* ---------- state ---------- */
+  var state={side:"all",slice:"all",sort:"time",clears:"all",i:0}, view=[];
+  function rebuild(){
+    view=SIG.filter(function(s){
+      if(state.side!=="all"&&s.d!==state.side) return false;
+      if(state.slice!=="all"&&s.slice!==state.slice) return false;
+      if(state.clears==="yes"&&!(s._netHz>0)) return false;
+      if(state.clears==="no"&&s._netHz>0) return false;
+      return true;
+    });
+    var by={
+      "time":function(a,b){ return a.e<b.e?-1:1; },
+      "hz-best":function(a,b){ return b.hz-a.hz; },
+      "hz-worst":function(a,b){ return a.hz-b.hz; },
+      "mfe":function(a,b){ return b.mfe-a.mfe; },
+      "clears":function(a,b){ return (b._netHz===null?-1e9:b._netHz)-(a._netHz===null?-1e9:a._netHz); },
+      "short":function(a,b){
+        var aa=(a._clearedMfe===null?1e9:Math.abs(a._clearedMfe)), bb=(b._clearedMfe===null?1e9:Math.abs(b._clearedMfe));
+        return aa-bb; }
+    };
+    view.sort(by[state.sort]);
+    if(state.i>=view.length) state.i=0;
+    document.getElementById("filterCount").textContent=view.length+" of "+SIG.length+" signals";
+    fitView(); render();
+  }
+  function rec(){ return view[state.i]||null; }
+
+  /* ---------- canvas ---------- */
+  var cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+  var PAD={t:14,r:62,b:22,l:10};
+  var viewport={start:0,count:0}, frame=null, hover=null;
+  var noteMode=true, runMode=false, runStart=null, runCursor=null, drag=null;
+
+  function sizeCanvas(){
+    var r=cv.getBoundingClientRect(), dpr=window.devicePixelRatio||1;
+    var w=Math.max(200,Math.round(r.width)), h=Math.max(160,Math.round(r.height));
+    if(cv.width!==w*dpr||cv.height!==h*dpr){ cv.width=w*dpr; cv.height=h*dpr; }
+    ctx.setTransform(dpr,0,0,dpr,0,0); return {w:w,h:h};
+  }
+  function fitView(){ var s=rec(); if(!s) return; viewport.start=0; viewport.count=s.b.length; }
+
+  function draw(){
+    var s=rec(), sz=sizeCanvas(), W=sz.w, H=sz.h;
+    ctx.clearRect(0,0,W,H); if(!s) return;
+    var bars=s.b;
+    var i0=Math.max(0,Math.floor(viewport.start)), i1=Math.min(bars.length,Math.ceil(viewport.start+viewport.count));
+    if(i1<=i0) return;
+    var ink=cssVar("--ink"), ink3=cssVar("--ink-3"), line=cssVar("--line");
+    var gain=cssVar("--gain"), loss=cssVar("--loss"), accent=cssVar("--accent");
+    var horizonC=cssVar("--horizon"), surface=cssVar("--surface");
+    var plotW=W-PAD.l-PAD.r, plotH=H-PAD.t-PAD.b;
+
+    var lo=Infinity,hi=-Infinity,i;
+    for(i=i0;i<i1;i++){ if(bars[i][3]<lo) lo=bars[i][3]; if(bars[i][2]>hi) hi=bars[i][2]; }
+    [s.ep,s._be,s.bbl,s.bbu].forEach(function(v){ if(v<lo) lo=v; if(v>hi) hi=v; });
+    var span=(hi-lo)||1; lo-=span*0.08; hi+=span*0.08; span=hi-lo;
+    function xOf(k){ return PAD.l+(k-viewport.start)/viewport.count*plotW; }
+    function yOf(p){ return PAD.t+(hi-p)/span*plotH; }
+    frame={xOf:xOf,yOf:yOf,priceAt:function(y){return hi-(y-PAD.t)/plotH*span;},
+           idxAt:function(x){return viewport.start+(x-PAD.l)/plotW*viewport.count;}};
+
+    ctx.font='11px "IBM Plex Mono", monospace'; ctx.textBaseline="middle";
+    for(var g=0;g<=5;g++){
+      var pv=lo+span*g/5, gy=yOf(pv);
+      ctx.strokeStyle=line; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(PAD.l,Math.round(gy)+0.5); ctx.lineTo(W-PAD.r,Math.round(gy)+0.5); ctx.stroke();
+      ctx.fillStyle=ink3; ctx.textAlign="left"; ctx.fillText(pv.toFixed(3),W-PAD.r+6,gy);
+    }
+    ctx.textAlign="center"; ctx.textBaseline="alphabetic";
+    var stepT=Math.max(1,Math.round(viewport.count/6));
+    for(var k=i0;k<i1;k+=stepT){
+      var lx=xOf(k+0.5);
+      if(lx<PAD.l+34||lx>W-PAD.r-34) continue;
+      ctx.fillStyle=ink3; ctx.fillText(shortTime(bars[k][0]),lx,H-5);
+    }
+
+    // the cost band: between the entry and break-even nothing is earned
+    var yEp=yOf(s.ep), yBe=yOf(s._be);
+    ctx.save(); ctx.globalAlpha=0.10; ctx.fillStyle=loss;
+    ctx.fillRect(xOf(s.eb), Math.min(yEp,yBe), Math.max(2,xOf(bars.length)-xOf(s.eb)), Math.abs(yBe-yEp));
+    ctx.restore();
+
+    // candles
+    var bw=plotW/viewport.count, body=Math.max(1,Math.min(9,bw*0.62));
+    ctx.lineWidth=1;
+    for(var c2=i0;c2<i1;c2++){
+      var b=bars[c2], cx=xOf(c2+0.5), up=b[4]>=b[1], col=up?gain:loss;
+      ctx.save(); if(c2<s.eb) ctx.globalAlpha=0.45;
+      ctx.strokeStyle=col; ctx.fillStyle=up?surface:col;
+      ctx.beginPath(); ctx.moveTo(Math.round(cx)+0.5,yOf(b[2])); ctx.lineTo(Math.round(cx)+0.5,yOf(b[3])); ctx.stroke();
+      var top=yOf(Math.max(b[1],b[4])), bot=yOf(Math.min(b[1],b[4]));
+      ctx.beginPath(); ctx.rect(cx-body/2,top,body,Math.max(1,bot-top)); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+
+    function hline(price,color,label,dash,x1,x2){
+      var y=yOf(price); if(y<PAD.t-2||y>PAD.t+plotH+2) return;
+      ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=1.4; ctx.setLineDash(dash||[]);
+      ctx.beginPath(); ctx.moveTo(x1===undefined?PAD.l:x1,y); ctx.lineTo(x2===undefined?W-PAD.r:x2,y); ctx.stroke();
+      ctx.restore();
+      if(label){ ctx.fillStyle=color; ctx.textAlign="left"; ctx.textBaseline="middle";
+        ctx.font='600 10px Archivo, sans-serif'; ctx.fillText(label,(x1===undefined?PAD.l:x1)+4,y-7); }
+    }
+    // Bollinger levels at the signal bar — what actually triggered it
+    hline(s.bbu,ink3,null,[1,4]); hline(s.bbl,ink3,null,[1,4]);
+    var ex=xOf(s.eb+0.5);
+    ctx.save(); ctx.strokeStyle=ink; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(ex,PAD.t); ctx.lineTo(ex,PAD.t+plotH); ctx.stroke(); ctx.restore();
+    hline(s.ep,ink,s.d+" entry "+fmt(s.ep,3),[2,2]);
+    hline(s._be,loss,"break-even "+fmt(s._be,3)+"  (one spread)",[6,4]);
+
+    // the horizon the edge was measured at
+    if(s.hb<bars.length){
+      var hx=xOf(s.hb+0.5);
+      ctx.save(); ctx.strokeStyle=horizonC; ctx.lineWidth=2; ctx.setLineDash([6,4]);
+      ctx.beginPath(); ctx.moveTo(hx,PAD.t); ctx.lineTo(hx,PAD.t+plotH); ctx.stroke(); ctx.restore();
+      ctx.fillStyle=horizonC; ctx.textAlign="right"; ctx.textBaseline="top";
+      ctx.font='700 10px Archivo, sans-serif'; ctx.fillText("24-bar horizon",hx-5,PAD.t+2);
+      ctx.beginPath(); ctx.arc(hx,yOf(bars[s.hb][4]),4,0,Math.PI*2); ctx.fill();
+    }
+    // best and worst reached before the horizon
+    var sign=s.d==="LONG"?1:-1;
+    var mfeP=s.ep+sign*s.mfe*s.atr, maeP=s.ep-sign*s.mae*s.atr;
+    hline(mfeP,gain,"best +"+fmt(s.mfe,2)+" ATR",[2,4],ex,xOf(Math.min(s.hb,bars.length-1)+0.5));
+    hline(maeP,loss,"worst −"+fmt(s.mae,2)+" ATR",[2,4],ex,xOf(Math.min(s.hb,bars.length-1)+0.5));
+
+    function drawRun(bi1,p1,bi2,p2,dir,label,ghost){
+      var x1=xOf(bi1+0.5),y1=yOf(p1),x2=xOf(bi2+0.5),y2=yOf(p2);
+      var col=dir==="SHORT"?loss:dir==="LONG"?gain:(p2<=p1?loss:gain);
+      ctx.save(); ctx.strokeStyle=col; ctx.fillStyle=col;
+      ctx.lineWidth=ghost?1.5:2.5; ctx.globalAlpha=ghost?0.75:1;
+      if(ghost) ctx.setLineDash([5,4]);
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); ctx.setLineDash([]);
+      var ang=Math.atan2(y2-y1,x2-x1), sz2=10;
+      ctx.beginPath(); ctx.moveTo(x2,y2);
+      ctx.lineTo(x2-sz2*Math.cos(ang-0.42),y2-sz2*Math.sin(ang-0.42));
+      ctx.lineTo(x2-sz2*Math.cos(ang+0.42),y2-sz2*Math.sin(ang+0.42));
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.arc(x1,y1,3.5,0,Math.PI*2); ctx.fill();
+      ctx.font='700 10px Archivo, sans-serif'; ctx.textAlign="center"; ctx.textBaseline="bottom";
+      ctx.fillText((label?"["+label+"] ":"")+signed(p2-p1,3)+" pts",(x1+x2)/2,Math.min(y1,y2)-7);
+      ctx.restore();
+    }
+    notesFor(s._key).forEach(function(n,idx){
+      var kd=kindOf(n.kind);
+      if(n.span){ drawRun(n.bi,n.price,n.span.bi2,n.span.price2,n.dir,kd?kd.label:n.kind,false); return; }
+      var mx=xOf(n.bi+0.5), my=yOf(n.price);
+      ctx.save(); ctx.fillStyle=accent; ctx.strokeStyle=surface; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(mx,my,8,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle=surface; ctx.font='700 10px "IBM Plex Mono", monospace';
+      ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(String(idx+1),mx,my+0.5);
+      ctx.restore();
+    });
+    if(runStart&&runCursor) drawRun(runStart.bi,runStart.price,runCursor.bi,runCursor.price,null,null,true);
+
+    if(hover&&frame){
+      var hi2=Math.floor(frame.idxAt(hover.x));
+      if(hi2>=0&&hi2<bars.length){
+        var hb=bars[hi2];
+        ctx.save(); ctx.strokeStyle=ink3; ctx.lineWidth=1; ctx.setLineDash([2,3]);
+        ctx.beginPath(); ctx.moveTo(hover.x,PAD.t); ctx.lineTo(hover.x,PAD.t+plotH);
+        ctx.moveTo(PAD.l,hover.y); ctx.lineTo(W-PAD.r,hover.y); ctx.stroke(); ctx.restore();
+        ctx.fillStyle=ink; ctx.textAlign="left"; ctx.textBaseline="top";
+        ctx.font='11px "IBM Plex Mono", monospace';
+        var fe=(s.d==="LONG"?hb[4]-s.ep:s.ep-hb[4]);
+        ctx.fillText(isoMin(hb[0])+"  C "+fmt(hb[4],3)+"   ·  "+signed(fe,3)+" pts from entry"+
+          (s.atr?" ("+signed(fe/s.atr,2)+" ATR)":"")+
+          "   ·  "+(Math.abs(fe)>s.spread&&fe>0?"past break-even":"inside the spread"),
+          PAD.l+2,PAD.t+2);
+      }
+    }
+  }
+
+  /* ---------- interaction ---------- */
+  function localPos(e){ var r=cv.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top}; }
+  function barAt(pos){
+    if(!frame) return null; var s=rec(); if(!s) return null;
+    var idx=Math.floor(frame.idxAt(pos.x));
+    if(idx<0||idx>=s.b.length) return null;
+    var bar=s.b[idx];
+    return {bi:idx, price:Math.max(bar[3],Math.min(bar[2],frame.priceAt(pos.y)))};
+  }
+  cv.addEventListener("pointerdown",function(e){
+    var pos=localPos(e); cv.setPointerCapture(e.pointerId);
+    if(runMode){ var at=barAt(pos); if(!at) return;
+      if(!runStart){ runStart=at; runCursor=at; } drag={mode:"run",moved:false}; }
+    else drag={mode:"pan",x:pos.x,start:viewport.start,moved:false};
+    draw();
+  });
+  cv.addEventListener("pointermove",function(e){
+    var pos=localPos(e); hover=pos;
+    if(drag&&drag.mode==="pan"){
+      var plotW=cv.getBoundingClientRect().width-PAD.l-PAD.r, dx=pos.x-drag.x;
+      if(Math.abs(dx)>3) drag.moved=true;
+      var s=rec();
+      if(s) viewport.start=Math.max(-viewport.count*0.2,
+        Math.min(s.b.length-viewport.count*0.2, drag.start-dx/plotW*viewport.count));
+    } else if(runMode&&runStart){
+      var at=barAt(pos); if(at){ runCursor=at; if(drag&&at.bi!==runStart.bi) drag.moved=true; }
+    }
+    draw();
+  });
+  cv.addEventListener("pointerup",function(e){
+    var pos=localPos(e);
+    var wasPan=drag&&drag.mode==="pan"&&drag.moved, wasRun=drag&&drag.mode==="run";
+    drag=null; if(wasPan) return;
+    var at=barAt(pos); if(!at) return;
+    if(runMode&&runStart){
+      if(at.bi===runStart.bi&&!wasRun) return;
+      if(at.bi===runStart.bi){ setHint("Start set. Now click where the move ran out."); draw(); return; }
+      openComposer({bi:runStart.bi,price:runStart.price,
+        span:{bi2:at.bi,price2:at.price}, dir:at.price>=runStart.price?"LONG":"SHORT"},pos);
+      runStart=null; runCursor=null; draw(); return;
+    }
+    if(noteMode) openComposer({bi:at.bi,price:at.price},pos);
+  });
+  cv.addEventListener("pointercancel",function(){ drag=null; draw(); });
+  cv.addEventListener("pointerleave",function(){ hover=null; drag=null; draw(); });
+  cv.addEventListener("wheel",function(e){
+    e.preventDefault(); var s=rec(); if(!s||!frame) return;
+    var pos=localPos(e), plotW=cv.getBoundingClientRect().width-PAD.l-PAD.r;
+    var at=viewport.start+(pos.x-PAD.l)/plotW*viewport.count;
+    var f=e.deltaY>0?1.15:1/1.15;
+    var next=Math.max(8,Math.min(s.b.length*1.5,viewport.count*f));
+    viewport.start=at-(at-viewport.start)*(next/viewport.count); viewport.count=next; draw();
+  },{passive:false});
+  function setHint(html){ document.getElementById("cvHint").innerHTML=html; }
+
+  /* ---------- composer ---------- */
+  var composerEl=null;
+  function closeComposer(){ if(composerEl&&composerEl.parentNode) composerEl.parentNode.removeChild(composerEl); composerEl=null; }
+  function openComposer(pending,pos){
+    closeComposer(); var s=rec(); if(!s) return;
+    var bar=s.b[pending.bi], m=runMetrics(s,pending);
+    composerEl=document.createElement("div"); composerEl.className="composer";
+    var wrapW=document.getElementById("cvWrap").getBoundingClientRect().width;
+    composerEl.style.left=Math.max(4,Math.min(wrapW-308,pos.x-150))+"px";
+    composerEl.style.top=Math.max(4,pos.y-30)+"px";
+    var html='<div class="at">'+esc(isoMin(bar[0]))+" · "+fmt(pending.price,3);
+    if(pending.span) html+=" → "+esc(isoMin(s.b[pending.span.bi2][0]))+" · "+fmt(pending.span.price2,3);
+    html+='</div>';
+    if(m){ html+='<div class="measured">'+signed(m.move,3)+" pts"+
+        (m.atrMult?" · "+fmt(m.atrMult,1)+"x ATR":"")+
+        " · "+m.bars+" bars ("+m.minutes+" min)"+
+        (m.vsSpread?"<br>"+fmt(m.vsSpread,1)+"x the spread":"")+'</div>';
+      html+='<div class="dirrow">'+
+        '<button class="chip" type="button" data-dir="LONG" aria-pressed="'+(pending.dir==="LONG")+'">Missed LONG</button>'+
+        '<button class="chip" type="button" data-dir="SHORT" aria-pressed="'+(pending.dir==="SHORT")+'">Missed SHORT</button></div>';
+    }
+    html+='<div class="seclabel">What is it?</div><div class="kindgrid">';
+    KINDS.forEach(function(k){
+      if(pending.span&&!(k.id==="missed-run"||k.id==="note")) return;
+      html+='<button class="chip" type="button" data-kind="'+k.id+'" aria-pressed="'+
+        (pending.span&&k.id==="missed-run"?"true":"false")+'">'+esc(k.label)+'</button>';
+    });
+    html+='</div>';
+    if(pending.span){
+      html+='<div class="seclabel">What kind of move? (optional)</div><div class="causegrid">';
+      CAUSES.forEach(function(c){ html+='<button class="chip" type="button" data-cause="'+c.id+'" aria-pressed="false">'+esc(c.label)+'</button>'; });
+      html+='</div><div class="causehint"></div>';
+    }
+    html+='<textarea placeholder="What do you see here?"></textarea>'+
+      '<div class="acts"><button class="btn" type="button" data-act="cancel">Cancel</button>'+
+      '<button class="btn primary" type="button" data-act="add">Add mark</button></div>';
+    composerEl.innerHTML=html;
+    document.getElementById("cvWrap").appendChild(composerEl);
+    var ta=composerEl.querySelector("textarea"); if(ta) ta.focus();
+    composerEl.addEventListener("click",function(ev){
+      var b=ev.target.closest("button"); if(!b) return;
+      if(b.hasAttribute("data-dir")){
+        Array.prototype.forEach.call(composerEl.querySelectorAll("[data-dir]"),function(n){ n.setAttribute("aria-pressed",n===b?"true":"false"); });
+        pending.dir=b.getAttribute("data-dir"); draw(); return; }
+      if(b.hasAttribute("data-kind")){
+        var on=b.getAttribute("aria-pressed")==="true";
+        Array.prototype.forEach.call(composerEl.querySelectorAll("[data-kind]"),function(n){ n.setAttribute("aria-pressed","false"); });
+        b.setAttribute("aria-pressed",on?"false":"true"); return; }
+      if(b.hasAttribute("data-cause")){
+        var was=b.getAttribute("aria-pressed")==="true";
+        Array.prototype.forEach.call(composerEl.querySelectorAll("[data-cause]"),function(n){ n.setAttribute("aria-pressed","false"); });
+        b.setAttribute("aria-pressed",was?"false":"true");
+        var c=causeOf(b.getAttribute("data-cause"));
+        composerEl.querySelector(".causehint").textContent=(!was&&c)?c.hint:""; return; }
+      if(b.getAttribute("data-act")==="cancel"){ runStart=null; runCursor=null; closeComposer(); draw(); return; }
+      if(b.getAttribute("data-act")==="add"){
+        var kb=composerEl.querySelector('[data-kind][aria-pressed="true"]');
+        var cb=composerEl.querySelector('[data-cause][aria-pressed="true"]');
+        notes.push({key:s._key, bi:pending.bi, price:pending.price,
+          span:pending.span||null, dir:pending.dir||null,
+          kind:kb?kb.getAttribute("data-kind"):(pending.span?"missed-run":"note"),
+          cause:cb?cb.getAttribute("data-cause"):null,
+          text:(composerEl.querySelector("textarea").value||"").trim(),
+          at:new Date().toISOString()});
+        saveNotes(); closeComposer(); renderNotes(); markedCount(); draw();
+        setHint("Mark added. Click the next bar, or <b>Send marks</b> when you are done.");
+      }
+    });
+  }
+
+  /* ---------- panels ---------- */
+  function renderSide(s){
+    var net=s._netHz;
+    document.getElementById("entryKv").innerHTML=
+      '<dt>Time</dt><dd>'+esc(s.e.replace("T"," ").replace("Z",""))+'</dd>'+
+      '<dt>Sample</dt><dd>'+s.slice+'</dd>'+
+      '<dt>Side</dt><dd>'+s.d+'</dd>'+
+      '<dt>Entry</dt><dd>'+fmt(s.ep,3)+'</dd>'+
+      '<dt>RSI(7)</dt><dd>'+fmt(s.rsi,1)+'</dd>'+
+      '<dt>Lower BB</dt><dd>'+fmt(s.bbl,3)+'</dd>'+
+      '<dt>Upper BB</dt><dd>'+fmt(s.bbu,3)+'</dd>'+
+      '<dt>ATR</dt><dd>'+fmt(s.atr,4)+'</dd>'+
+      '<dt>Hour (UTC)</dt><dd>'+s.hr+':00</dd>';
+    var box=document.getElementById("payBox");
+    box.innerHTML=
+      '<div class="armrow"><span class="nm">Spread (round trip)</span>'+
+        '<span class="r">'+fmt(s._costAtr,3)+' ATR</span></div>'+
+      '<div class="armrow"><span class="nm">Best it reached</span>'+
+        '<span class="r '+cls(s.mfe)+'">+'+fmt(s.mfe,3)+' ATR</span></div>'+
+      '<div class="armrow"><span class="nm">At the 24-bar horizon</span>'+
+        '<span class="r '+cls(s.hz)+'">'+signed(s.hz,3)+' ATR</span></div>'+
+      '<div class="armrow"><span class="nm"><b>After the spread</b></span>'+
+        '<span class="r '+cls(net)+'">'+signed(net,3)+' ATR</span></div>'+
+      '<div class="armrow"><span class="nm">Best moment, after spread</span>'+
+        '<span class="r '+cls(s._clearedMfe)+'">'+signed(s._clearedMfe,3)+' ATR</span></div>';
+  }
+  function noteLabel(n){
+    var k=kindOf(n.kind), c=causeOf(n.cause);
+    return (k?k.label:n.kind)+(n.dir?" · "+n.dir:"")+(c?" · "+c.label:"");
+  }
+  function renderNotes(){
+    var s=rec(), list=document.getElementById("noteList");
+    list.textContent="";
+    var mine=s?notesFor(s._key):[];
+    document.getElementById("noteEmpty").hidden=mine.length>0;
+    mine.forEach(function(n,idx){
+      var bar=s.b[n.bi], li=document.createElement("li");
+      li.innerHTML='<span class="idx">'+(idx+1)+'</span>'+
+        '<span class="body"><span class="kind">'+esc(noteLabel(n))+'</span>'+
+        '<div class="head">'+esc(bar?isoMin(bar[0]):"")+'</div>'+
+        (n.text?'<div class="txt">'+esc(n.text)+'</div>':'')+'</span>'+
+        '<button class="del" type="button">del</button>';
+      li.querySelector(".del").addEventListener("click",function(ev){
+        ev.stopPropagation(); var at=notes.indexOf(n); if(at>=0) notes.splice(at,1);
+        saveNotes(); renderNotes(); markedCount(); draw();
+      });
+      li.addEventListener("click",function(){
+        viewport.count=Math.min(s.b.length,50);
+        viewport.start=Math.max(0,n.bi-viewport.count/2); draw();
+      });
+      list.appendChild(li);
+    });
+  }
+  function markedCount(){
+    var keys={}; notes.forEach(function(n){ keys[n.key]=1; });
+    var t=Object.keys(keys).length;
+    document.getElementById("markedCount").textContent=
+      notes.length+" mark"+(notes.length===1?"":"s")+" on "+t+" signal"+(t===1?"":"s");
+    document.getElementById("sendBtn").disabled=!(notes.length>0&&canSend);
+    return notes.length;
+  }
+  function render(){
+    closeComposer(); runStart=null; runCursor=null;
+    var s=rec();
+    if(!s){ document.getElementById("tTitle").textContent="No signals match";
+      document.getElementById("tSub").textContent="";
+      document.getElementById("posLabel").textContent="0 of 0"; renderNotes(); draw(); return; }
+    document.getElementById("tTitle").textContent=s.d+" · "+s.e.replace("T"," ").replace("Z","")+" UTC";
+    document.getElementById("tSub").textContent=
+      "RSI(7) "+fmt(s.rsi,1)+" · horizon "+signed(s.hz,3)+" ATR · after spread "+
+      signed(s._netHz,3)+" ATR · "+s.slice;
+    document.getElementById("posLabel").textContent=(state.i+1)+" of "+view.length;
+    renderSide(s); renderNotes(); draw();
+  }
+
+  /* ---------- wiring ---------- */
+  function bindSel(id,key){ var e=document.getElementById(id);
+    e.addEventListener("change",function(){ state[key]=e.value; state.i=0; rebuild(); }); }
+  bindSel("fSide","side"); bindSel("fSlice","slice"); bindSel("fSort","sort"); bindSel("fClears","clears");
+  function step(d){ if(!view.length) return; state.i=(state.i+d+view.length)%view.length; fitView(); render(); }
+  document.getElementById("prevBtn").addEventListener("click",function(){ step(-1); });
+  document.getElementById("nextBtn").addEventListener("click",function(){ step(1); });
+  document.getElementById("fitBtn").addEventListener("click",function(){ fitView(); draw(); });
+  var nb=document.getElementById("noteMode"), rb=document.getElementById("runMode");
+  nb.addEventListener("click",function(){
+    noteMode=!noteMode; nb.setAttribute("aria-pressed",String(noteMode));
+    nb.textContent="Click-to-note: "+(noteMode?"on":"off");
+    cv.style.cursor=noteMode?"copy":"crosshair";
+    if(!noteMode) closeComposer();
+    setHint(noteMode?"Click any bar to mark it.":"Click-to-note off — drag to pan, scroll to zoom.");
+  });
+  rb.addEventListener("click",function(){
+    runMode=!runMode; rb.setAttribute("aria-pressed",String(runMode));
+    rb.textContent=runMode?"Drawing a run…":"Draw a run";
+    runStart=null; runCursor=null;
+    cv.style.cursor=runMode?"crosshair":(noteMode?"copy":"crosshair");
+    setHint(runMode?"Drag from where the move <b>could have started</b> to where it <b>ran out</b> — or click each end.":"Run marking off.");
+    draw();
+  });
+  cv.style.cursor="copy";
+  document.addEventListener("keydown",function(ev){
+    var t=ev.target.tagName;
+    if(t==="TEXTAREA"||t==="SELECT"||t==="INPUT") return;
+    if(ev.key==="ArrowLeft"){ step(-1); ev.preventDefault(); }
+    if(ev.key==="ArrowRight"){ step(1); ev.preventDefault(); }
+    if(ev.key==="Escape"){ runStart=null; runCursor=null; closeComposer(); draw(); }
+  });
+  document.getElementById("themeBtn").addEventListener("click",function(){
+    var r=document.documentElement;
+    var dark=r.getAttribute("data-theme")==="dark"||
+      (!r.getAttribute("data-theme")&&window.matchMedia("(prefers-color-scheme: dark)").matches);
+    r.setAttribute("data-theme",dark?"light":"dark"); draw();
+  });
+  var rt=null;
+  window.addEventListener("resize",function(){ if(rt) clearTimeout(rt);
+    rt=setTimeout(function(){ closeComposer(); draw(); },120); });
+
+  /* ---------- comments ---------- */
+  var comments=null, canSend=false;
+  function batches(){
+    var out=[], cur="", head="OIL_BRENT 5m — H-0009 mean-reversion signal review\n";
+    var byKey={}; notes.forEach(function(n){ (byKey[n.key]=byKey[n.key]||[]).push(n); });
+    Object.keys(byKey).forEach(function(key){
+      var s=BY_KEY[key];
+      var block="\n• "+key.split("|")[1]+" "+key.split("|")[0].replace("T"," ").replace("Z","");
+      if(s) block+=" | RSI "+fmt(s.rsi,1)+" | horizon "+signed(s.hz,3)+" ATR | after spread "+
+        signed(s._netHz,3)+" ATR | best +"+fmt(s.mfe,2)+" worst -"+fmt(s.mae,2)+" | "+s.slice;
+      byKey[key].forEach(function(n){
+        var bar=s&&s.b[n.bi];
+        block+="\n  - "+noteLabel(n);
+        if(bar) block+=" @ "+isoMin(bar[0])+" "+fmt(n.price,3);
+        var m=s?runMetrics(s,n):null;
+        if(m) block+=" → "+(s.b[n.span.bi2]?isoMin(s.b[n.span.bi2][0]):"")+" "+fmt(n.span.price2,3)+
+          " ("+signed(m.move,3)+" pts"+(m.atrMult?", "+fmt(m.atrMult,1)+"x ATR":"")+
+          (m.vsSpread?", "+fmt(m.vsSpread,1)+"x spread":"")+", "+m.minutes+" min)";
+        if(n.text) block+="\n    "+n.text;
+      });
+      block+="\n";
+      if((cur+block).length>3400){ if(cur) out.push(head+cur); cur=""; }
+      cur+=block;
+    });
+    if(cur) out.push(head+cur);
+    return out;
+  }
+  document.getElementById("sendBtn").addEventListener("click",function(){
+    if(!comments||!canSend) return;
+    var chunks=batches(); if(!chunks.length) return;
+    var btn=document.getElementById("sendBtn"), st=document.getElementById("sendStatus");
+    btn.disabled=true; st.textContent="sending 1 of "+chunks.length+"…";
+    comments.anchorFor(document.getElementById("cvWrap")).then(function(anchor){
+      var sent=0;
+      function next(){
+        if(sent>=chunks.length){
+          st.innerHTML="<b>Sent "+sent+" message"+(sent>1?"s":"")+".</b> The reply lands in the comment thread on this page.";
+          btn.disabled=false; return; }
+        st.textContent="sending "+(sent+1)+" of "+chunks.length+"…";
+        comments.sendToClaude({anchor:anchor,text:chunks[sent]}).then(function(){ sent++; next(); })
+          .catch(function(err){
+            var code=err&&err.code;
+            st.textContent=code==="consent_required"?"Not sent — allow this page to comment as you, then try again."
+              :code==="rate_limited"?"Rate limited — wait a moment and send again."
+              :"Not sent ("+(code||"error")+"). Your marks are still saved here.";
+            btn.disabled=false; });
+      }
+      next();
+    }).catch(function(){ st.textContent="Could not anchor the comment."; btn.disabled=false; });
+  });
+
+  rebuild(); markedCount();
+  if(window.claude&&window.claude.use){
+    window.claude.use("comments").then(function(c){
+      var st=document.getElementById("sendStatus");
+      if(!c){ st.textContent="comment loop unavailable in this view"; return; }
+      comments=c;
+      return c.canSendToClaude().then(function(v){
+        canSend=v==="available";
+        st.textContent=canSend?"comment loop live — batch send ready"
+          :v==="writers_only"?"you can comment, but only an editor can send to Claude"
+          :v==="no_session"?"no Claude session is listening right now"
+          :"sending to Claude is off in this view";
+        markedCount();
+      });
+    }).catch(function(){ document.getElementById("sendStatus").textContent="comment loop unavailable"; });
+  } else document.getElementById("sendStatus").textContent="standalone preview — sending disabled";
+})();
+</script>

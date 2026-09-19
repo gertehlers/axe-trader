@@ -13,6 +13,7 @@ keeps its source in this directory.
 |---|---|---|---|
 | `research-state.html` — **Four Dead Hypotheses** | https://claude.ai/artifact/YTkPaQr27cT4njL7uEnjx9 | `research/cost-reality/2026-09-19.md`, `research/ledger/INDEX.md`, `research/experiments/2026-09-19-*.json` | 2026-09-19 |
 | `trade-review.html` — **Four Exits, One Entry** | https://claude.ai/artifact/GrqdRANKK6AnzCGcgRyXiU | `research/runs/2026-09-19-oil-15m/`, via `export_trade_review.py` | 2026-09-19 |
+| `signal-review.html` — **Inside the Spread** | https://claude.ai/artifact/WxLJfpFZzKhLSfVbyRLb9w | H-0009, via `export_signal_review.py` | 2026-09-19 |
 
 To update it, republish the same file and pass that URL as `url` — publishing without it creates a
 separate artifact instead of a new version.
@@ -65,3 +66,28 @@ PYTHONPATH=. .venv/bin/python ../review/export_trade_review.py --runs ../runs/20
 The adapter is `engine/review.py` (`align_entries`, `candle_window`, `voting_pillars`), tested in
 `tests/test_review.py`. `research/review-spike/` remains the 2026-09-18 proof of the candle/comment
 mechanism against the old Java engine; this page supersedes it.
+
+
+## `signal-review.html` — the H-0009 mean-reversion signal
+
+400 signals sampled at random (seed 20260919) from the 17,900 that fired on OIL_BRENT 5m, so the
+losers appear in proportion — not a curated set.
+
+Its one job is to make **the finding** visible rather than asserted. Every chart carries a
+**break-even line** at entry ± one round-trip spread, plus a shaded band between the two: price has
+to close past that line for the trade to earn anything. The move is usually real, obvious and in
+the right direction, and usually stops short of the line. Also drawn: the 24-bar horizon where the
+edge was measured, the Bollinger levels that triggered the signal, and the best/worst price reached
+before the horizon.
+
+Same annotation layer as `trade-review.html` — click a bar to mark it, drag to measure a run, and
+a drawn run is reported in **multiples of the spread** as well as ATR, which is the unit that
+decides this hypothesis. Marks batch to `sendToClaude` and become `source: owner-comment`
+hypotheses.
+
+Rebuild its data (gitignored, ~1.3 MB):
+
+```
+cd research/engine
+PYTHONPATH=. .venv/bin/python ../review/export_signal_review.py
+```
