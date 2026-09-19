@@ -7,12 +7,82 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
 (not scalping), reproducible via 5-pillar confluence, with each instrument tuned as its own
 "personality" rather than one shared config.
 
-## ⭐ SESSION STATE — 2026-09-18 (evening): engine core built, first two hypotheses rejected
+## ⭐ SESSION STATE — 2026-09-19: the search was pointed at the wrong ground
 
-**Read this before the consolidation section below it.** Earlier today's directive ("don't commit
-anything") was superseded by the owner in the evening session: commit per task, do not push. 17
-commits now sit on `main`, unpushed. The 242 MB `data/axe-trader.sqlite.gz` has never been staged
-and must not be.
+**Read this first.** Commit per task, do not push (owner's standing choice). 21 commits sit on
+`main`, unpushed. The 242 MB `data/axe-trader.sqlite.gz` has never been staged and must not be.
+
+### The headline: four hypotheses tried, and the reason none worked is now measured
+
+| hypothesis | what it says | verdict |
+|---|---|---|
+| H-0001 | RSI(7)<25 + lower band + above EMA(200) → buy the dip | **`rejected: no signal`** |
+| H-0002 | the inversion: short-horizon extremes continue | **`uneconomic`** |
+| H-0003 | …and it clears costs at a longer horizon | **`rejected: no signal`** |
+| H-0004 | the US500 overnight premium survives CFD financing | **`inconclusive`** (layer 0) |
+
+**H-0003** closed the continuation family. The premise was that spread is paid once however long
+you hold, so a longer hold should earn more against the same cost. It does not: the edge-to-cost
+ratio goes 1.01 → 1.55 → 1.54 spreads at 60m → 120m → 240m. It improves once and flatlines, which
+is a one-off repricing rather than a drift. There is no horizon at which the signal clears costs.
+
+**The cost reality check** (spec §6.1 step 1, never run before) explains all three failures at once.
+Ranking every instrument × timeframe we hold by the share of a typical bar's range one round trip
+consumes: **US500 5m — where all three hypotheses were tested — is rank 13 of 19, at 20.7%.**
+US500 4h is 3.5%, US500 1d is 3.0%, OIL_CRUDE 1d is 2.4%. Spread is near-constant in points while
+the range grows, so slowing down is a six-fold cost improvement that needs no new idea. Full table:
+`research/cost-reality/2026-09-19.md`.
+
+**H-0004** is the first hypothesis from a source never mined (`known-effect`), so its trial count
+starts at 4 rather than inheriting 289. The overnight premium is real and large on US500: **+3.173
+pts per session overnight against +0.974 intraday** — 77% of the daily return accrues while the cash
+market is shut. **Financing then takes 46% of it.** The +1.168 net remainder needs ~7,689 sessions
+at 80% power; we have 664. Parked at layer 0 — the parked condition is 31 years of data, not a
+better idea.
+
+**The one statistically solid result of the session is a prohibition, not an edge:** holding US500
+**short** overnight nets −3.774 with a CI entirely below zero and 2/11 quarters positive. Record it
+as a risk control for any future strategy on this instrument.
+
+### Built this session
+
+- `research/cost-reality/2026-09-19.md` + experiment — the spec's step-1 ranking, finally run.
+  Two defects fixed before trusting it: filtering on `complete` dropped every end-of-session bar
+  (exactly the ones spanning the 21:00 financing cut-off, so financing read as zero everywhere) and
+  every daily bar (no trading day has 1440 minutes).
+- `research/sources/known-effects.md` — spec §6.2.1 source 1, never started. Five candidates with
+  economic reason, **losing side**, power available, and confidence. Only effects testable at 4h or
+  slower are live, because anything at 5m must be ~5× larger to be worth the same money.
+- Ledger entries H-0003 and H-0004, each written **before** its run.
+
+### Next action
+
+`research/sources/known-effects.md` recommends, in order:
+
+1. **B — Brent–WTI spread mean reversion.** The only candidate using two instruments we both hold,
+   close to market-neutral so index drift cannot contaminate it (which it did in H-0003), and
+   **killable in about an hour**: measure whether daily spread changes even exceed the 0.0765-pt
+   two-leg cost before building anything. Now the top candidate, since A is parked.
+2. **C — EIA Wednesday reaction on OIL_CRUDE** (4h), expecting a layer-0 power problem at ~135
+   Wednesdays and prepared to record `inconclusive`.
+3. D (turn-of-month) and E (opening range) are recorded, not scheduled — D is out of power at ~31
+   month-turns, E has the weakest losing side on the most expensive ground.
+
+### On seeing this visually
+
+The review spike (`research/review-spike/`, published as an Artifact) renders per-trade candle
+charts and works, but it is fed by hand from an old **Java** run and is still untracked in git.
+There is nothing for it to show from the Python engine: every experiment so far is layer-1
+diagnosis (forward returns), and **no strategy has ever been run through the simulator**, because
+none has survived layer 1. A trade-review page needs a surviving strategy first. What *is*
+graphable today is the research state itself — the 19-row cost ranking, the H-0004 overnight split
+with its quarterly stability, and the H-0002/H-0003 grid surfaces with their plateau structure.
+
+---
+
+## SESSION STATE — 2026-09-18 (evening): engine core built, first two hypotheses rejected
+
+_Superseded by the 2026-09-19 section above; kept for the record._
 
 ### The headline: the strategy premise is falsified, twice
 
