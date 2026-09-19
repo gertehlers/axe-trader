@@ -1,6 +1,7 @@
 ---
 date: 2026-09-18
-status: open
+status: landed
+landed: aa7f0e6
 branch: main
 head: 228ba76
 next: Choose the next hypothesis source — H-0002 follow-up on a longer timeframe, the untested 4-pillar confluence, or spec 6.2.1 known-effect sourcing
