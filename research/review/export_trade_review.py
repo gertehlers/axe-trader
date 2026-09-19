@@ -36,7 +36,7 @@ def main() -> None:
     parser.add_argument("--arms", nargs="*", default=ARMS)
     args = parser.parse_args()
 
-    engine_dir = Path(__file__).resolve().parents[2] / "engine"
+    engine_dir = Path(__file__).resolve().parents[1] / "engine"   # research/engine, not the repo root
     minutes = load_cached_minutes(args.db, args.epic, engine_dir / ".cache")
     bars = resample(minutes, args.timeframe)
     votes = compute_pillars(bars, PillarConfig())

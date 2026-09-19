@@ -1,10 +1,16 @@
 ---
 date: 2026-09-19
-status: open
+status: superseded
 branch: feat/confluence-exit-matrix
 head: b0d7cf9
-next: Decide whether the 51-config matrix runs as specced before building Part 2 — the symmetric 1:1 arm lost 20x more than the wide-brake arms on the first real runs
+next: Superseded by docs/handoffs/2026-09-19-direction-is-mean-reversion.md — the matrix was abandoned on evidence, not built
 ---
+
+> **Superseded 2026-09-19.** Its next action — decide whether the 51-config matrix runs as
+> specced — was overtaken. The matrix was not re-weighted but **abandoned**: H-0006 showed the
+> entry's adverse excursion exceeds its favourable one, which no exit rule fixes. See
+> `docs/handoffs/2026-09-19-direction-is-mean-reversion.md`.
+
 
 # The engine produces trades, and the 1:1 exit is the worst of the four
 
