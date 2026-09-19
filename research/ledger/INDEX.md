@@ -3,7 +3,7 @@
 Running count of everything tried, so the multiple-testing bar can only ever go up. Trial counts
 are cumulative down a parent/child chain (spec §6.2.3) and feed the Bonferroni adjustment at G1.
 
-**Hypotheses: 8 · Variants tried: 368 · Reached G1: 0 · Reached G2: 0**
+**Hypotheses: 9 · Variants tried: 392 · Reached G1: 0 · Reached G2: 0**
 
 | id | title | instruments | tf | status | trials | created |
 |---|---|---|---|---|---|---|
@@ -15,6 +15,7 @@ are cumulative down a parent/child chain (spec §6.2.3) and feed the Bonferroni 
 | [H-0006](H-0006-confluence-entry-direction.md) | The confluence entry has the wrong sign on OIL_CRUDE | OIL_CRUDE | 15min | `inconclusive` | 50 | 2026-09-19 |
 | [H-0007](H-0007-run-census-timing.md) | Fast runs are predictable in timing but not direction | OIL_CRUDE, OIL_BRENT, US500 | 15min | `signal present` | 12 | 2026-09-19 |
 | [H-0008](H-0008-compression-breakout.md) | A volatility-compression breakout converts H-0007's timing into an edge | OIL_CRUDE, OIL_BRENT, US500 | 15min | `rejected: no signal` | 13 | 2026-09-19 |
+| [H-0009](H-0009-rsi-bb-oil-mean-reversion.md) | RSI+Bollinger mean reversion is real on oil and smaller than the spread | OIL_BRENT, OIL_CRUDE, US500 | 5min | `uneconomic` | 24 | 2026-09-19 |
 
 ## Notes
 
@@ -69,6 +70,18 @@ are cumulative down a parent/child chain (spec §6.2.3) and feed the Bonferroni 
   stop tested against the entry bar's own low; minutes mapped to bars by elapsed-time arithmetic
   across a series with weekend gaps) — the pre-fix figures are void and the fixes are written up in
   the entry. **Closed, with no variant proposed**: the result is not "nearly worked".
+
+- **H-0009** came from the owner asking to go back to OIL_BRENT 5m and look at what the TA did
+  around every 6+ bar run. It **corrects the reading** that direction is unavailable: it is
+  unavailable to *continuation* designs, which is every momentum hypothesis in this ledger. As
+  **mean reversion** it is real — `RSI(7)<30 AND close<=lower BB` gives +0.097 / +0.305 ATR at 24
+  bars against a base rate of +0.008 / +0.081, positive at every horizon in both slices. It is also
+  **always inside the spread**: 0.097 against a 0.484 ATR round trip on discovery. Scoring the TA
+  battery against ZigZag pivots looked spectacular (up-lift ×4.7, 94% of runs up) and was nearly
+  tautological — a pivot *is* where RSI is low — which is recorded as the trap it was. Across 24
+  instrument×timeframe×slice cells **not one clears its spread in both slices**, and every cell that
+  clears in one flips sign in the other on 100–500 observations. Pillar 1 of the old confluence was
+  the right signal on the wrong ground.
 
 - **H-0005** is the first result in this project with an economically meaningful edge.
   **OIL_CRUDE SHORT**: 222 entries, positive at all 5 horizons, percentile 100.0 at 4h, edge
