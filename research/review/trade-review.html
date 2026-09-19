@@ -1,0 +1,859 @@
+<title>Four Exits, One Entry</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --paper:#F7F6F2; --surface:#FFFFFF; --surface-2:#F1F0EA; --sunk:#EAE8E0;
+  --ink:#141F1E; --ink-2:#4B5A57; --ink-3:#7A8783; --line:#DBD8CF; --line-2:#C6C2B6;
+  --accent:#8A5310;
+  --gain:#1C6B50; --loss:#A6372B;
+  --a-sym:#B5470F; --a-trail:#1566A8; --a-time:#3F7F1C; --a-rev:#8A4FA8; --horizon:#9A7B10;
+  --focus:#1566A8;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --paper:#10181A; --surface:#172124; --surface-2:#1D282B; --sunk:#0B1214;
+  --ink:#E7EBE6; --ink-2:#9BAAA6; --ink-3:#6E7D7A; --line:#273538; --line-2:#334348;
+  --accent:#D9A44E;
+  --gain:#3DA87E; --loss:#D96A52;
+  --a-sym:#D2682A; --a-trail:#4F94D4; --a-time:#6FA632; --a-rev:#AC76CE; --horizon:#9E8520;
+  --focus:#4F94D4;
+}}
+:root[data-theme="dark"]{
+  --paper:#10181A; --surface:#172124; --surface-2:#1D282B; --sunk:#0B1214;
+  --ink:#E7EBE6; --ink-2:#9BAAA6; --ink-3:#6E7D7A; --line:#273538; --line-2:#334348;
+  --accent:#D9A44E;
+  --gain:#3DA87E; --loss:#D96A52;
+  --a-sym:#D2682A; --a-trail:#4F94D4; --a-time:#6FA632; --a-rev:#AC76CE; --horizon:#9E8520;
+  --focus:#4F94D4;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font-family:Archivo,"Helvetica Neue",Arial,sans-serif;font-size:15px;line-height:1.55;
+  -webkit-font-smoothing:antialiased}
+.num,code{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:20px;padding-block:0 64px}
+h1,h2,h3{text-wrap:balance;margin:0}
+h1{font-size:clamp(28px,5vw,46px);font-weight:700;letter-spacing:-.022em;line-height:1.06}
+h2{font-size:20px;font-weight:600;letter-spacing:-.01em}
+h3{font-size:14px;font-weight:600}
+p{margin:0}
+a{color:var(--focus)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:3px}
+
+/* utility bar */
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:40;background:var(--surface);
+  border-bottom:1px solid var(--line)}
+.bar-in{max-width:1180px;margin:0 auto;padding:7px 20px;display:flex;gap:8px 16px;
+  align-items:center;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2)}
+.bar-in b{color:var(--ink);font-weight:600}
+.bar .sep{color:var(--line-2)}
+.theme-btn{margin-left:auto;background:none;border:1px solid var(--line);color:var(--ink-2);
+  border-radius:5px;padding:3px 9px;font:inherit;font-size:11px;cursor:pointer}
+.theme-btn:hover{border-color:var(--line-2);color:var(--ink)}
+
+/* masthead */
+.mast{padding-block:36px 26px;border-bottom:2px solid var(--ink);margin-bottom:26px}
+.eyebrow{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);
+  font-weight:600;margin-bottom:12px}
+.standfirst{margin-top:14px;font-size:17px;color:var(--ink-2);max-width:62ch}
+
+/* verdict */
+.verdict{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);
+  border-radius:0 8px 8px 0;padding:20px 22px;margin-bottom:30px;display:grid;gap:12px}
+.verdict p{max-width:78ch}
+.verdict .lede{font-size:16.5px;font-weight:500}
+.kbd{background:var(--sunk);border:1px solid var(--line);border-radius:4px;padding:.5px 5px;
+  font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+
+section{margin-bottom:38px}
+.sec-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px;
+  padding-bottom:7px;border-bottom:1px solid var(--line)}
+.sec-note{font-size:13px;color:var(--ink-3);max-width:70ch;margin-bottom:14px}
+
+/* tables */
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:720px}
+th,td{padding:8px 11px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:10.5px;letter-spacing:.055em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600;background:var(--surface-2);position:sticky;top:0}
+th:first-child,td:first-child{text-align:left}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--surface-2)}
+.swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:7px;
+  vertical-align:baseline}
+.pos{color:var(--gain)} .neg{color:var(--loss)}
+.worst{background:color-mix(in srgb,var(--loss) 8%,transparent)}
+.pill{display:inline-block;font-size:10.5px;padding:1px 7px;border-radius:99px;
+  border:1px solid var(--line-2);color:var(--ink-2);font-weight:600;letter-spacing:.02em}
+.pill.zero{border-color:var(--accent);color:var(--accent)}
+
+/* horizon figure */
+.fig{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:18px}
+.fig-cap{font-size:12.5px;color:var(--ink-3);margin-top:12px;max-width:74ch}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-2);margin-bottom:12px}
+.legend span{display:flex;align-items:center;gap:6px}
+
+/* inspector */
+.tools{display:flex;gap:10px 14px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px}
+.tool{display:flex;flex-direction:column;gap:4px}
+.tool label{font-size:10.5px;letter-spacing:.055em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600}
+select,.btn{font:inherit;font-size:13px;background:var(--surface);color:var(--ink);
+  border:1px solid var(--line-2);border-radius:6px;padding:5px 9px;cursor:pointer}
+select:hover,.btn:hover{border-color:var(--ink-3)}
+.btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:600}
+.btn.primary:hover{opacity:.88}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.armtoggles{display:flex;gap:6px;flex-wrap:wrap}
+.armtoggle{font:inherit;font-size:12px;border:1px solid var(--line-2);background:var(--surface);
+  border-radius:99px;padding:3px 11px;cursor:pointer;display:flex;align-items:center;gap:6px;
+  color:var(--ink-2)}
+.armtoggle[aria-pressed="true"]{color:var(--ink);border-color:currentColor;font-weight:600}
+.armtoggle[aria-pressed="false"] .swatch{opacity:.3}
+
+.inspector{display:grid;grid-template-columns:minmax(0,1fr) 286px;gap:16px;align-items:start}
+@media (max-width:860px){.inspector{grid-template-columns:minmax(0,1fr)}}
+.chartcard{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px}
+.chart-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:4px}
+.chart-head .title{font-weight:600;font-size:15px}
+.chart-head .sub{font-size:12px;color:var(--ink-3)}
+svg{display:block;width:100%;height:auto;max-width:100%;overflow:visible}
+.nav{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.nav .count{font-size:12px;color:var(--ink-3);margin-left:auto}
+
+.side{display:grid;gap:14px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px}
+.panel h3{margin-bottom:9px;color:var(--ink-2);font-size:10.5px;letter-spacing:.055em;
+  text-transform:uppercase}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:12.5px}
+.kv dt{color:var(--ink-3)} .kv dd{margin:0;text-align:right;font-family:"IBM Plex Mono",monospace;
+  font-variant-numeric:tabular-nums}
+.votes{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}
+.vote{font-size:10.5px;padding:1.5px 7px;border-radius:4px;background:var(--sunk);
+  border:1px solid var(--line);color:var(--ink-2);font-weight:600}
+.vote.on{background:color-mix(in srgb,var(--accent) 16%,transparent);border-color:var(--accent);
+  color:var(--ink)}
+.armrow{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:5px 0;
+  border-bottom:1px solid var(--line)}
+.armrow:last-child{border-bottom:none}
+.armrow .nm{flex:1;min-width:0}
+.armrow .r{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-weight:600}
+.armrow .xr{font-size:10px;color:var(--ink-3);letter-spacing:.04em}
+
+textarea{width:100%;font:inherit;font-size:13px;background:var(--sunk);color:var(--ink);
+  border:1px solid var(--line-2);border-radius:6px;padding:8px;resize:vertical;min-height:70px}
+.tagrow{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px}
+.tag{font:inherit;font-size:11.5px;border:1px solid var(--line-2);background:var(--surface);
+  color:var(--ink-2);border-radius:99px;padding:3px 10px;cursor:pointer}
+.tag[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink);
+  font-weight:600}
+.status{font-size:12px;color:var(--ink-3);margin-top:8px;min-height:1.4em}
+.status b{color:var(--ink)}
+.marked{font-size:11.5px;color:var(--accent);font-weight:600}
+
+.caveats{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:16px 18px}
+.caveats ul{margin:8px 0 0;padding-left:18px;display:grid;gap:7px;font-size:13.5px;color:var(--ink-2)}
+.caveats li{max-width:76ch}
+.caveats b{color:var(--ink)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="bar"><div class="bar-in">
+  <b>OIL_CRUDE</b><span class="sep">/</span><span>15m signal bars</span>
+  <span class="sep">·</span><span id="barWindow">—</span>
+  <span class="sep">·</span><span><b id="barEntries">—</b> entries</span>
+  <span class="sep">·</span><span>commit <code id="barCommit">—</code></span>
+  <button class="theme-btn" id="themeBtn" type="button">theme</button>
+</div></div>
+
+<div class="wrap">
+  <header class="mast">
+    <div class="eyebrow">Exit matrix · layer 2 · pre-registration review</div>
+    <h1>Four exits, one entry</h1>
+    <p class="standfirst">The confluence entry is frozen, so all four exit arms mostly trade the
+      <em>same</em> setups and differ only in where they get out. That makes the exits comparable
+      candle by candle — and it is the only honest way to decide which arms the 51-config matrix
+      should spend its budget on.</p>
+  </header>
+
+  <div class="verdict">
+    <p class="lede">Nothing here is profitable. The question is not which arm wins, but whether
+      the 1:1 arm is broken for a <em>structural</em> reason — and the data says it is.</p>
+    <p>H-0005 measured this entry's edge by forward horizon and found it <b>rising with time held</b>:
+      50th percentile at 15m, 97.9 at 2h, <b>100.0 at 4h</b>, 89.4 at 8h, on OIL_CRUDE SHORT. Every
+      arm here exits long before that. Mean holds are <span class="num">0.27h</span> (reversal),
+      <span class="num">0.71h</span> (symmetric), <span class="num">1.50h</span> (time),
+      <span class="num">2.17h</span> (trailing) — <b>all four cut inside the horizon band where the
+      edge was not yet measurable.</b></p>
+    <p>Worse for the symmetric arm specifically: held to 4h the SHORT side averages
+      <span class="num pos">+0.2604 ATR</span> but its <em>median</em> is
+      <span class="num neg">−0.4147</span> at a 42.9% win rate. The edge is <b>tail-driven</b> — a
+      minority of large moves. A symmetric 1:1 target caps every winner at 1R, which is precisely
+      where a tail-driven edge lives. It cannot capture this edge by construction, so its
+      <span class="num">−0.218R</span> is not bad luck to be averaged out over more instruments.</p>
+    <p>Use the inspector below to check that claim yourself before anything is thrown out: sort by
+      <b>best 4h horizon</b>, look at the big SHORT winners, and see where each arm bailed. Tag what
+      you disagree with and send it back — a tagged trade becomes a
+      <code>source: owner-comment</code> hypothesis in the ledger.</p>
+  </div>
+
+  <section>
+    <div class="sec-head"><h2>The four arms</h2>
+      <span class="sec-note" style="margin:0">OIL_CRUDE 15m · $2,000 at 1% risk · brake 10 ATR · 6-bar time stop</span></div>
+    <p class="sec-note">Expectancy is per trade in R. The 95% interval is bootstrapped over trades;
+      an interval that <b>crosses zero</b> means the arm is not distinguishable from break-even on
+      this sample, not that it is good. Only the time arm's does.</p>
+    <div class="tw"><table>
+      <thead><tr><th>Arm</th><th>Trades</th><th>Expectancy R</th><th>95% interval</th><th>Net %</th>
+        <th>Max DD %</th><th>Win %</th><th>Mean hold</th><th>LONG R</th><th>SHORT R</th><th>Exits</th></tr></thead>
+      <tbody id="armTable"></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>Where the edge is, and where the arms exit</h2></div>
+    <p class="sec-note">One axis: forward edge in points, OIL_CRUDE SHORT, from H-0005's placebo
+      comparison. The arms' mean holds are marked on the same time axis — none of them reaches the
+      peak.</p>
+    <div class="fig">
+      <div class="legend">
+        <span><svg width="22" height="10" aria-hidden="true"><line x1="1" y1="5" x2="21" y2="5" stroke="var(--horizon)" stroke-width="2"/><circle cx="11" cy="5" r="3.5" fill="var(--horizon)"/></svg> measured forward edge (pts)</span>
+        <span><svg width="12" height="12" aria-hidden="true"><path d="M6 1 L11 10 L1 10 Z" fill="var(--ink-2)"/></svg> an arm's mean hold</span>
+      </div>
+      <div id="horizonChart"></div>
+      <p class="fig-cap">Edge rises to a peak at 4h (percentile 100.0 against the placebo
+        distribution) then falls back by 8h. The four arms sit at 0.27h, 0.71h, 1.50h and 2.17h —
+        the flat left-hand part of the curve, where the measured edge is 0.0006 to 0.07 points
+        against a 0.0351 spread. Reading the exits as "which brake width is best" answers a
+        question the entry has no measured edge at yet.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>Trade inspector</h2><span class="pill" id="filterCount">—</span></div>
+    <p class="sec-note">Every entry, with each arm's exit on the same candle window. The dashed gold
+      line marks the 4h horizon where H-0005 measured the edge, so an exit that cut it short is
+      visible rather than inferred. Keyboard: <span class="kbd">←</span>
+      <span class="kbd">→</span> to step through trades.</p>
+
+    <div class="tools">
+      <div class="tool"><label for="fSide">Side</label>
+        <select id="fSide"><option value="all">Both sides</option><option value="SHORT">SHORT only</option><option value="LONG">LONG only</option></select></div>
+      <div class="tool"><label for="fSort">Sort by</label>
+        <select id="fSort">
+          <option value="time">Entry time</option>
+          <option value="hz-best">Best 4h horizon</option>
+          <option value="hz-worst">Worst 4h horizon</option>
+          <option value="spread">Biggest disagreement between arms</option>
+          <option value="left">Most left on the table vs 4h</option>
+        </select></div>
+      <div class="tool"><label for="fShared">Coverage</label>
+        <select id="fShared"><option value="all">All entries</option><option value="4">Taken by all four arms</option></select></div>
+      <div class="tool"><label for="fTagged">Tagged</label>
+        <select id="fTagged"><option value="all">All</option><option value="yes">Tagged only</option></select></div>
+      <div class="tool"><label>Arms shown</label><div class="armtoggles" id="armToggles"></div></div>
+    </div>
+
+    <div class="inspector">
+      <div class="chartcard">
+        <div class="chart-head">
+          <span class="title" id="tTitle">—</span>
+          <span class="sub" id="tSub">—</span>
+        </div>
+        <div id="candleChart"></div>
+        <div class="nav">
+          <button class="btn" id="prevBtn" type="button">← Prev</button>
+          <button class="btn" id="nextBtn" type="button">Next →</button>
+          <span class="count" id="posLabel">—</span>
+        </div>
+      </div>
+
+      <div class="side">
+        <div class="panel">
+          <h3>Entry</h3>
+          <dl class="kv" id="entryKv"></dl>
+          <div style="margin-top:9px">
+            <div style="font-size:10.5px;letter-spacing:.055em;text-transform:uppercase;color:var(--ink-3);font-weight:600">Pillars voting</div>
+            <div class="votes" id="voteList"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Exits, this entry</h3>
+          <div id="armExits"></div>
+        </div>
+        <div class="panel">
+          <h3>Your verdict</h3>
+          <div class="tagrow" id="tagRow"></div>
+          <textarea id="noteBox" placeholder="What do you see here that the summary table misses?"></textarea>
+          <div style="display:flex;gap:7px;margin-top:8px;flex-wrap:wrap">
+            <button class="btn" id="saveBtn" type="button">Save note</button>
+            <button class="btn" id="commentBtn" type="button">Comment here</button>
+          </div>
+          <div class="status" id="noteStatus"></div>
+        </div>
+        <div class="panel">
+          <h3>Send to Claude</h3>
+          <p style="font-size:12.5px;color:var(--ink-2);margin-bottom:9px">
+            <span class="marked" id="markedCount">0 tagged</span> — sent as one batch, each becoming
+            a <code>source: owner-comment</code> hypothesis.</p>
+          <button class="btn primary" id="sendBtn" type="button" disabled>Send tagged trades</button>
+          <div class="status" id="sendStatus">checking comment loop…</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>What would still be true if you believed all of this</h2></div>
+    <div class="caveats"><ul>
+      <li><b>Slippage is 0 in every figure here.</b> Every cost number is a floor. The trailing arm
+        exits 456 of 456 trades via <code>STOP</code> and the symmetric arm 294 of 482 — exactly
+        where slippage bites hardest — so the wide-brake arms are flattered most by this.</li>
+      <li><b>This is one instrument.</b> D3 asks whether an ATR-normalised exit behaves differently
+        on US500 than on oil; that is unanswered until the matrix runs on more than OIL_CRUDE.</li>
+      <li><b>H-0005 is a lead, not a finding.</b> 30 cells were examined, so a percentile of 100.0
+        does not clearly clear a Bonferroni bar; and OIL_BRENT showing the same shape is not
+        independent evidence, because Brent and WTI are the same underlying.</li>
+      <li><b>The LONG side looks dead on this instrument</b> — negative at the 4h horizon
+        (<span class="num">−0.3694 ATR</span>) and in all four arms. H-0005 put both oil LONG sides
+        at percentiles 0–31. Enabling LONG in the matrix spends budget on a side already measured
+        as having no edge.</li>
+      <li><b>Weekend financing still multiplies by 1.0.</b> Holds here average 0.27–2.17h so carry is
+        rare, but it stays wrong for any arm that holds toward the 4h horizon the edge actually needs.</li>
+    </ul></div>
+  </section>
+</div>
+
+<script src="trade-review-data.js"></script>
+<script>
+(function(){
+  "use strict";
+  var D = window.REVIEW_DATA;
+  var ARMS = [
+    {k:"symmetric", label:"Symmetric 1:1", color:"var(--a-sym)"},
+    {k:"trailing",  label:"Trailing",      color:"var(--a-trail)"},
+    {k:"time",      label:"Time stop",     color:"var(--a-time)"},
+    {k:"reversal",  label:"Reversal",      color:"var(--a-rev)"}
+  ];
+  var ARM_BY_KEY = {}; ARMS.forEach(function(a){ ARM_BY_KEY[a.k] = a; });
+
+  // H-0005's forward-edge measurement, OIL_CRUDE SHORT (research/ledger/H-0005-*.md).
+  var HORIZON = [
+    {label:"15m", hours:0.25, edge:0.0006, pct:50.0},
+    {label:"1h",  hours:1,    edge:0.0150, pct:72.9},
+    {label:"2h",  hours:2,    edge:0.0700, pct:97.9},
+    {label:"4h",  hours:4,    edge:0.1385, pct:100.0},
+    {label:"8h",  hours:8,    edge:0.1216, pct:89.4}
+  ];
+  var SPREAD = 0.0351;
+
+  var NS = "http://www.w3.org/2000/svg";
+  function el(t, attrs, text){
+    var n = document.createElementNS(NS, t);
+    for (var k in attrs) if (attrs[k] !== null && attrs[k] !== undefined) n.setAttribute(k, attrs[k]);
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  }
+  function fmt(v, d){ if (v === null || v === undefined || isNaN(v)) return "—";
+    var s = Number(v).toFixed(d === undefined ? 2 : d); return s; }
+  function signed(v, d){ if (v === null || v === undefined || isNaN(v)) return "—";
+    var s = Number(v).toFixed(d === undefined ? 3 : d); return (v > 0 ? "+" : "") + s; }
+  function cls(v){ return v > 0 ? "pos" : (v < 0 ? "neg" : ""); }
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){
+    return ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"})[c]; }); }
+
+  /* ---------- derived per-entry measures ---------- */
+  // Signed move in ATR units: how far price went the trade's way.
+  function move(rec, price){
+    if (!rec.atr) return null;
+    var sign = rec.d === "LONG" ? 1 : -1;
+    return sign * (price - rec.ep) / rec.atr;
+  }
+  function horizonMove(rec){
+    if (rec.h >= rec.b.length) return null;
+    return move(rec, rec.b[rec.h][4]);
+  }
+  D.entries.forEach(function(rec){
+    rec._hz = horizonMove(rec);
+    var rs = [];
+    for (var k in rec.arms) rs.push(rec.arms[k].r);
+    rec._spread = rs.length > 1 ? Math.max.apply(null, rs) - Math.min.apply(null, rs) : 0;
+    rec._nArms = rs.length;
+    // How much the best arm left versus simply holding to the horizon.
+    var best = null;
+    for (var k2 in rec.arms){ var m = move(rec, rec.arms[k2].xp);
+      if (m !== null && (best === null || m > best)) best = m; }
+    rec._best = best;
+    rec._left = (rec._hz !== null && best !== null) ? rec._hz - best : null;
+  });
+
+  /* ---------- state ---------- */
+  var NOTE_KEY = "axe-trade-review-notes-v1";
+  var TAGS = ["edge is real", "exit too early", "entry is bad", "keep 1:1", "drop 1:1", "look again"];
+  var notes = {};
+  try { var raw = localStorage.getItem(NOTE_KEY); if (raw) notes = JSON.parse(raw) || {}; }
+  catch (e) { notes = {}; }
+  function saveNotes(){ try { localStorage.setItem(NOTE_KEY, JSON.stringify(notes)); } catch (e) {} }
+
+  var state = { side:"all", sort:"time", shared:"all", tagged:"all",
+                arms:{symmetric:true, trailing:true, time:true, reversal:true}, i:0 };
+  var view = [];
+
+  function rebuild(){
+    view = D.entries.filter(function(r){
+      if (state.side !== "all" && r.d !== state.side) return false;
+      if (state.shared === "4" && r._nArms < 4) return false;
+      if (state.tagged === "yes" && !hasNote(r)) return false;
+      return true;
+    });
+    var by = {
+      "time":    function(a,b){ return a.e < b.e ? -1 : 1; },
+      "hz-best": function(a,b){ return (b._hz === null ? -1e9 : b._hz) - (a._hz === null ? -1e9 : a._hz); },
+      "hz-worst":function(a,b){ return (a._hz === null ? 1e9 : a._hz) - (b._hz === null ? 1e9 : b._hz); },
+      "spread":  function(a,b){ return b._spread - a._spread; },
+      "left":    function(a,b){ return (b._left === null ? -1e9 : b._left) - (a._left === null ? -1e9 : a._left); }
+    };
+    view.sort(by[state.sort]);
+    if (state.i >= view.length) state.i = 0;
+    document.getElementById("filterCount").textContent =
+      view.length + " of " + D.entries.length + " entries";
+    render();
+  }
+  function hasNote(r){ var n = notes[r.e + "|" + r.d]; return !!(n && (n.t && n.t.length || n.x)); }
+  function noteOf(r){ return notes[r.e + "|" + r.d] || {t:[], x:""}; }
+
+  /* ---------- arm table ---------- */
+  function armTable(){
+    var tb = document.getElementById("armTable");
+    ARMS.forEach(function(a){
+      var s = D.summaries[a.k], ci = s.expectancy_r_ci95;
+      var crosses = ci[0] < 0 && ci[1] > 0;
+      var xr = Object.keys(s.by_exit_reason).map(function(k){
+        return k + " " + s.by_exit_reason[k]; }).join(" / ");
+      var tr = document.createElement("tr");
+      if (a.k === "symmetric") tr.className = "worst";
+      tr.innerHTML =
+        '<td><span class="swatch" style="background:' + a.color + '"></span>' + esc(a.label) + '</td>' +
+        '<td class="num">' + s.trades + '</td>' +
+        '<td class="num ' + cls(s.expectancy_r) + '">' + signed(s.expectancy_r) + '</td>' +
+        '<td class="num">' + signed(ci[0]) + " … " + signed(ci[1]) +
+          (crosses ? ' <span class="pill zero">crosses 0</span>' : '') + '</td>' +
+        '<td class="num ' + cls(s.net_pct) + '">' + signed(s.net_pct, 2) + '</td>' +
+        '<td class="num">' + fmt(s.risk.max_drawdown_pct, 1) + '</td>' +
+        '<td class="num">' + fmt(s.win_rate.value * 100, 1) + '</td>' +
+        '<td class="num">' + fmt(s.risk.mean_holding_hours, 2) + 'h</td>' +
+        '<td class="num ' + cls(s.by_side.LONG.expectancy_r) + '">' + signed(s.by_side.LONG.expectancy_r, 4) + '</td>' +
+        '<td class="num ' + cls(s.by_side.SHORT.expectancy_r) + '">' + signed(s.by_side.SHORT.expectancy_r, 4) + '</td>' +
+        '<td style="text-align:left;font-size:11.5px;color:var(--ink-2)">' + esc(xr) + '</td>';
+      tb.appendChild(tr);
+    });
+  }
+
+  /* ---------- horizon chart ---------- */
+  function horizonChart(){
+    var W = 760, H = 300, m = {t:22, r:26, b:64, l:56};
+    var iw = W - m.l - m.r, ih = H - m.t - m.b;
+    var svg = el("svg", {viewBox:"0 0 " + W + " " + H, role:"img",
+      "aria-label":"Forward edge in points against hours held, OIL_CRUDE SHORT: 0.0006 at 15 minutes, "
+        + "0.015 at 1 hour, 0.07 at 2 hours, peaking at 0.1385 at 4 hours, falling to 0.1216 at 8 hours. "
+        + "The four arms' mean holds are 0.27, 0.71, 1.5 and 2.17 hours, all left of the peak."});
+
+    var lo = Math.log(0.2), hi = Math.log(10);
+    function x(h){ return m.l + (Math.log(h) - lo) / (hi - lo) * iw; }
+    var yMax = 0.16;
+    function y(v){ return m.t + ih - (v / yMax) * ih; }
+
+    // y grid + ticks
+    [0, 0.04, 0.08, 0.12, 0.16].forEach(function(v){
+      svg.appendChild(el("line", {x1:m.l, y1:y(v), x2:m.l + iw, y2:y(v),
+        stroke:"var(--line)", "stroke-width":v === 0 ? 1.5 : 1}));
+      svg.appendChild(el("text", {x:m.l - 9, y:y(v) + 4, "text-anchor":"end",
+        "font-size":11, fill:"var(--ink-3)", "font-family":"IBM Plex Mono, monospace"},
+        v.toFixed(2)));
+    });
+    svg.appendChild(el("text", {x:m.l - 42, y:m.t + ih / 2, "text-anchor":"middle",
+      "font-size":11, fill:"var(--ink-3)", transform:"rotate(-90 " + (m.l - 42) + " " + (m.t + ih / 2) + ")"},
+      "edge (points)"));
+
+    // the spread, as the bar any edge must clear
+    svg.appendChild(el("line", {x1:m.l, y1:y(SPREAD), x2:m.l + iw, y2:y(SPREAD),
+      stroke:"var(--loss)", "stroke-width":1.5, "stroke-dasharray":"5 4"}));
+    svg.appendChild(el("text", {x:m.l + iw, y:y(SPREAD) - 7, "text-anchor":"end",
+      "font-size":10.5, fill:"var(--loss)", "font-weight":600}, "spread 0.0351 — the bar to clear"));
+
+    // x ticks at the measured horizons
+    HORIZON.forEach(function(p){
+      svg.appendChild(el("text", {x:x(p.hours), y:m.t + ih + 18, "text-anchor":"middle",
+        "font-size":11, fill:"var(--ink-3)", "font-family":"IBM Plex Mono, monospace"}, p.label));
+    });
+
+    // the edge curve
+    var d = HORIZON.map(function(p, i){ return (i ? "L" : "M") + x(p.hours) + " " + y(p.edge); }).join(" ");
+    svg.appendChild(el("path", {d:d, fill:"none", stroke:"var(--horizon)", "stroke-width":2,
+      "stroke-linejoin":"round"}));
+    HORIZON.forEach(function(p){
+      svg.appendChild(el("circle", {cx:x(p.hours), cy:y(p.edge), r:5, fill:"var(--horizon)",
+        stroke:"var(--surface)", "stroke-width":2}));
+      var peak = p.pct === 100;
+      svg.appendChild(el("text", {x:x(p.hours), y:y(p.edge) - 13, "text-anchor":"middle",
+        "font-size":10.5, fill:peak ? "var(--ink)" : "var(--ink-3)", "font-weight":peak ? 700 : 500,
+        "font-family":"IBM Plex Mono, monospace"}, "p" + p.pct.toFixed(1)));
+    });
+
+    // arm mean holds, as ticks under the axis
+    ARMS.forEach(function(a, i){
+      var h = D.summaries[a.k].risk.mean_holding_hours;
+      var px = x(h), base = m.t + ih;
+      svg.appendChild(el("line", {x1:px, y1:m.t, x2:px, y2:base, stroke:a.color,
+        "stroke-width":1.5, "stroke-dasharray":"2 4", opacity:.62}));
+      svg.appendChild(el("path", {d:"M" + px + " " + (base + 3) + " l5 9 l-10 0 z", fill:a.color}));
+      svg.appendChild(el("text", {x:px, y:base + 36 + (i % 2) * 13, "text-anchor":"middle",
+        "font-size":10, fill:a.color, "font-weight":600},
+        a.label.replace(" 1:1", "") + " " + h.toFixed(2) + "h"));
+    });
+
+    document.getElementById("horizonChart").appendChild(svg);
+  }
+
+  /* ---------- candle chart ---------- */
+  function candleChart(rec){
+    var host = document.getElementById("candleChart");
+    host.textContent = "";
+    var b = rec.b, n = b.length;
+    var W = 700, H = 360, m = {t:16, r:62, b:26, l:8};
+    var iw = W - m.l - m.r, ih = H - m.t - m.b;
+    var lows = [], highs = [];
+    b.forEach(function(c){ lows.push(c[3]); highs.push(c[2]); });
+    var levels = [rec.ep];
+    for (var k in rec.arms){ if (!state.arms[k]) continue;
+      levels.push(rec.arms[k].xp, rec.arms[k].sp);
+      if (rec.arms[k].tp !== null) levels.push(rec.arms[k].tp); }
+    levels.forEach(function(v){ if (v !== null) { lows.push(v); highs.push(v); } });
+    var lo = Math.min.apply(null, lows), hi = Math.max.apply(null, highs);
+    var pad = (hi - lo) * 0.07 || 0.1; lo -= pad; hi += pad;
+    function y(v){ return m.t + ih - (v - lo) / (hi - lo) * ih; }
+    var step = iw / n, cw = Math.max(1.6, Math.min(9, step * 0.62));
+    function x(i){ return m.l + step * (i + 0.5); }
+
+    var svg = el("svg", {viewBox:"0 0 " + W + " " + H, role:"img",
+      "aria-label":"Candle window for the " + rec.d + " entry at " + rec.e +
+        ", with each arm's exit marked and the 4-hour horizon line."});
+
+    // price gridlines
+    var ticks = 4;
+    for (var g = 0; g <= ticks; g++){
+      var v = lo + (hi - lo) * g / ticks;
+      svg.appendChild(el("line", {x1:m.l, y1:y(v), x2:m.l + iw, y2:y(v),
+        stroke:"var(--line)", "stroke-width":1, opacity:.65}));
+      svg.appendChild(el("text", {x:m.l + iw + 6, y:y(v) + 4, "font-size":10.5,
+        fill:"var(--ink-3)", "font-family":"IBM Plex Mono, monospace"}, v.toFixed(2)));
+    }
+
+    // candles
+    b.forEach(function(c, i){
+      var up = c[4] >= c[1];
+      var col = up ? "var(--gain)" : "var(--loss)";
+      var dim = i < rec.eb ? .42 : 1;
+      svg.appendChild(el("line", {x1:x(i), y1:y(c[2]), x2:x(i), y2:y(c[3]),
+        stroke:col, "stroke-width":1, opacity:dim}));
+      var top = y(Math.max(c[1], c[4])), bot = y(Math.min(c[1], c[4]));
+      svg.appendChild(el("rect", {x:x(i) - cw / 2, y:top, width:cw,
+        height:Math.max(1, bot - top), fill:up ? "var(--surface)" : col,
+        stroke:col, "stroke-width":1, opacity:dim}));
+    });
+
+    // entry marker
+    var ex = x(rec.eb);
+    svg.appendChild(el("line", {x1:ex, y1:m.t, x2:ex, y2:m.t + ih, stroke:"var(--ink)",
+      "stroke-width":1.5}));
+    svg.appendChild(el("path", {d:"M" + ex + " " + (y(rec.ep) + (rec.d === "LONG" ? 11 : -11)) +
+      " L" + (ex - 5.5) + " " + (y(rec.ep) + (rec.d === "LONG" ? 20 : -20)) +
+      " L" + (ex + 5.5) + " " + (y(rec.ep) + (rec.d === "LONG" ? 20 : -20)) + " Z",
+      fill:"var(--ink)"}));
+    svg.appendChild(el("text", {x:ex + 7, y:m.t + 11, "font-size":10.5, fill:"var(--ink)",
+      "font-weight":700}, rec.d + " entry"));
+
+    // the 4h horizon the edge was measured at
+    if (rec.h < n){
+      var hx = x(rec.h);
+      svg.appendChild(el("line", {x1:hx, y1:m.t, x2:hx, y2:m.t + ih, stroke:"var(--horizon)",
+        "stroke-width":2, "stroke-dasharray":"6 4"}));
+      svg.appendChild(el("text", {x:hx - 6, y:m.t + 11, "text-anchor":"end", "font-size":10.5,
+        fill:"var(--horizon)", "font-weight":700}, "4h horizon"));
+      var hp = b[rec.h][4];
+      svg.appendChild(el("circle", {cx:hx, cy:y(hp), r:4, fill:"var(--horizon)",
+        stroke:"var(--surface)", "stroke-width":1.5}));
+    }
+
+    // per-arm exits
+    ARMS.forEach(function(a){
+      var t = rec.arms[a.k];
+      if (!t || !state.arms[a.k]) return;
+      var px = x(Math.min(t.xb, n - 1)), py = y(t.xp);
+      // stop line, only across the life of the trade
+      svg.appendChild(el("line", {x1:ex, y1:y(t.sp), x2:px, y2:y(t.sp), stroke:a.color,
+        "stroke-width":1, "stroke-dasharray":"3 3", opacity:.55}));
+      if (t.tp !== null)
+        svg.appendChild(el("line", {x1:ex, y1:y(t.tp), x2:px, y2:y(t.tp), stroke:a.color,
+          "stroke-width":1, "stroke-dasharray":"1 3", opacity:.8}));
+      svg.appendChild(el("line", {x1:px, y1:m.t, x2:px, y2:m.t + ih, stroke:a.color,
+        "stroke-width":1, opacity:.3}));
+      svg.appendChild(el("circle", {cx:px, cy:py, r:5.5, fill:a.color, stroke:"var(--surface)",
+        "stroke-width":2}));
+      svg.appendChild(el("title", null, a.label + ": " + t.xr + " at " + t.xp + ", " +
+        signed(t.r) + "R after " + t.hold_h + "h"));
+    });
+
+    svg.appendChild(el("text", {x:m.l, y:H - 6, "font-size":10, fill:"var(--ink-3)"},
+      n + " bars of 15m · dimmed bars precede the entry"));
+    host.appendChild(svg);
+  }
+
+  /* ---------- side panels ---------- */
+  function renderSide(rec){
+    var kv = document.getElementById("entryKv");
+    var hz = rec._hz;
+    kv.innerHTML =
+      '<dt>Time</dt><dd>' + esc(rec.e.replace("T", " ").replace("Z", "")) + '</dd>' +
+      '<dt>Side</dt><dd>' + rec.d + '</dd>' +
+      '<dt>Entry</dt><dd>' + fmt(rec.ep, 3) + '</dd>' +
+      '<dt>ATR</dt><dd>' + fmt(rec.atr, 4) + '</dd>' +
+      '<dt>Confluence</dt><dd>' + rec.conf + ' of 4</dd>' +
+      '<dt>Hour (UTC)</dt><dd>' + rec.hr + ':00</dd>' +
+      '<dt>At 4h horizon</dt><dd class="' + cls(hz) + '">' +
+        (hz === null ? "—" : signed(hz) + " ATR") + '</dd>' +
+      '<dt>Arms taking it</dt><dd>' + rec._nArms + ' of 4</dd>';
+
+    var vl = document.getElementById("voteList");
+    vl.textContent = "";
+    ["RSI+BB", "Candle", "S/R", "Vol+Trend"].forEach(function(nm){
+      var on = rec.pil.indexOf(nm) >= 0;
+      var s = document.createElement("span");
+      s.className = "vote" + (on ? " on" : "");
+      s.textContent = nm;
+      vl.appendChild(s);
+    });
+
+    var box = document.getElementById("armExits");
+    box.textContent = "";
+    ARMS.forEach(function(a){
+      var t = rec.arms[a.k];
+      var row = document.createElement("div");
+      row.className = "armrow";
+      if (!t){
+        row.innerHTML = '<span class="swatch" style="background:' + a.color + ';opacity:.3"></span>' +
+          '<span class="nm" style="color:var(--ink-3)">' + esc(a.label) + '</span>' +
+          '<span class="xr">not taken</span>';
+      } else {
+        row.innerHTML = '<span class="swatch" style="background:' + a.color + '"></span>' +
+          '<span class="nm">' + esc(a.label) + '<br><span class="xr">' + esc(t.xr) + " · " +
+          t.hold_h + 'h</span></span>' +
+          '<span class="r ' + cls(t.r) + '">' + signed(t.r) + 'R</span>';
+      }
+      box.appendChild(row);
+    });
+  }
+
+  function renderNote(rec){
+    var n = noteOf(rec);
+    var row = document.getElementById("tagRow");
+    row.textContent = "";
+    TAGS.forEach(function(t){
+      var btn = document.createElement("button");
+      btn.className = "tag"; btn.type = "button";
+      btn.setAttribute("aria-pressed", n.t.indexOf(t) >= 0 ? "true" : "false");
+      btn.textContent = t;
+      btn.addEventListener("click", function(){
+        var cur = noteOf(rec), tags = cur.t.slice(), at = tags.indexOf(t);
+        if (at >= 0) tags.splice(at, 1); else tags.push(t);
+        notes[rec.e + "|" + rec.d] = {t:tags, x:cur.x || ""};
+        saveNotes(); renderNote(rec); markedCount();
+      });
+      row.appendChild(btn);
+    });
+    document.getElementById("noteBox").value = n.x || "";
+    document.getElementById("noteStatus").textContent =
+      (n.t.length || n.x) ? "tagged" : "";
+  }
+
+  function markedCount(){
+    var c = 0;
+    for (var k in notes){ var n = notes[k]; if (n && (n.t.length || n.x)) c++; }
+    document.getElementById("markedCount").textContent = c + " tagged";
+    var btn = document.getElementById("sendBtn");
+    btn.disabled = !(c > 0 && canSend);
+    return c;
+  }
+
+  function render(){
+    if (!view.length){
+      document.getElementById("tTitle").textContent = "No entries match";
+      document.getElementById("tSub").textContent = "";
+      document.getElementById("candleChart").textContent = "";
+      document.getElementById("posLabel").textContent = "0 of 0";
+      return;
+    }
+    var rec = view[state.i];
+    document.getElementById("tTitle").textContent =
+      rec.d + " · " + rec.e.replace("T", " ").replace("Z", "") + " UTC";
+    var bits = [rec.conf + "/4 confluence", rec.pil.join(" + ") || "no pillars"];
+    if (rec._hz !== null) bits.push("4h horizon " + signed(rec._hz) + " ATR");
+    document.getElementById("tSub").textContent = bits.join(" · ");
+    document.getElementById("posLabel").textContent =
+      (state.i + 1) + " of " + view.length;
+    candleChart(rec); renderSide(rec); renderNote(rec);
+  }
+
+  /* ---------- wiring ---------- */
+  function bindSel(id, key){
+    var s = document.getElementById(id);
+    s.addEventListener("change", function(){ state[key] = s.value; state.i = 0; rebuild(); });
+  }
+  bindSel("fSide", "side"); bindSel("fSort", "sort");
+  bindSel("fShared", "shared"); bindSel("fTagged", "tagged");
+
+  var tog = document.getElementById("armToggles");
+  ARMS.forEach(function(a){
+    var b = document.createElement("button");
+    b.className = "armtoggle"; b.type = "button"; b.setAttribute("aria-pressed", "true");
+    b.innerHTML = '<span class="swatch" style="background:' + a.color + '"></span>' + esc(a.label);
+    b.style.color = "var(--ink)";
+    b.addEventListener("click", function(){
+      state.arms[a.k] = !state.arms[a.k];
+      b.setAttribute("aria-pressed", state.arms[a.k] ? "true" : "false");
+      render();
+    });
+    tog.appendChild(b);
+  });
+
+  function step(d){ if (!view.length) return;
+    state.i = (state.i + d + view.length) % view.length; render(); }
+  document.getElementById("prevBtn").addEventListener("click", function(){ step(-1); });
+  document.getElementById("nextBtn").addEventListener("click", function(){ step(1); });
+  document.addEventListener("keydown", function(ev){
+    if (ev.target.tagName === "TEXTAREA" || ev.target.tagName === "SELECT") return;
+    if (ev.key === "ArrowLeft") { step(-1); ev.preventDefault(); }
+    if (ev.key === "ArrowRight") { step(1); ev.preventDefault(); }
+  });
+
+  document.getElementById("saveBtn").addEventListener("click", function(){
+    var rec = view[state.i]; if (!rec) return;
+    var cur = noteOf(rec);
+    notes[rec.e + "|" + rec.d] = {t:cur.t.slice(), x:document.getElementById("noteBox").value.trim()};
+    saveNotes(); renderNote(rec); markedCount();
+    document.getElementById("noteStatus").innerHTML = "<b>Saved.</b> Kept in this browser until sent.";
+  });
+
+  document.getElementById("themeBtn").addEventListener("click", function(){
+    var r = document.documentElement;
+    var dark = r.getAttribute("data-theme") === "dark" ||
+      (!r.getAttribute("data-theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    r.setAttribute("data-theme", dark ? "light" : "dark");
+    document.getElementById("candleChart").textContent = "";
+    document.getElementById("horizonChart").textContent = "";
+    horizonChart(); render();
+  });
+
+  /* ---------- comments ---------- */
+  var comments = null, canSend = false;
+  document.getElementById("commentBtn").addEventListener("click", function(){
+    var rec = view[state.i]; if (!rec || !comments) return;
+    comments.openComposer({element:document.getElementById("candleChart")})
+      .then(function(r){
+        document.getElementById("noteStatus").textContent = r.opened
+          ? "Composer open — it anchors to this chart."
+          : "A composer is already open.";
+      })
+      .catch(function(err){
+        document.getElementById("noteStatus").textContent =
+          err && err.code === "unavailable" ? "Commenting is off in this view." : "Could not open the composer.";
+      });
+  });
+
+  function batches(){
+    var out = [], cur = "", head = "Trade review — OIL_CRUDE 15m exit arms\n";
+    var keys = Object.keys(notes).filter(function(k){
+      var n = notes[k]; return n && (n.t.length || n.x); });
+    keys.forEach(function(k){
+      var n = notes[k], parts = k.split("|");
+      var rec = null;
+      for (var i = 0; i < D.entries.length; i++)
+        if (D.entries[i].e === parts[0] && D.entries[i].d === parts[1]) { rec = D.entries[i]; break; }
+      var line = "\n• " + parts[1] + " " + parts[0].replace("T", " ").replace("Z", "");
+      if (rec){
+        line += " | conf " + rec.conf + "/4 | 4h " + (rec._hz === null ? "—" : signed(rec._hz) + " ATR");
+        ARMS.forEach(function(a){ var t = rec.arms[a.k];
+          if (t) line += " | " + a.k + " " + t.xr + " " + signed(t.r) + "R"; });
+      }
+      if (n.t.length) line += "\n  tags: " + n.t.join(", ");
+      if (n.x) line += "\n  note: " + n.x;
+      line += "\n";
+      if ((cur + line).length > 3400){ out.push(head + cur); cur = ""; }
+      cur += line;
+    });
+    if (cur) out.push(head + cur);
+    return out;
+  }
+
+  document.getElementById("sendBtn").addEventListener("click", function(){
+    if (!comments || !canSend) return;
+    var chunks = batches();
+    if (!chunks.length) return;
+    var btn = document.getElementById("sendBtn"), st = document.getElementById("sendStatus");
+    btn.disabled = true; st.textContent = "sending 1 of " + chunks.length + "…";
+    var target = document.getElementById("candleChart");
+    comments.anchorFor(target).then(function(anchor){
+      var sent = 0;
+      function next(){
+        if (sent >= chunks.length){
+          st.innerHTML = "<b>Sent " + sent + " message" + (sent > 1 ? "s" : "") +
+            ".</b> The reply lands in the comment thread on this page.";
+          btn.disabled = false;
+          return;
+        }
+        st.textContent = "sending " + (sent + 1) + " of " + chunks.length + "…";
+        comments.sendToClaude({anchor:anchor, text:chunks[sent]}).then(function(){
+          sent++; next();
+        }).catch(function(err){
+          var code = err && err.code;
+          st.textContent = code === "consent_required"
+            ? "Not sent — allow this page to comment as you, then try again."
+            : code === "rate_limited" ? "Rate limited — wait a moment and send again."
+            : "Not sent (" + (code || "error") + "). Your notes are still saved here.";
+          btn.disabled = false;
+        });
+      }
+      next();
+    }).catch(function(){
+      st.textContent = "Could not anchor the comment.";
+      btn.disabled = false;
+    });
+  });
+
+  /* ---------- boot ---------- */
+  document.getElementById("barWindow").textContent =
+    D.window[0].slice(0, 10) + " → " + D.window[1].slice(0, 10);
+  document.getElementById("barEntries").textContent = D.entries.length;
+  document.getElementById("barCommit").textContent = D.git_commit;
+  armTable(); horizonChart(); rebuild(); markedCount();
+
+  if (window.claude && window.claude.use){
+    window.claude.use("comments").then(function(c){
+      var st = document.getElementById("sendStatus");
+      if (!c){ st.textContent = "comment loop unavailable in this view"; return; }
+      comments = c;
+      return c.canSendToClaude().then(function(s){
+        canSend = s === "available";
+        st.textContent = canSend ? "comment loop live — batch send ready"
+          : s === "writers_only" ? "you can comment, but only an editor can send to Claude"
+          : s === "no_session" ? "no Claude session is listening right now"
+          : "sending to Claude is off in this view";
+        markedCount();
+      });
+    }).catch(function(){
+      document.getElementById("sendStatus").textContent = "comment loop unavailable";
+    });
+  } else {
+    document.getElementById("sendStatus").textContent = "standalone preview — sending disabled";
+  }
+})();
+</script>

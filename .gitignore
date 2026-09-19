@@ -75,3 +75,7 @@ research/engine/*.egg-info/
 research/engine/.pytest_cache/
 research/engine/.cache/
 research/runs/
+
+# Generated review payloads — rebuild with research/review/export_trade_review.py
+research/review/*-data.js
+research/review/*-data.json

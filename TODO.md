@@ -43,12 +43,42 @@ the only positive cell — same instrument, same side.
 **The confluence fires on ~0.6% of bars**, so 4h produced only 11–25 entries per instrument and the
 first H-0005 run was `inconclusive` on power alone. The matrix moved to 15m with the entry frozen.
 
+### The trade-review page exists, and it reframes the 1:1 question
+
+The owner's call: **nothing gets thrown out before it is verified visually.** So the trade-review
+surface (spec §7.3) was built before any matrix decision, not after —
+**https://claude.ai/artifact/GrqdRANKK6AnzCGcgRyXiU** ("Four Exits, One Entry"). Source in
+`research/review/trade-review.html`, data via `research/review/export_trade_review.py`, adapter in
+`research/engine/engine/review.py` (11 new tests; suite now 141).
+
+It aligns on the entry rather than the arm: the entry is frozen, and **426 of 506 entries are taken
+by all four arms**, so one candle window carries all four exits and the arms are comparable trade by
+trade.
+
+**Building it surfaced the thing the summary table hid.** H-0005's edge *rises with horizon* — p50 at
+15m, p97.9 at 2h, **p100 at 4h**, p89.4 at 8h. The arms' mean holds are 0.27h, 0.71h, 1.50h, 2.17h:
+**every arm exits inside the band where the entry has no measured edge.** Reading the matrix as
+"which brake width wins" answers a question the entry cannot yet support.
+
+And splitting the 4h horizon by side (506 entries, ATR units):
+
+| side | held to 4h | median | win | best arm |
+|---|---|---|---|---|
+| SHORT | **+0.2604** | −0.4147 | 42.9% | time **+0.0471** |
+| LONG | −0.3694 | −0.4240 | 45.7% | reversal −0.1369 |
+
+**The SHORT edge is tail-driven** — positive mean, negative median. A symmetric 1:1 target caps every
+winner at 1R, which is exactly where a tail-driven edge lives, so the 1:1 arm's −0.218R is
+*structural*, not sampling noise to be averaged out across instruments. **LONG looks dead on oil**,
+consistent with H-0005 putting both oil LONG sides at p0–31.
+
 ### Next action
 
-**Decide whether the 51-config matrix runs as specced**, then write Part 2 of the plan. The spec
-gives a third of the matrix to the symmetric arm; the first runs argue that is wasted, but D7 is an
-explicit owner decision and one run is not grounds to overturn it. See
-`docs/handoffs/2026-09-19-confluence-arms-runnable.md`.
+**Owner reviews the page and tags trades**, then the matrix decision is made on what he saw — not on
+the summary table. Tagged trades come back as `source: owner-comment` hypotheses. Open questions the
+page raises for that decision: re-weight away from the symmetric arm, drop LONG from the grid
+entirely, and add a hold-duration dimension reaching the 4h horizon. Part 2 of the plan gets written
+after. See `docs/handoffs/2026-09-19-confluence-arms-runnable.md`.
 
 ---
 
