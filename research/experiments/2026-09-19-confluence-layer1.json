@@ -1,0 +1,337 @@
+{
+  "hypothesis": "H-0005",
+  "timeframe": "15min",
+  "window": [
+    "2024-01-01",
+    "2026-07-31"
+  ],
+  "holdout": "2026-08-01 onward is held out and untouched",
+  "horizons_bars": [
+    1,
+    4,
+    8,
+    16,
+    32
+  ],
+  "placebo_sets": 200,
+  "trial_count": 30,
+  "instruments": {
+    "US500": {
+      "bars": 62170,
+      "fire_rates": {
+        "bullish": {
+          "RSI+BB": 0.039451031346434955,
+          "Candle": 0.12470358941042715,
+          "S/R": 0.3240214390125061,
+          "Vol+Trend": 0.2224784797791132
+        },
+        "bearish": {
+          "RSI+BB": 0.03998700665908722,
+          "Candle": 0.12343673867143089,
+          "S/R": 0.41923014455091767,
+          "Vol+Trend": 0.2001461750852688
+        },
+        "bullish_score_histogram": {
+          "0": 26405,
+          "1": 27040,
+          "2": 7660,
+          "3": 465
+        },
+        "bearish_score_histogram": {
+          "0": 21322,
+          "1": 32569,
+          "2": 7409,
+          "3": 270
+        }
+      },
+      "sides": {
+        "LONG": {
+          "entries": 356,
+          "horizons": {
+            "1bar": {
+              "mean": 0.13918539325841725,
+              "placebo_mean": -0.07283922402271248,
+              "edge": 0.21202461728112973,
+              "percentile": 72.95597484276729,
+              "placebo_sets_used": 159
+            },
+            "4bar": {
+              "mean": 0.3106741573033795,
+              "placebo_mean": 0.06468413316715226,
+              "edge": 0.24599002413622723,
+              "percentile": 60.37735849056604,
+              "placebo_sets_used": 159
+            },
+            "8bar": {
+              "mean": -0.08665730337077732,
+              "placebo_mean": 0.024928438771279055,
+              "edge": -0.11158574214205637,
+              "percentile": 35.84905660377358,
+              "placebo_sets_used": 159
+            },
+            "16bar": {
+              "mean": -0.2830056179775179,
+              "placebo_mean": 0.0796839290916377,
+              "edge": -0.36268954706915557,
+              "percentile": 42.138364779874216,
+              "placebo_sets_used": 159
+            },
+            "32bar": {
+              "mean": 1.8603932584269567,
+              "placebo_mean": 0.04819553645295997,
+              "edge": 1.8121977219739966,
+              "percentile": 86.16352201257862,
+              "placebo_sets_used": 159
+            }
+          },
+          "positive_horizons": 3,
+          "best_percentile": 86.16352201257862,
+          "signal": false
+        },
+        "SHORT": {
+          "entries": 133,
+          "horizons": {},
+          "status": "inconclusive",
+          "reason": "under 200 entries"
+        }
+      }
+    },
+    "OIL_CRUDE": {
+      "bars": 61063,
+      "fire_rates": {
+        "bullish": {
+          "RSI+BB": 0.0396936969717017,
+          "Candle": 0.13123728561268874,
+          "S/R": 0.3582521542100127,
+          "Vol+Trend": 0.24596860890131156
+        },
+        "bearish": {
+          "RSI+BB": 0.03888328399186279,
+          "Candle": 0.13006301374394258,
+          "S/R": 0.3798356019383755,
+          "Vol+Trend": 0.23541670112300084
+        },
+        "bullish_score_histogram": {
+          "0": 22479,
+          "1": 29532,
+          "2": 8021,
+          "3": 430,
+          "4": 1
+        },
+        "bearish_score_histogram": {
+          "0": 21492,
+          "1": 30881,
+          "2": 7738,
+          "3": 350,
+          "4": 2
+        }
+      },
+      "sides": {
+        "LONG": {
+          "entries": 279,
+          "horizons": {
+            "1bar": {
+              "mean": -0.013578853046594851,
+              "placebo_mean": 0.000781827134351358,
+              "edge": -0.01436068018094621,
+              "percentile": 12.359550561797752,
+              "placebo_sets_used": 178
+            },
+            "4bar": {
+              "mean": -0.026944444444444694,
+              "placebo_mean": 0.0004970154289711919,
+              "edge": -0.027441459873415886,
+              "percentile": 20.224719101123593,
+              "placebo_sets_used": 178
+            },
+            "8bar": {
+              "mean": -0.033096774193548166,
+              "placebo_mean": -0.007428082946668021,
+              "edge": -0.025668691246880145,
+              "percentile": 30.337078651685395,
+              "placebo_sets_used": 178
+            },
+            "16bar": {
+              "mean": -0.09065053763440885,
+              "placebo_mean": -0.0010676817454808544,
+              "edge": -0.08958285588892799,
+              "percentile": 6.179775280898876,
+              "placebo_sets_used": 178
+            },
+            "32bar": {
+              "mean": -0.1211236559139786,
+              "placebo_mean": -0.0017210692761941214,
+              "edge": -0.11940258663778448,
+              "percentile": 11.797752808988763,
+              "placebo_sets_used": 178
+            }
+          },
+          "positive_horizons": 0,
+          "best_percentile": 30.337078651685395,
+          "signal": false
+        },
+        "SHORT": {
+          "entries": 222,
+          "horizons": {
+            "1bar": {
+              "mean": 2.2522522523590255e-06,
+              "placebo_mean": -0.0006261526945756077,
+              "edge": 0.0006284049468279667,
+              "percentile": 50.0,
+              "placebo_sets_used": 188
+            },
+            "4bar": {
+              "mean": 0.016650900900900805,
+              "placebo_mean": 0.0016977178775827548,
+              "edge": 0.01495318302331805,
+              "percentile": 72.87234042553192,
+              "placebo_sets_used": 188
+            },
+            "8bar": {
+              "mean": 0.07911936936936925,
+              "placebo_mean": 0.009150724761119862,
+              "edge": 0.06996864460824939,
+              "percentile": 97.87234042553192,
+              "placebo_sets_used": 188
+            },
+            "16bar": {
+              "mean": 0.14210135135135177,
+              "placebo_mean": 0.003566410904943864,
+              "edge": 0.1385349404464079,
+              "percentile": 100.0,
+              "placebo_sets_used": 188
+            },
+            "32bar": {
+              "mean": 0.12394144144144102,
+              "placebo_mean": 0.0023898235136830255,
+              "edge": 0.121551617927758,
+              "percentile": 89.36170212765957,
+              "placebo_sets_used": 188
+            }
+          },
+          "positive_horizons": 5,
+          "best_percentile": 100.0,
+          "signal": true
+        }
+      }
+    },
+    "OIL_BRENT": {
+      "bars": 58878,
+      "fire_rates": {
+        "bullish": {
+          "RSI+BB": 0.0400837365729778,
+          "Candle": 0.1332749922783898,
+          "S/R": 0.35527986547239093,
+          "Vol+Trend": 0.2426816294313463
+        },
+        "bearish": {
+          "RSI+BB": 0.039294416417859225,
+          "Candle": 0.13162771543292495,
+          "S/R": 0.37895947012594805,
+          "Vol+Trend": 0.22855966230824667
+        },
+        "bullish_score_histogram": {
+          "0": 21921,
+          "1": 28216,
+          "2": 7688,
+          "3": 453
+        },
+        "bearish_score_histogram": {
+          "0": 21126,
+          "1": 29275,
+          "2": 7540,
+          "3": 337
+        }
+      },
+      "sides": {
+        "LONG": {
+          "entries": 294,
+          "horizons": {
+            "1bar": {
+              "mean": -0.02173639455782435,
+              "placebo_mean": 0.002099890291829763,
+              "edge": -0.02383628484965411,
+              "percentile": 0.0,
+              "placebo_sets_used": 193
+            },
+            "4bar": {
+              "mean": -0.01161564625850376,
+              "placebo_mean": -0.0005514084649722442,
+              "edge": -0.011064237793531516,
+              "percentile": 31.606217616580313,
+              "placebo_sets_used": 193
+            },
+            "8bar": {
+              "mean": -0.0748520408163269,
+              "placebo_mean": -0.002177878920637158,
+              "edge": -0.07267416189568975,
+              "percentile": 2.072538860103627,
+              "placebo_sets_used": 193
+            },
+            "16bar": {
+              "mean": -0.12010544217687123,
+              "placebo_mean": -0.0036754486845731564,
+              "edge": -0.11642999349229807,
+              "percentile": 0.0,
+              "placebo_sets_used": 193
+            },
+            "32bar": {
+              "mean": -0.11507482993197286,
+              "placebo_mean": -0.0023794042700737523,
+              "edge": -0.1126954256618991,
+              "percentile": 11.917098445595855,
+              "placebo_sets_used": 193
+            }
+          },
+          "positive_horizons": 0,
+          "best_percentile": 31.606217616580313,
+          "signal": false
+        },
+        "SHORT": {
+          "entries": 214,
+          "horizons": {
+            "1bar": {
+              "mean": -0.016140186915889147,
+              "placebo_mean": -0.004462251839126245,
+              "edge": -0.011677935076762902,
+              "percentile": 19.45945945945946,
+              "placebo_sets_used": 185
+            },
+            "4bar": {
+              "mean": 0.01267056074766236,
+              "placebo_mean": -0.011617747035350668,
+              "edge": 0.024288307783013028,
+              "percentile": 86.48648648648648,
+              "placebo_sets_used": 185
+            },
+            "8bar": {
+              "mean": 0.05224299065420411,
+              "placebo_mean": 0.0007014225536001512,
+              "edge": 0.05154156810060396,
+              "percentile": 86.48648648648648,
+              "placebo_sets_used": 185
+            },
+            "16bar": {
+              "mean": 0.08594158878504547,
+              "placebo_mean": 0.006026608383069134,
+              "edge": 0.07991498040197634,
+              "percentile": 85.4054054054054,
+              "placebo_sets_used": 185
+            },
+            "32bar": {
+              "mean": 0.09732710280373696,
+              "placebo_mean": 0.007369976775885695,
+              "edge": 0.08995712602785128,
+              "percentile": 77.29729729729729,
+              "placebo_sets_used": 185
+            }
+          },
+          "positive_horizons": 4,
+          "best_percentile": 86.48648648648648,
+          "signal": false
+        }
+      }
+    }
+  },
+  "verdict": "signal present"
+}

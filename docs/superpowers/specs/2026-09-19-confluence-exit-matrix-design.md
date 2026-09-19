@@ -17,6 +17,7 @@ Supersedes: nothing. Extends `2026-09-17-research-restart-design.md` (the plan o
 | D7 | Also test the **symmetric 1:1** target/stop variant — narrow target with a wide stop has not worked, the wins are too small. |
 | D8 | **NATURALGAS is excluded** from all research (`research/EXCLUDED-INSTRUMENTS.md`). |
 | D9 | **Shorts stay enabled on every instrument, US500 included.** At this stage the project is not in a position to exclude an angle that large. |
+| D10 | **The matrix runs at 15m, not 4h.** H-0005 showed the confluence fires on ~0.6% of bars, so 4h yields 11–25 entries per instrument — too few to compare exit arms. The entry stays frozen; only the bar size changes. |
 
 ## 1. Purpose, and what this is not
 
@@ -143,8 +144,31 @@ trade count, expectancy in R, win rate and financing per side.
 
 ## 4. The exit arms
 
-**4h only, all three instruments.** Oil daily caps at ~10 ATR (§5.2), which would make the stop
-axis ragged and the instrument comparison invalid. US500 1d is feasible and is a follow-up.
+**15m, all three instruments (D10).** The original design said 4h, chosen from the cost ranking.
+[[H-0005-confluence-entry-signal]] falsified that choice on contact with data: the confluence fires
+on ~0.6% of bars, and a 4h window holds only ~4,100 bars, so it produced **11–25 entries per
+instrument** — no basis for comparing four exit arms. At 15m the same frozen entry yields 214–356
+per instrument per side.
+
+This is a real cost. 15m is expensive ground — US500 11.7%, oil 21–25% of a typical bar's range per
+round trip, against 3.5–5.8% at 4h. The arms may lose on costs alone. That is measured rather than
+assumed, and it is the layer-2 question the matrix exists to answer. The alternative — loosening the
+confluence threshold to 2 to keep 4h — was rejected because it unfreezes the entry, which is the one
+thing protecting attribution.
+
+**The `min_deal_size` ceilings that shaped the 4h design are not binding at 15m.** A smaller ATR
+means a smaller stop distance, hence a larger position for the same 1% risk. Recomputed:
+
+| instrument | ATR(14) @15m | widest usable stop | 10-ATR size | margin |
+|---|---|---|---|---|
+| US500 | 5.6521 | **353.9 ATR** | 0.354 | $107.05 |
+| OIL_BRENT | 0.1766 | **113.3 ATR** | 11.326 | $85.39 |
+| OIL_CRUDE | 0.1774 | **112.7 ATR** | 11.271 | $80.66 |
+
+The {6, 10, 14} ATR brakes sit far inside every ceiling, so no arm is skipped for sizing reasons and
+the cross-instrument comparison is clean. Margin rises to ~4–5% of the account but remains
+immaterial. The skipped-trade reporting in §5.2 stays required regardless — it is cheap, and it is
+what would make a sizing problem visible if one ever appeared.
 
 | arm | initial stop (brake) | what exits | parameter | configs |
 |---|---|---|---|---|

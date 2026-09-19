@@ -3,7 +3,7 @@
 Running count of everything tried, so the multiple-testing bar can only ever go up. Trial counts
 are cumulative down a parent/child chain (spec §6.2.3) and feed the Bonferroni adjustment at G1.
 
-**Hypotheses: 4 · Variants tried: 293 · Reached G1: 0 · Reached G2: 0**
+**Hypotheses: 5 · Variants tried: 323 · Reached G1: 0 · Reached G2: 0**
 
 | id | title | instruments | tf | status | trials | created |
 |---|---|---|---|---|---|---|
@@ -11,6 +11,7 @@ are cumulative down a parent/child chain (spec §6.2.3) and feed the Bonferroni 
 | [H-0002](H-0002-short-horizon-continuation.md) | Short-horizon extremes continue, not revert | US500 | 5min | `uneconomic` | 97 | 2026-09-18 |
 | [H-0003](H-0003-continuation-longer-horizon.md) | The continuation effect clears costs at a longer horizon | US500 | 5min | `rejected: no signal` | 289 | 2026-09-19 |
 | [H-0004](H-0004-us500-overnight-premium.md) | The US500 overnight premium survives CFD financing | US500 | 1d | `inconclusive` | 4 | 2026-09-19 |
+| [H-0005](H-0005-confluence-entry-signal.md) | The 4-pillar confluence entry predicts forward returns | US500, OIL_CRUDE, OIL_BRENT | 15min | `signal present` | 30 | 2026-09-19 |
 
 ## Notes
 
@@ -34,6 +35,15 @@ are cumulative down a parent/child chain (spec §6.2.3) and feed the Bonferroni 
   have 664. Parked at layer 0, and the parked condition is 31 years of data, not a better idea.
   Its one solid result is a prohibition: **holding US500 short overnight loses reliably** (−3.774
   net, CI entirely below zero, 2/11 quarters positive).
+- **H-0005** is the first result in this project with an economically meaningful edge.
+  **OIL_CRUDE SHORT**: 222 entries, positive at all 5 horizons, percentile 100.0 at 4h, edge
+  **+0.1385 pts against a 0.0351 spread — 3.9 spreads**, where H-0002 managed 1.01 and H-0003
+  ceilinged at 1.55. OIL_BRENT SHORT shows the same shape more weakly (4/5, best 86.5) and both
+  oil LONG sides are clearly negative. Two caveats that must travel with it: Brent and WTI are
+  not independent evidence, and while the result passes the pre-registered criteria it does not
+  clearly clear a Bonferroni bar at 30 trials. It is a lead to test, not a finding.
+  Its first run, at 4h, was `inconclusive` — the confluence fires on ~0.6% of bars and 4h has too
+  few bars to produce a testable sample. Both runs are recorded.
 - No hypothesis has touched the 2026-08-01 → holdout. It remains unscored.
 
 ## Threshold changes
