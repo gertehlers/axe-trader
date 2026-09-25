@@ -104,3 +104,21 @@ move cover costs?) with a layer-0 question (can this sample resolve it?) into on
 mapped its failure to `uneconomic`. The data separates them the other way — layer 2 passes, layer 0
 fails — so the status is `inconclusive` per spec §6.2.3's first-failing-layer rule. The bar was not
 moved; the label attached to it was wrong. See H-0004 for the full note.
+
+## Engine correction — 2026-09-25: fills happened inside the signal bar
+
+`engine.simulator.simulate` filled every intent at "the first minute after the signal bar's
+*label*". Bars are left-labelled, so a 5-minute bar labelled 09:00 closes at 09:05, but its entry
+filled at 09:01, four minutes before the close that produced it existed (up to 14 minutes on
+15m). Stops were also resolved *after* the strategy's decision on the bar that contained them.
+Found on the owner's first review day, not by a test (the unit tests used 1-minute signal bars,
+where label and close coincide).
+
+Fixed in the commit that adds this note: resolve the bar's own minutes first, then decide, then
+fill at the first minute at or after the bar's end. On US500 full history (dev data only) the
+effect is in both directions and changes no conclusion. E.g. 5m symmetric −0.294 → −0.215 R,
+5m time −0.003 → −0.018 R, 15m trailing −0.016 → +0.009 R; nothing clears costs.
+
+**Every figure above from a resampled-bar run through the simulator (H-0005 … H-0009 exit and
+economics work) was produced with the early fill.** Layer-1 signal studies that used forward
+returns rather than the simulator are unaffected. The statuses stand; the exact numbers do not.

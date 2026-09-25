@@ -119,7 +119,8 @@ def run_day(minutes: pd.DataFrame, version: StrategyVersion, day: dt.date, timef
                        risk_pct=float(execution["risk_pct"]),
                        slippage_ticks=float(execution["slippage_ticks"]))
     trace: dict = {}
-    trades, skipped = simulate(strategy, data, bars, spec, config, trace=trace)
+    trades, skipped = simulate(strategy, data, bars, spec, config, trace=trace,
+                               bar_width=pd.Timedelta(timeframe))
 
     kept = [t for t in trades if t.exit_time > start and t.entry_time <= end]
     last = max([end] + [t.exit_time for t in kept])

@@ -213,3 +213,59 @@ def test_move_stop_applies_to_later_minutes_only():
     assert trades[0].exit_reason == "STOP"
     assert trades[0].stop == 99.5
     assert trades[0].exit_time == pd.Timestamp("2024-01-02T09:02:00Z")
+
+
+# --- signal time vs fill time on resampled bars (found 2026-09-25) -------------------------
+# A 5-minute bar labelled 09:00 holds minutes 09:00-09:04 and its close is only known at 09:05.
+# The simulator used to fill "after the bar's label" (09:01), four minutes before the signal
+# existed. These pin the fix: fills happen at the first minute at or after the bar's END, and a
+# stop hit inside a bar is resolved before the strategy decides on that bar's close.
+
+from engine.bars import resample
+from engine.strategy import Exit
+
+
+def five_minute_market():
+    rows = []
+    start = pd.Timestamp("2024-01-02T09:00:00Z")
+    for k in range(20):
+        price = 100.0 + k * 0.1
+        rows.append(((start + pd.Timedelta(minutes=k)).isoformat(), price, price + 0.05, price - 0.05, price))
+    return minutes_frame(rows)
+
+
+def test_entry_fills_at_the_first_minute_after_the_signal_bar_closes():
+    minutes = five_minute_market()
+    bars = resample(minutes, "5min")
+    trades, _ = simulate(EnterOnFirstBar(stop=90.0, target=101.25), minutes, bars, SPEC, SimConfig())
+    assert trades[0].entry_time == pd.Timestamp("2024-01-02T09:05:00Z")
+    assert trades[0].entry_price == pytest.approx(100.5 + 0.2)       # 09:05 open ask
+
+
+class ExitOnSecondBar:
+    def __init__(self):
+        self.bar = -1
+
+    def on_bar(self, history, position):
+        self.bar += 1
+        if self.bar == 0:
+            return [Enter(side="LONG", stop=100.52)]
+        if position:
+            return [Exit(why="strategy")]
+        return []
+
+
+def test_a_stop_inside_a_bar_is_resolved_before_the_decision_on_its_close():
+    rows = [(f"2024-01-02T09:{m:02d}:00Z", 100.0, 100.05, 99.95, 100.0) for m in range(5)]
+    rows += [("2024-01-02T09:05:00Z", 100.5, 100.6, 100.45, 100.5),
+             ("2024-01-02T09:06:00Z", 100.5, 100.55, 100.30, 100.4),   # stop 100.52 hit here
+             ("2024-01-02T09:07:00Z", 100.4, 100.45, 100.35, 100.4),
+             ("2024-01-02T09:08:00Z", 100.4, 100.45, 100.35, 100.4),
+             ("2024-01-02T09:09:00Z", 100.4, 100.45, 100.35, 100.4),
+             ("2024-01-02T09:10:00Z", 100.4, 100.45, 100.35, 100.4)]
+    minutes = minutes_frame(rows)
+    bars = resample(minutes, "5min")
+    trades, _ = simulate(ExitOnSecondBar(), minutes, bars, SPEC, SimConfig())
+    assert trades[0].exit_reason == "STOP"
+    assert trades[0].exit_time == pd.Timestamp("2024-01-02T09:05:00Z") or \
+        trades[0].exit_time == pd.Timestamp("2024-01-02T09:06:00Z")

@@ -51,13 +51,19 @@ class Trade:
 
 
 def simulate(strategy, minutes: pd.DataFrame, signal_bars: pd.DataFrame, spec: dict,
-             config: SimConfig, trace: dict | None = None) -> tuple[list[Trade], int]:
+             config: SimConfig, trace: dict | None = None,
+             bar_width: pd.Timedelta | None = None) -> tuple[list[Trade], int]:
     """Run `strategy` over `signal_bars`, filling on `minutes`.
 
     `trace`, when given, is filled with the decision record the review page explains from:
     `{bar_index: {"time", "position", "intents", "events"}}` for every bar that held a position,
     produced an intent or had an event. A bar absent from it was flat and asked for nothing. The
     trace only observes; a traced run produces exactly the untraced trades.
+
+    Timing, per signal bar: (1) stops and targets are resolved on the bar's own minutes; (2) the
+    strategy decides on the closed bar; (3) its intents fill at the first minute at or after the
+    bar's END (label + `bar_width`), never inside the bar whose close produced them.
+    `bar_width` defaults to the smallest spacing between signal bars.
     """
     value_per_point = usd_per_point(spec, config.fx_rate)
     slip = config.slippage_ticks * config.tick_size
@@ -103,8 +109,39 @@ def simulate(strategy, minutes: pd.DataFrame, signal_bars: pd.DataFrame, spec: d
                          "net_usd": trade.net_usd, "r": trade.r})
         position = None
 
+    width = bar_width if bar_width is not None else _infer_width(signal_bars.index)
+
+    def resolve(scan_end: int) -> None:
+        """Check stops and targets on every unchecked minute before `scan_end`."""
+        if position is None:
+            return
+        # Advance the scan cursor: minutes already checked cannot trigger later, and re-scanning
+        # them makes a long hold quadratic in the number of bars it spans.
+        scan_start = position["scan_from"]
+        position["scan_from"] = max(scan_start, scan_end)
+        for i in range(scan_start, scan_end):
+            if position["side"] == "LONG":
+                if low_bid[i] <= position["stop"]:
+                    price = open_bid[i] if open_bid[i] < position["stop"] else position["stop"]
+                    close(i, price - slip, "STOP", holding_bar(i), _stop_why(position))
+                    return
+                if position["target"] is not None and high_bid[i] > position["target"]:
+                    close(i, position["target"], "TARGET", holding_bar(i), "target traded through")
+                    return
+            else:
+                if high_ask[i] >= position["stop"]:
+                    price = open_ask[i] if open_ask[i] > position["stop"] else position["stop"]
+                    close(i, price + slip, "STOP", holding_bar(i), _stop_why(position))
+                    return
+                if position["target"] is not None and low_ask[i] < position["target"]:
+                    close(i, position["target"], "TARGET", holding_bar(i), "target traded through")
+                    return
+
     for bar_index in range(len(signal_bars)):
-        bar_time = signal_bars.index[bar_index]
+        bar_end = signal_bars.index[bar_index] + width
+        fills = int(minute_index.searchsorted(bar_end, side="left"))
+        resolve(fills)                 # the bar's own minutes, before its close is acted on
+
         view = PositionView.flat() if position is None else PositionView(
             side=position["side"], entry_price=position["entry_price"], stop=position["stop"],
             target=position["target"], size=position["size"])
@@ -120,7 +157,6 @@ def simulate(strategy, minutes: pd.DataFrame, signal_bars: pd.DataFrame, spec: d
             entry["intents"] = [_describe(intent) for intent in intents]
 
         for intent in intents:
-            fills = minute_index.searchsorted(bar_time, side="right")
             if isinstance(intent, Enter) and position is None:
                 if fills >= len(minute_index):
                     note(bar_index, {"kind": "entry_skipped", "why": "no minute left to fill on"})
@@ -153,35 +189,15 @@ def simulate(strategy, minutes: pd.DataFrame, signal_bars: pd.DataFrame, spec: d
                 price = (open_bid[fills] - slip) if position["side"] == "LONG" else (open_ask[fills] + slip)
                 close(int(fills), price, "SIGNAL", bar_index, intent.why)
 
-        if position is None:
-            continue
-
-        next_bar_time = signal_bars.index[bar_index + 1] if bar_index + 1 < len(signal_bars) else None
-        scan_end = len(minute_index) if next_bar_time is None else int(
-            minute_index.searchsorted(next_bar_time, side="right"))
-        # Advance the scan cursor: minutes already checked cannot trigger later, and re-scanning
-        # them makes a long hold quadratic in the number of bars it spans.
-        scan_start = position["scan_from"]
-        position["scan_from"] = max(scan_start, scan_end)
-        for i in range(scan_start, scan_end):
-            if position["side"] == "LONG":
-                if low_bid[i] <= position["stop"]:
-                    price = open_bid[i] if open_bid[i] < position["stop"] else position["stop"]
-                    close(i, price - slip, "STOP", holding_bar(i), _stop_why(position))
-                    break
-                if position["target"] is not None and high_bid[i] > position["target"]:
-                    close(i, position["target"], "TARGET", holding_bar(i), "target traded through")
-                    break
-            else:
-                if high_ask[i] >= position["stop"]:
-                    price = open_ask[i] if open_ask[i] > position["stop"] else position["stop"]
-                    close(i, price + slip, "STOP", holding_bar(i), _stop_why(position))
-                    break
-                if position["target"] is not None and low_ask[i] < position["target"]:
-                    close(i, position["target"], "TARGET", holding_bar(i), "target traded through")
-                    break
+    resolve(len(minute_index))         # a position still open after the last bar
 
     return trades, skipped
+
+
+def _infer_width(index: pd.DatetimeIndex) -> pd.Timedelta:
+    if len(index) < 2:
+        return pd.Timedelta(minutes=1)
+    return pd.Series(index[1:] - index[:-1]).min()
 
 
 def _describe(intent) -> dict:
