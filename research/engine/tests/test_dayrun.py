@@ -44,9 +44,10 @@ def test_a_non_session_date_is_refused():
 
 def test_the_reserved_period_can_never_be_loaded():
     assert data_cutoff(dt.date(2024, 1, 11)) == pd.Timestamp("2024-01-21T21:00Z")
-    assert data_cutoff(dt.date(2026, 7, 29)) < RESERVED_FROM
+    assert RESERVED_FROM == pd.Timestamp("2026-02-01T00:00Z")      # owner's decision, 2026-09-25
+    assert data_cutoff(dt.date(2026, 1, 28)) < RESERVED_FROM         # forward data is clipped
     with pytest.raises(ReservedDataError):
-        data_cutoff(dt.date(2026, 8, 3))
+        data_cutoff(dt.date(2026, 2, 2))
 
 
 def test_fingerprint_changes_with_any_price():

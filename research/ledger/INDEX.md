@@ -122,3 +122,12 @@ effect is in both directions and changes no conclusion. E.g. 5m symmetric −0.2
 **Every figure above from a resampled-bar run through the simulator (H-0005 … H-0009 exit and
 economics work) was produced with the early fill.** Layer-1 signal studies that used forward
 returns rather than the simulator are unaffected. The statuses stand; the exact numbers do not.
+
+## Holdout moved — 2026-09-25: test data is US500 from 2026-02-01
+
+Owner's decision. The review loop (docs/superpowers/plans/2026-09-25-us500-day-review-loop.md)
+develops day by day from 2024-01-11. Everything from 2026-02-01 is held for evaluating a frozen
+candidate. Feb–Jul 2026 sat inside the development window of every hypothesis above, so it is
+*not* untouched for those strategies. The owner accepted it as test data because the day-by-day
+strategy will differ materially by the time it is evaluated. Any future evaluation report must
+state this.

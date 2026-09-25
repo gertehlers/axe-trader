@@ -31,7 +31,11 @@ from engine.explain import explain_bar
 from engine.pillars import PillarConfig
 from engine.simulator import SimConfig, simulate
 
-RESERVED_FROM = pd.Timestamp("2026-08-01T00:00Z")
+# Owner, 2026-09-25: everything from February 2026 is test data. Feb-Jul 2026 was development data
+# for the pre-review research (H-0001..H-0009) and for aggregate v001/v002 runs on 2026-09-25, so it
+# is not pristine; the owner accepted that because the day-by-day review will have reshaped the
+# strategy long before it gets there. Aug 2026 onward was seen only in aggregate on 2026-09-25.
+RESERVED_FROM = pd.Timestamp("2026-02-01T00:00Z")
 # Enough forward data for a trade entered on the review day to close (weekends, holidays).
 FORWARD_DAYS = 10
 

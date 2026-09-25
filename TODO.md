@@ -23,8 +23,8 @@ text + §13 decisions). Branch `feat/confluence-exit-matrix`, pushed per commit.
   append-only `*_revisions/` copy; my answers → `explanations/`; "please grade" → `requests/`.
 - Storage round trip proven on https://claude.ai/artifact/Pijcec2z7Xx5TEhUNRg8nU; owner's first two
   grades exported to `research/review/feedback/2024-01-11/roundtrip-001.json`.
-- **Session 1 = 2024-01-11** (first day both 5m and 15m are warmed up). Reserved, never reviewed:
-  US500 2026-08-01 onward (`engine.dayrun.RESERVED_FROM`).
+- **Session 1 = 2024-01-11** (first day both 5m and 15m are warmed up). Test data, never reviewed:
+  US500 **2026-02-01 onward** (owner, 2026-09-25; `engine.dayrun.RESERVED_FROM`).
 
 **Engine correction found this session (ledger INDEX note):** the simulator filled intents inside
 the signal bar (at label + 1 minute), up to timeframe−1 minutes before the signal existed. Fixed in
@@ -43,7 +43,8 @@ Rebuild: `build_day.py --day 2024-01-11 --strategy v002 --compare v001 --feedbac
 **Reserved-period breach (2026-09-25):** full-history `engine.run` calls earlier this session loaded
 US500 through 2026-09-17, i.e. into the reserved period, and aggregate results were printed. No rule
 was chosen from them; `engine.run` now excludes it by default (`--include-reserved` to override).
-Owner to decide whether the reserved start moves.
+Owner's decision: test data starts 2026-02-01. Feb–Jul 2026 was old development data, and the
+owner accepted that knowingly.
 
 **Iteration 002 (2024-01-11):** v002 exit graded good ("exactly what I meant"); entry still bad; the
 owner's better-entry mark at 17:40 had 0/3 votes (momentum turn: not represented). **v002 accepted

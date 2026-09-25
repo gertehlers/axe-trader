@@ -264,6 +264,11 @@ The first milestone is accepted when I can review a complete day, save feedback,
   - So 2024-01-11 is the first session where both timeframes are warmed up. Session 1 = **2024-01-11**, and sessions 2024-01-02…10 are recorded as warm-up exclusions.
 - **Untouched evaluation period:** all 13 experiment scripts restrict US500 to development data up to 2026-07-31 and name 2026-08-01+ as the holdout. The one script that reads the holdout (`2026-09-19-confluence-direction.py`) is OIL_CRUDE only.
   - The reserved period is therefore **US500 2026-08-01 → 2026-09-17**, plus anything imported later.
+  - **Superseded by the owner, 2026-09-25: test data is everything from 2026-02-01.** Feb–Jul 2026 was
+    development data for H-0001…H-0009 and for aggregate v001/v002 runs, so it is not pristine. The
+    owner accepted that because the day-by-day review will have reshaped the strategy long before it
+    reaches 2026. Aug–Sep 2026 was seen only in aggregate on 2026-09-25, with no rule chosen from it.
+    Enforced by `engine.dayrun.RESERVED_FROM`, which `engine.run` also honours.
   - I'll write it into a `research/rounds/RESERVED.md`-style record before the first run. Review sessions must never enter it.
 - **US500 volume is Capital.com `last_traded_volume`, a per-minute count of quote updates** (e.g. 60–130 per minute at the open), not exchange volume.
   - The existing Vol+Trend pillar and any VWAP or relative volume are **tick-activity weighted**, and the UI labels them that way.
