@@ -66,6 +66,10 @@ textarea{font:inherit;font-size:.88rem;width:100%;min-height:54px;padding:8px;bo
 .save{font:inherit;font-weight:600;font-size:.9rem;padding:7px 16px;border-radius:4px;border:0;background:var(--ink);color:var(--surface);cursor:pointer}
 .save:disabled{opacity:.45;cursor:not-allowed}
 .saved{font-size:.82rem;color:var(--muted)}
+.reply{border-left:3px solid var(--accent);background:var(--accent-soft);padding:10px 12px;border-radius:0 4px 4px 0;display:grid;gap:6px;font-size:.88rem}
+.reply p{margin:0}
+.reply .eyebrow{color:var(--accent)}
+.reply .hind{color:var(--muted);font-style:italic}
 .log{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:16px;display:grid;gap:8px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -132,7 +136,8 @@ function explainCard(kind){
       <div class="scale" role="group" aria-label="Grade the ${kind}">${GRADES.map(g=>`<button type="button" id="${kind}-g-${g}" data-g="${g}" aria-pressed="false">${g}</button>`).join("")}</div>
       <textarea id="${kind}-reason" placeholder="Optional reason, e.g. too late, against structure, exit too sensitive"></textarea>
       <div class="row"><button class="save" id="${kind}-save" type="button" disabled>Save ${kind} grade</button><span class="saved" id="${kind}-saved">Not graded yet, so not reviewed</span></div>
-    </div>`;
+    </div>
+    <div class="reply" id="${kind}-reply" hidden></div>`;
 }
 
 function drawChart(){
@@ -195,6 +200,16 @@ async function start(){
       const box = document.getElementById(`${kind}-reason`); if(document.activeElement!==box) box.value = d.reason||"";
       saved.textContent = `Saved ${fmt(d.saved_at)} UTC: ${d.grade}${snap.metadata.hasPendingWrites?" (confirming…)":""}`;
     }, err=>{ saved.textContent = "Could not load the saved grade ("+err.code+")"; });
+    db.doc(`explanations/${keyFor(kind)}`).onSnapshot(snap=>{
+      const box = document.getElementById(`${kind}-reply`);
+      if(!snap.exists){ box.hidden = true; return; }
+      const d = snap.data(), esc = t => String(t).replace(/</g,"&lt;");
+      box.innerHTML = `<div class="eyebrow">Claude's answer to your "${esc(d.answers_grade)}${d.answers_reason?": "+esc(d.answers_reason):""}"</div>`
+        + (d.recorded||[]).map(t=>`<p>${esc(t)}</p>`).join("")
+        + (d.hindsight||[]).map(t=>`<p class="hind">Hindsight, not available at the time: ${esc(t)}</p>`).join("")
+        + (d.classification?`<p><strong>${esc(d.classification)}</strong></p>`:"");
+      box.hidden = false;
+    }, ()=>{});
     document.getElementById(`${kind}-save`).addEventListener("click", async ev=>{
       const btn = ev.currentTarget; btn.disabled = true;
       const story = kind==="entry"?DATA.entry_explain:DATA.exit_explain;
