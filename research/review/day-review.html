@@ -98,6 +98,16 @@ textarea{font:inherit;font-size:.86rem;width:100%;min-height:48px;padding:7px 8p
 .item:hover{background:var(--sunk)}
 .item .sub{grid-column:2/4;color:var(--muted);font-size:.78rem}
 .tfbadge{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.72rem;padding:1px 6px;border-radius:3px;background:var(--sunk);color:var(--muted)}
+.status{font-size:.72rem;padding:1px 7px;border-radius:3px;font-weight:600;white-space:nowrap}
+.st-unchanged{background:var(--sunk);color:var(--muted)}
+.st-exit_changed,.st-moved{background:var(--accent-soft);color:var(--accent)}
+.st-removed{background:var(--warn-soft);color:var(--warn)}
+.st-new{background:var(--sel);color:var(--mark)}
+.score{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:6px 14px;font-size:.84rem}
+.score div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid var(--grid);padding-block:3px}
+.item.cmp{grid-template-columns:1fr}
+.cmp{display:grid;gap:2px;padding:8px 4px;border-bottom:1px solid var(--grid);font-size:.84rem}
+.cmp .line{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline}
 .foot{font-size:.78rem;color:var(--muted);display:grid;gap:4px}
 .foot code{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.74rem;word-break:break-all}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -124,6 +134,8 @@ textarea{font:inherit;font-size:.86rem;width:100%;min-height:48px;padding:7px 8p
       <button type="button" id="zoom-day">Review day</button>
       <button type="button" id="zoom-cash">Cash session</button>
       <button type="button" id="zoom-all">All</button></span></div>
+    <div id="cmp-toggle-wrap" hidden><span class="label">Compare</span><span class="seg">
+      <button type="button" id="cmp-toggle" aria-pressed="true">Show parent</button></span></div>
   </div>
 
   <div class="charts">
@@ -141,6 +153,7 @@ textarea{font:inherit;font-size:.86rem;width:100%;min-height:48px;padding:7px 8p
   <div class="lower">
     <article class="card" id="panel" aria-live="polite"><p class="empty">Select a candle, a trade marker or a mark on either chart.</p></article>
     <div style="display:grid;gap:14px">
+      <section class="card" id="cmp-card" hidden><h2 id="cmp-title">Before / after</h2><div id="cmp"></div></section>
       <section class="card"><h2>Trades on this day</h2><div class="list" id="trades"></div></section>
       <section class="card"><h2>Your feedback</h2><div class="list" id="feedback"></div></section>
     </div>
@@ -172,7 +185,7 @@ const fmtNum = (v, d = 2) => v === null || v === undefined ? "–" : (typeof v =
 
 // ---------- state ----------
 const state = {
-  arm: "confluence", mode: "inspect", view: null, selected: null, pending: null, editing: false,
+  arm: "confluence", mode: "inspect", view: null, selected: null, pending: null, editing: false, ghost: true,
   feedback: new Map(), marks: new Map(), explanations: new Map(), requests: new Map(), db: null,
 };
 try { const a = localStorage.getItem("dayreview.arm"); if (a && D.strategy.arms[a]) state.arm = a; } catch (e) {}
@@ -197,7 +210,13 @@ state.view = dayView.slice();
 // ---------- header ----------
 const dayLabel = NYDAY.format(new Date(cashOpen)) + " " + new Date(cashOpen).getUTCFullYear();
 document.getElementById("title").textContent = dayLabel;
-document.getElementById("eyebrow").textContent = `${D.epic} · review day · strategy ${D.strategy.version}`;
+document.getElementById("eyebrow").textContent = `${D.epic} · review day · strategy ${D.strategy.version}` + (D.compare ? ` compared with ${D.compare.parent}` : "");
+const CMP = D.compare;
+if (CMP) {
+  document.getElementById("cmp-toggle-wrap").hidden = false;
+  document.getElementById("cmp-toggle").textContent = `Show ${CMP.parent}`;
+  document.getElementById("cmp-toggle").onclick = e => { state.ghost = !state.ghost; e.currentTarget.setAttribute("aria-pressed", String(state.ghost)); drawAll(); };
+}
 document.getElementById("meta").innerHTML = [
   `Cash session ${ny(cashOpen)}–${ny(cashClose)} New York (${utc(cashOpen).slice(11)}–${utc(cashClose).slice(11)} UTC)${D.session.early_close ? " · early close" : ""}`,
   `Review day ${utcShort(winStart)} → ${utcShort(winEnd)} UTC`,
@@ -328,6 +347,18 @@ function drawChart(tf) {
   ctx.strokeStyle = css("--muted"); ctx.setLineDash([2, 3]);
   [mid - thr * unit, mid + thr * unit].forEach(y => { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w - axisW, y); ctx.stroke(); });
   ctx.setLineDash([]);
+  // parent version's trades, faded, underneath
+  if (CMP && state.ghost) {
+    const pa = (CMP.timeframes[tf] || {})[state.arm];
+    (pa ? pa.parent_trades : []).forEach(t => {
+      const xe = X(slotOf(Date.parse(t.entry_time))), xx = X(slotOf(Date.parse(t.exit_time)));
+      ctx.strokeStyle = css("--muted"); ctx.globalAlpha = 0.55; ctx.setLineDash([2, 4]);
+      ctx.beginPath(); ctx.moveTo(xe, Y(t.entry_price)); ctx.lineTo(xx, Y(t.exit_price)); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(xe, Y(t.entry_price), 4, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(xx, Y(t.exit_price), 4, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    });
+  }
   // trades
   ch.hits = [];
   armData(tf).trades.forEach(t => {
@@ -649,14 +680,58 @@ function focusOn(a, b) {
   if (s0 < v0 || s1 > v1) { const pad = Math.max(12, (s1 - s0) * 0.2); state.view = [s0 - pad, s1 + pad]; }
 }
 
+// ---------- before / after ----------
+const STATUS_LABEL = {unchanged: "unchanged", exit_changed: "exit changed", moved: "entry moved", removed: "removed", new: "new"};
+function tradeLine(t, label) {
+  if (!t) return "";
+  return `<span class="muted">${label}</span> <span class="${t.side === "LONG" ? "side-long" : "side-short"}">${t.side}</span> <span class="mono">${utcShort(t.entry_time)} → ${utcShort(t.exit_time)} ${t.exit_reason} ${t.r >= 0 ? "+" : ""}${t.r} R</span>`;
+}
+function renderCompare() {
+  if (!CMP) return;
+  document.getElementById("cmp-card").hidden = false;
+  document.getElementById("cmp-title").textContent = `Before / after: ${CMP.parent} → ${D.strategy.version} (${ARM_LABEL[state.arm]})`;
+  const reg = Object.values(CMP.regression || {});
+  const regLine = reg.length ? (reg.every(x => x.trades_identical)
+    ? `<p class="hint">Regression check: rerunning ${CMP.parent} on today's engine gives exactly the trades you reviewed, so your grades still apply to them.</p>`
+    : `<p class="flag">Regression check failed: ${CMP.parent} no longer reproduces the run you reviewed.</p>`) : "";
+  const html = TFS.map(tf => {
+    const c = (CMP.timeframes[tf] || {})[state.arm]; if (!c) return "";
+    const sc = c.scorecard, childById = Object.fromEntries(armData(tf).trades.map(t => [t.id, t]));
+    const parentById = Object.fromEntries(c.parent_trades.map(t => [t.id, t]));
+    const g = (id, d) => c.parent_grades[`${id}--${d}`];
+    const rows = c.rows.map(r => {
+      const p = parentById[r.parent], ch = r.child ? childById[r.child] : r.child_outside;
+      const grades = p ? ` <span class="hint">you graded: entry ${g(p.id, "entry") || "–"} · exit ${g(p.id, "exit") || "–"}</span>` : "";
+      return `<button type="button" class="item cmp" ${r.child ? `data-trade="${esc(r.child)}"` : ""} data-focus="${esc((p || ch).entry_time)}|${esc((ch || p).exit_time)}">
+        <div class="line"><span class="status st-${r.status}">${STATUS_LABEL[r.status]}</span><span class="tfbadge">${tf}</span>${grades}</div>
+        <div class="line">${tradeLine(p, CMP.parent)}</div>
+        <div class="line">${tradeLine(ch, D.strategy.version)}${ch && ch.outside_day ? ` <span class="hint">(exits before this review day)</span>` : ""}${r.status === "new" || r.status === "moved" ? ` <span class="flag">not graded</span>` : ""}</div></button>`;
+    }).join("");
+    if (!c.rows.length) return `<p class="hint">${tf}: no trades in either version.</p>`;
+    return `<div class="score">
+        <div><span>Trades</span><span class="mono">${sc.trades_before} → ${sc.trades_after}</span></div>
+        <div><span>Total R</span><span class="mono">${sc.r_before} → ${sc.r_after}</span></div>
+        <div><span>Your bad exits changed</span><span class="mono">${sc.bad_exits_changed} of ${sc.bad_exits_changed + sc.bad_exits_unchanged}</span></div>
+        <div><span>Bad entries removed</span><span class="mono">${sc.bad_entries_removed}</span></div>
+        <div><span>Good entries kept / lost</span><span class="mono">${sc.good_entries_kept} / ${sc.good_entries_lost}</span></div>
+        <div><span>Marked moves caught</span><span class="mono">${sc.moves_caught_before} → ${sc.moves_caught_after} of ${sc.moves}</span></div>
+      </div><div class="list">${rows}</div>`;
+  }).join("");
+  document.getElementById("cmp").innerHTML = regLine + html + `<p class="hint">Matching: same side and entry minute = same trade; same side within ${CMP.tolerance.moved_within_bars} bars = moved. A marked move counts as caught if a trade in its direction entered from ${CMP.tolerance.caught_from_bars_before} bars before it started to ${Math.round(CMP.tolerance.caught_until_share_of_move * 100)}% of the way through. Your grades stay on the ${CMP.parent} trades; changed or new trades are ungraded until you review them.</p>`;
+}
+document.getElementById("cmp").addEventListener("click", e => {
+  const b = e.target.closest("[data-focus]"); if (!b || b.dataset.trade) return;
+  const [a, z] = b.dataset.focus.split("|"); focusOn(Date.parse(a), Date.parse(z)); drawAll();
+});
+
 // ---------- footer ----------
 document.getElementById("foot").innerHTML = `<div>Strategy ${esc(D.strategy.version)} (<code>${esc(D.strategy.sha256.slice(0, 12))}</code>) · engine <code>${esc(D.engine.commit)}</code>${D.engine.dirty ? " (uncommitted changes)" : ""} · built ${esc(D.built)}</div>
   <div>Runs: ${D.run_ids.map(r => `<code>${esc(r)}</code>`).join(" · ")}</div>
   <div>Fills: 1-minute bid/ask at the first minute after the signal bar closes; stops checked minute by minute. Everything shown is engine output; "hindsight" figures are what happened after the decision and were not available to it.</div>`;
 
-function renderAll() { state.editing = false; drawAll(); renderPanel(); renderLists(); }
+function renderAll() { state.editing = false; drawAll(); renderPanel(); renderLists(); renderCompare(); }
 // A live update must not wipe a grade or mark the viewer is part-way through.
-function refreshFromStore() { drawAll(); renderLists(); if (!state.editing) renderPanel(); }
+function refreshFromStore() { drawAll(); renderLists(); renderCompare(); if (!state.editing) renderPanel(); }
 const panelEl = document.getElementById("panel");
 panelEl.addEventListener("input", () => { state.editing = true; });
 panelEl.addEventListener("click", e => { if (e.target.closest(".scale button,.tags button")) state.editing = true;
