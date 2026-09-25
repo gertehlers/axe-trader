@@ -1,0 +1,17 @@
+{
+  "arm": "confluence",
+  "bar_time": "2024-01-15T02:20:00.000Z",
+  "decision": "exit",
+  "grade": "bad",
+  "reasons": [
+    "too late"
+  ],
+  "revision_of": null,
+  "run_id": "us500-5min-v001-confluence-2024-01-11-085ef2a095",
+  "saved_at": "2026-09-25T06:34:06.153Z",
+  "session": "2024-01-11",
+  "strategy": "v001",
+  "text": "The confluence reason for the exit makes sense, and we got lucky with some money. But again a run was missed, we could done a Take Profit here at around 4790",
+  "timeframe": "5min",
+  "trade_id": "us500-5min-v001-confluence-2024-01-11-085ef2a095--T20240111T2025-LONG"
+}

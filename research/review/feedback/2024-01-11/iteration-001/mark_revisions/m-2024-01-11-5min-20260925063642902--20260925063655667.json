@@ -1,0 +1,21 @@
+{
+  "arm": "confluence",
+  "atr": 4.757,
+  "direction": "LONG",
+  "from_price": 4778.19,
+  "from_time": "2024-01-11T14:05:00.000Z",
+  "id": "m-2024-01-11-5min-20260925063642902",
+  "kind": "missed_move",
+  "minutes": 30,
+  "points": 14.84,
+  "revision_of": "2026-09-25T06:36:42.902Z",
+  "run_id": "us500-5min-v001-confluence-2024-01-11-085ef2a095",
+  "saved_at": "2026-09-25T06:36:55.667Z",
+  "session": "2024-01-11",
+  "status": "withdrawn",
+  "strategy": "v001",
+  "text": "",
+  "tf": "5min",
+  "to_price": 4793.03,
+  "to_time": "2024-01-11T14:35:00.000Z"
+}

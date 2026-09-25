@@ -1,0 +1,20 @@
+{
+  "arm": "confluence",
+  "atr": 4.309,
+  "direction": "SHORT",
+  "from_price": 4798.03,
+  "from_time": "2024-01-12T14:50:00.000Z",
+  "id": "m-2024-01-11-5min-20260925063519445",
+  "kind": "missed_move",
+  "minutes": 70,
+  "points": 25.5,
+  "run_id": "us500-5min-v001-confluence-2024-01-11-085ef2a095",
+  "saved_at": "2026-09-25T06:35:19.445Z",
+  "session": "2024-01-11",
+  "status": "active",
+  "strategy": "v001",
+  "text": "same as the LONG just before, clear indicators that a reversal might take place and missed it",
+  "tf": "5min",
+  "to_price": 4772.53,
+  "to_time": "2024-01-12T16:00:00.000Z"
+}

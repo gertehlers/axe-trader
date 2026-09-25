@@ -1,0 +1,17 @@
+{
+  "arm": "confluence",
+  "bar_time": "2024-01-11T16:45:00.000Z",
+  "decision": "exit",
+  "grade": "bad",
+  "reasons": [
+    "too late"
+  ],
+  "revision_of": null,
+  "run_id": "us500-5min-v001-confluence-2024-01-11-085ef2a095",
+  "saved_at": "2026-09-25T06:31:14.970Z",
+  "session": "2024-01-11",
+  "strategy": "v001",
+  "text": "we missed a Take Profit idea here. The reversal was good as a safety net, we did not lose too much, but could done a Take Profit around or just before 4800",
+  "timeframe": "5min",
+  "trade_id": "us500-5min-v001-confluence-2024-01-11-085ef2a095--T20240110T1135-LONG"
+}
