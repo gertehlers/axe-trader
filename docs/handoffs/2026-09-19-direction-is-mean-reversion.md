@@ -1,6 +1,8 @@
 ---
 date: 2026-09-19
-status: open
+status: closed
+closed: 2026-09-25
+resolution: Owner decided — change the question. Oil dropped; US500 day-by-day review loop per docs/superpowers/plans/2026-09-25-us500-day-review-loop.md
 branch: feat/confluence-exit-matrix
 head: 59b04e2
 next: Decide between acquiring 20-30 years of daily history and accepting that these grounds are untradeable — no hypothesis should be run before that call
