@@ -1,0 +1,219 @@
+<title>Grade Round Trip</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#F4F6F5; --surface:#FFFFFF; --ink:#18211E; --muted:#5A6863; --rule:#D9E0DD;
+  --accent:#0E6B60; --accent-soft:#DCEFEB; --long:#1C7F46; --short:#B83C27; --lit:#0E6B60;
+  --warn:#9A6400; --warn-soft:#FBF0DA; --ok-soft:#E2F2E8;
+  --candle-up:#1C7F46; --candle-down:#B83C27; --grid:#E6EBE9;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#101614; --surface:#18201E; --ink:#E2EAE7; --muted:#93A39D; --rule:#2B3633;
+    --accent:#56C2B0; --accent-soft:#17332E; --long:#4FC07F; --short:#EE7B63; --lit:#56C2B0;
+    --warn:#E3B04F; --warn-soft:#352A14; --ok-soft:#16301F;
+    --candle-up:#4FC07F; --candle-down:#EE7B63; --grid:#222C29;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#101614; --surface:#18201E; --ink:#E2EAE7; --muted:#93A39D; --rule:#2B3633;
+  --accent:#56C2B0; --accent-soft:#17332E; --long:#4FC07F; --short:#EE7B63; --lit:#56C2B0;
+  --warn:#E3B04F; --warn-soft:#352A14; --ok-soft:#16301F;
+  --candle-up:#4FC07F; --candle-down:#EE7B63; --grid:#222C29;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif;padding-inline:16px;padding-block:20px 48px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:18px}
+h1,h2{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;font-weight:600;margin:0;text-wrap:balance}
+h1{font-size:1.6rem;letter-spacing:-.01em}
+h2{font-size:1.1rem}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:end;gap:10px 24px}
+.eyebrow{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.status{font-size:.85rem;padding:4px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+.status.bad{background:var(--warn-soft);color:var(--warn)}
+.purpose{max-width:68ch;margin:0}
+.chart{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:10px}
+canvas{display:block;width:100%;height:260px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.8rem;color:var(--muted);margin-top:6px}
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:16px;display:grid;gap:12px;align-content:start}
+.head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.side-long{color:var(--long)} .side-short{color:var(--short)}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:2px 14px;font-size:.88rem;margin:0}
+.facts dt{color:var(--muted)} .facts dd{margin:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:.8rem;padding:3px 9px;border-radius:4px;border:1px solid var(--rule);color:var(--muted);background:transparent}
+.chip.on{background:var(--lit);border-color:var(--lit);color:var(--surface)}
+.verdict{font-size:.9rem}
+details{border-top:1px solid var(--rule);padding-top:8px}
+summary{cursor:pointer;font-size:.85rem;color:var(--accent)}
+summary:focus-visible,button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+table{border-collapse:collapse;width:100%;font-size:.8rem}
+.tablewrap{overflow-x:auto}
+td,th{padding:4px 6px;border-bottom:1px solid var(--grid);text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:500}
+.grade{display:grid;gap:8px;border-top:1px solid var(--rule);padding-top:12px}
+.scale{display:flex;flex-wrap:wrap;gap:6px}
+.scale button{font:inherit;font-size:.88rem;padding:6px 12px;border-radius:4px;border:1px solid var(--rule);background:var(--surface);color:var(--ink);cursor:pointer}
+.scale button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+textarea{font:inherit;font-size:.88rem;width:100%;min-height:54px;padding:8px;border-radius:4px;border:1px solid var(--rule);background:var(--ground);color:var(--ink);resize:vertical}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.save{font:inherit;font-weight:600;font-size:.9rem;padding:7px 16px;border-radius:4px;border:0;background:var(--ink);color:var(--surface);cursor:pointer}
+.save:disabled{opacity:.45;cursor:not-allowed}
+.saved{font-size:.82rem;color:var(--muted)}
+.log{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:16px;display:grid;gap:8px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">US500 · 5-minute · baseline v001 · confluence exit</div>
+      <h1>Grade round trip: 2024-01-11</h1>
+    </div>
+    <span id="dbstatus" class="status">Connecting to storage…</span>
+  </header>
+  <p class="purpose muted">A test of the storage the review page will use, before that page is built. Grade this trade's entry and exit, then save. Reload the page and check the grades are still there. I read them back from my side, then publish an explanation next to them.</p>
+
+  <section class="chart" aria-label="Session chart">
+    <canvas id="chart" width="1040" height="260"></canvas>
+    <div class="legend mono" id="legend"></div>
+  </section>
+
+  <div class="pair">
+    <article class="card" id="entry-card"></article>
+    <article class="card" id="exit-card"></article>
+  </div>
+
+  <section class="log">
+    <h2>Saved in the page's database</h2>
+    <p class="muted" style="margin:0;font-size:.85rem">Every save is kept as a revision. Nothing is overwritten.</p>
+    <div class="tablewrap"><table id="revisions"><thead><tr><th>Saved (UTC)</th><th>Decision</th><th>Grade</th><th>Reason</th></tr></thead><tbody></tbody></table></div>
+  </section>
+</div>
+
+<script>
+const DATA = {"run_id": "us500-5min-v001-confluence-2024-01-11-df8ac63", "session": {"date": "2024-01-11", "open": "2024-01-11T14:30:00+00:00", "close": "2024-01-11T21:00:00+00:00"}, "trade": {"id": "us500-5min-v001-confluence-2024-01-11-df8ac63--T20240111T2021-LONG", "side": "LONG", "entry_time": "2024-01-11T20:21:00+00:00", "entry_price": 4774.5, "exit_time": "2024-01-15T02:21:00+00:00", "exit_price": 4780.7, "exit_reason": "SIGNAL", "r": 0.047, "net_usd": 0.9}, "entry_bar": "70", "exit_bar": "405", "candles": [[1704983400, 4792.85, 4795.65, 4785.85, 4793.35], [1704983700, 4794.15, 4797.85, 4792.35, 4793.35], [1704984000, 4793.65, 4794.65, 4787.35, 4787.85], [1704984300, 4788.15, 4788.35, 4778.45, 4778.95], [1704984600, 4779.65, 4780.15, 4774.15, 4778.45], [1704984900, 4778.65, 4779.95, 4776.55, 4779.95], [1704985200, 4780.15, 4780.15, 4766.15, 4766.45], [1704985500, 4767.15, 4767.65, 4754.15, 4754.95], [1704985800, 4754.65, 4758.65, 4752.45, 4754.15], [1704986100, 4754.45, 4764.95, 4753.15, 4764.95], [1704986400, 4764.65, 4767.15, 4762.45, 4763.95], [1704986700, 4763.65, 4766.65, 4762.95, 4766.65], [1704987000, 4766.45, 4772.45, 4760.45, 4760.65], [1704987300, 4761.45, 4768.65, 4761.15, 4767.95], [1704987600, 4767.65, 4768.65, 4763.65, 4767.65], [1704987900, 4767.55, 4767.95, 4759.15, 4761.15], [1704988200, 4761.45, 4762.15, 4755.65, 4756.45], [1704988500, 4756.15, 4759.45, 4755.45, 4756.45], [1704988800, 4756.65, 4759.15, 4753.65, 4755.45], [1704989100, 4755.25, 4757.95, 4754.15, 4754.45], [1704989400, 4754.25, 4756.15, 4743.65, 4743.95], [1704989700, 4743.65, 4745.45, 4741.65, 4744.65], [1704990000, 4744.45, 4748.65, 4744.15, 4748.15], [1704990300, 4747.95, 4749.65, 4745.95, 4746.95], [1704990600, 4747.15, 4747.75, 4744.15, 4744.45], [1704990900, 4744.65, 4747.95, 4741.15, 4741.65], [1704991200, 4741.95, 4745.95, 4740.95, 4741.65], [1704991500, 4741.95, 4750.15, 4739.15, 4749.95], [1704991800, 4749.65, 4751.65, 4741.95, 4743.95], [1704992100, 4743.65, 4745.15, 4742.15, 4742.65], [1704992400, 4742.95, 4748.45, 4741.95, 4747.45], [1704992700, 4747.65, 4750.45, 4745.95, 4749.45], [1704993000, 4749.65, 4752.65, 4748.95, 4751.15], [1704993300, 4750.95, 4752.15, 4747.65, 4749.15], [1704993600, 4748.95, 4751.45, 4745.45, 4750.15], [1704993900, 4749.95, 4751.45, 4745.75, 4746.05], [1704994200, 4746.55, 4749.65, 4746.25, 4748.65], [1704994500, 4748.95, 4750.15, 4746.65, 4749.65], [1704994800, 4749.85, 4756.85, 4749.85, 4755.05], [1704995100, 4754.85, 4757.55, 4754.85, 4756.55], [1704995400, 4756.85, 4760.35, 4756.65, 4758.05], [1704995700, 4757.85, 4759.05, 4754.55, 4756.35], [1704996000, 4756.05, 4762.35, 4755.85, 4761.55], [1704996300, 4761.85, 4764.35, 4760.05, 4762.05], [1704996600, 4762.35, 4765.05, 4761.55, 4764.55], [1704996900, 4765.05, 4767.35, 4763.35, 4764.55], [1704997200, 4764.85, 4766.05, 4763.55, 4765.85], [1704997500, 4766.05, 4766.85, 4763.55, 4764.55], [1704997800, 4764.65, 4766.55, 4763.35, 4765.35], [1704998100, 4765.45, 4767.35, 4765.05, 4766.85], [1704998400, 4766.65, 4767.55, 4766.05, 4767.05], [1704998700, 4766.85, 4768.05, 4765.05, 4766.35], [1704999000, 4766.55, 4771.05, 4765.05, 4768.85], [1704999300, 4769.05, 4775.35, 4768.85, 4774.85], [1704999600, 4775.05, 4778.05, 4774.35, 4775.05], [1704999900, 4775.35, 4775.85, 4770.65, 4770.85], [1705000200, 4771.05, 4776.55, 4770.85, 4776.05], [1705000500, 4775.85, 4777.05, 4773.35, 4773.55], [1705000800, 4773.85, 4775.95, 4771.55, 4772.55], [1705001100, 4772.85, 4779.55, 4772.45, 4778.35], [1705001400, 4778.55, 4780.35, 4776.55, 4778.05], [1705001700, 4778.35, 4779.55, 4777.35, 4778.85], [1705002000, 4779.05, 4781.55, 4777.85, 4778.05], [1705002300, 4778.45, 4781.05, 4777.85, 4780.35], [1705002600, 4780.55, 4783.85, 4780.55, 4783.35], [1705002900, 4783.05, 4787.05, 4782.85, 4785.55], [1705003200, 4785.85, 4786.05, 4779.35, 4780.55], [1705003500, 4780.85, 4780.85, 4776.85, 4777.85], [1705003800, 4778.05, 4779.05, 4772.85, 4778.05], [1705004100, 4777.85, 4777.85, 4772.05, 4775.05], [1705004400, 4775.55, 4778.45, 4773.95, 4776.45], [1705004700, 4776.15, 4780.15, 4775.45, 4775.65], [1705005000, 4775.45, 4779.45, 4775.45, 4779.15], [1705005300, 4778.95, 4778.95, 4773.65, 4775.15], [1705005600, 4775.05, 4777.15, 4773.65, 4775.65], [1705005900, 4775.55, 4779.45, 4773.95, 4777.45], [1705006200, 4777.65, 4778.45, 4772.45, 4778.15], [1705006500, 4778.05, 4784.15, 4777.95, 4780.65], [1705006800, 4780.25, 4780.5, 4778.5, 4779.0], [1705007100, 4778.7, 4780.0, 4778.5, 4779.7], [1705007400, 4780.0, 4780.2, 4779.2, 4779.5], [1705007700, 4779.2, 4780.0, 4779.2, 4779.2], [1705008000, 4779.1, 4779.4, 4778.2, 4778.5], [1705008300, 4778.7, 4778.7, 4778.2, 4778.2], [1705008600, 4778.5, 4778.6, 4777.5, 4777.5], [1705008900, 4777.6, 4778.0, 4777.2, 4777.2], [1705009200, 4777.1, 4777.5, 4777.0, 4777.5], [1705009500, 4777.4, 4777.4, 4776.7, 4777.0], [1705009800, 4776.7, 4776.7, 4776.2, 4776.5], [1705010100, 4776.6, 4777.55, 4776.5, 4777.25], [1705014000, 4776.3, 4776.3, 4774.8, 4775.3], [1705014300, 4775.5, 4776.8, 4775.3, 4776.8], [1705014600, 4777.0, 4777.3, 4776.6, 4776.8], [1705014900, 4777.0, 4777.8, 4776.6, 4777.3], [1705015200, 4777.2, 4777.6, 4777.1, 4777.3], [1705015500, 4777.5, 4779.3, 4777.5, 4778.8], [1705015800, 4779.0, 4779.1, 4777.6, 4777.8], [1705016100, 4777.7, 4777.7, 4775.1, 4775.1], [1705016400, 4775.2, 4775.8, 4774.8, 4775.1], [1705016700, 4775.2, 4776.6, 4775.1, 4776.1], [1705017000, 4776.2, 4776.8, 4775.8, 4776.8], [1705017300, 4776.6, 4777.8, 4776.6, 4776.8], [1705017600, 4777.3, 4778.8, 4777.3, 4778.6], [1705017900, 4778.5, 4778.5, 4776.8, 4777.6], [1705018200, 4777.7, 4777.8, 4776.3, 4776.6], [1705018500, 4776.7, 4778.1, 4776.5, 4778.1], [1705018800, 4777.8, 4779.1, 4777.6, 4778.8], [1705019100, 4778.6, 4778.6, 4776.3, 4776.3], [1705019400, 4776.5, 4776.8, 4775.1, 4775.3], [1705019700, 4775.5, 4776.6, 4775.3, 4775.6], [1705020000, 4775.5, 4775.5, 4774.1, 4774.6], [1705020300, 4774.7, 4775.8, 4774.3, 4775.1], [1705020600, 4774.8, 4774.8, 4772.3, 4772.6], [1705020900, 4772.5, 4772.7, 4770.8, 4771.8], [1705021200, 4771.6, 4771.8, 4770.1, 4770.3], [1705021500, 4770.1, 4771.6, 4769.3, 4770.6], [1705021800, 4770.5, 4770.6, 4769.6, 4769.6], [1705022100, 4769.7, 4770.6, 4769.3, 4770.6], [1705022400, 4770.3, 4770.6, 4769.6, 4769.8], [1705022700, 4770.1, 4770.6, 4769.8, 4770.6], [1705023000, 4770.3, 4770.6, 4769.6, 4770.1], [1705023300, 4770.2, 4772.1, 4770.2, 4771.3], [1705023600, 4771.6, 4773.3, 4771.3, 4773.3], [1705023900, 4773.2, 4773.8, 4772.6, 4773.6], [1705024200, 4773.7, 4774.1, 4773.1, 4773.5], [1705024500, 4773.7, 4773.7, 4773.0, 4773.5], [1705024800, 4773.7, 4774.7, 4773.5, 4774.2], [1705025100, 4774.1, 4774.2, 4773.5, 4773.7], [1705025400, 4773.5, 4775.2, 4773.2, 4775.2], [1705025700, 4775.5, 4775.5, 4773.7, 4774.7], [1705026000, 4774.9, 4776.0, 4774.7, 4776.0], [1705026300, 4775.9, 4776.2, 4775.5, 4776.0], [1705026600, 4776.1, 4776.2, 4775.5, 4775.5], [1705026900, 4775.6, 4775.7, 4775.2, 4775.5], [1705027200, 4775.6, 4776.2, 4775.5, 4776.2], [1705027500, 4776.4, 4778.0, 4776.4, 4777.7], [1705027800, 4777.5, 4777.7, 4777.0, 4777.7], [1705028100, 4777.6, 4777.6, 4776.7, 4777.0], [1705028400, 4777.1, 4777.1, 4776.0, 4776.0], [1705028700, 4776.2, 4776.2, 4775.7, 4776.0], [1705029000, 4776.1, 4776.2, 4775.7, 4776.0], [1705029300, 4775.9, 4776.5, 4775.7, 4776.5], [1705029600, 4776.6, 4777.0, 4776.5, 4777.0], [1705029900, 4776.9, 4777.5, 4776.7, 4777.0], [1705030200, 4776.7, 4777.5, 4776.7, 4777.5], [1705030500, 4777.4, 4777.5, 4776.7, 4776.7], [1705030800, 4776.5, 4776.7, 4776.5, 4776.5], [1705031100, 4776.6, 4776.7, 4776.5, 4776.5], [1705031400, 4776.6, 4776.7, 4776.5, 4776.5], [1705032000, 4776.0, 4776.0, 4774.2, 4774.5], [1705032300, 4774.2, 4774.7, 4774.2, 4774.2], [1705032600, 4774.0, 4775.0, 4773.7, 4774.7], [1705032900, 4774.6, 4774.6, 4772.7, 4772.7], [1705033200, 4773.0, 4773.2, 4772.2, 4772.5], [1705033500, 4772.2, 4772.2, 4770.7, 4771.2], [1705033800, 4771.4, 4771.5, 4771.0, 4771.2], [1705034100, 4771.4, 4772.7, 4771.2, 4772.7], [1705034400, 4772.9, 4773.2, 4772.5, 4773.0], [1705034700, 4772.7, 4773.5, 4772.7, 4773.2], [1705035000, 4773.1, 4773.5, 4773.0, 4773.2], [1705035300, 4773.1, 4774.0, 4773.0, 4774.0], [1705035600, 4773.9, 4775.0, 4773.7, 4774.5], [1705035900, 4774.7, 4775.6, 4774.5, 4775.5], [1705036200, 4775.6, 4776.5, 4773.7, 4773.9], [1705036500, 4774.0, 4775.2, 4773.7, 4774.5], [1705036800, 4774.7, 4774.9, 4774.0, 4774.7], [1705037100, 4774.9, 4775.2, 4774.7, 4775.2], [1705037400, 4775.0, 4775.5, 4775.0, 4775.0], [1705037700, 4775.2, 4775.5, 4775.0, 4775.0], [1705038000, 4774.9, 4774.9, 4773.7, 4773.7], [1705038300, 4774.0, 4774.2, 4773.5, 4774.2], [1705038600, 4774.1, 4774.5, 4774.0, 4774.5], [1705038900, 4774.4, 4774.5, 4773.2, 4773.2], [1705039200, 4773.5, 4774.2, 4773.0, 4774.0], [1705039500, 4774.1, 4774.7, 4773.5, 4774.0], [1705039800, 4774.2, 4774.5, 4773.5, 4774.5], [1705040100, 4774.4, 4774.5, 4774.1, 4774.4], [1705040400, 4774.2, 4775.2, 4774.2, 4775.2], [1705040700, 4775.1, 4775.5, 4774.5, 4775.2], [1705041000, 4775.4, 4775.9, 4775.2, 4775.5], [1705041300, 4775.4, 4775.4, 4774.0, 4774.2], [1705041600, 4774.0, 4775.5, 4773.7, 4775.2], [1705041900, 4775.0, 4775.0, 4774.0, 4774.7], [1705042200, 4774.9, 4776.0, 4774.7, 4775.4], [1705042500, 4775.5, 4776.7, 4775.2, 4776.5], [1705042800, 4776.7, 4777.5, 4773.0, 4773.0], [1705043100, 4773.2, 4774.7, 4772.2, 4772.7], [1705043400, 4772.9, 4774.0, 4772.5, 4773.0], [1705043700, 4773.1, 4775.7, 4772.7, 4775.5], [1705044000, 4775.6, 4776.0, 4773.5, 4773.7], [1705044300, 4773.9, 4774.0, 4771.7, 4772.0], [1705044600, 4772.2, 4773.0, 4771.5, 4771.5], [1705044900, 4771.4, 4771.7, 4769.7, 4769.7], [1705045200, 4769.9, 4770.2, 4769.0, 4769.2], [1705045500, 4769.5, 4769.7, 4768.0, 4768.0], [1705045800, 4768.2, 4769.2, 4767.5, 4768.7], [1705046100, 4769.0, 4769.7, 4768.0, 4768.2], [1705046400, 4768.1, 4771.2, 4768.1, 4771.0], [1705046700, 4770.7, 4776.5, 4770.7, 4776.2], [1705047000, 4776.5, 4778.2, 4776.0, 4778.2], [1705047300, 4778.1, 4779.2, 4777.5, 4778.7], [1705047600, 4778.6, 4782.2, 4777.2, 4782.2], [1705047900, 4782.1, 4782.7, 4781.5, 4782.2], [1705048200, 4782.5, 4785.7, 4780.5, 4785.4], [1705048500, 4785.5, 4785.5, 4781.2, 4782.6], [1705048800, 4782.7, 4782.7, 4780.0, 4781.0], [1705049100, 4780.7, 4781.2, 4778.0, 4778.5], [1705049400, 4778.7, 4783.0, 4778.5, 4782.2], [1705049700, 4782.4, 4783.9, 4781.2, 4783.7], [1705050000, 4783.5, 4784.5, 4782.2, 4784.0], [1705050300, 4784.1, 4785.5, 4782.9, 4785.0], [1705050600, 4784.9, 4787.7, 4784.2, 4787.0], [1705050900, 4787.2, 4787.6, 4784.2, 4784.2], [1705051200, 4784.5, 4784.5, 4781.2, 4781.2], [1705051500, 4781.1, 4783.2, 4780.2, 4782.7], [1705051800, 4782.9, 4785.7, 4782.7, 4784.2], [1705052100, 4784.4, 4785.5, 4781.6, 4781.7], [1705052400, 4782.0, 4782.5, 4780.7, 4782.2], [1705052700, 4782.7, 4782.7, 4780.0, 4781.4], [1705053000, 4781.2, 4783.0, 4779.5, 4779.7], [1705053300, 4779.6, 4780.1, 4778.1, 4778.5], [1705053600, 4778.7, 4780.7, 4778.7, 4780.2], [1705053900, 4780.1, 4780.7, 4777.6, 4780.2], [1705054200, 4780.4, 4781.7, 4780.0, 4780.0], [1705054500, 4779.9, 4781.0, 4779.0, 4780.7], [1705054800, 4780.9, 4782.5, 4780.9, 4781.7], [1705055100, 4781.9, 4783.2, 4781.9, 4782.2], [1705055400, 4782.1, 4783.0, 4780.7, 4782.6], [1705055700, 4782.7, 4783.0, 4781.2, 4781.7], [1705056000, 4782.0, 4782.0, 4779.0, 4779.0], [1705056300, 4779.1, 4779.7, 4777.2, 4777.7], [1705056600, 4777.9, 4778.5, 4775.7, 4776.5], [1705056900, 4776.4, 4778.7, 4776.2, 4777.0], [1705057200, 4777.1, 4780.5, 4776.5, 4779.0], [1705057500, 4778.9, 4779.5, 4776.5, 4776.7], [1705057800, 4776.6, 4778.0, 4775.5, 4775.5], [1705058100, 4775.4, 4776.7, 4774.2, 4774.2], [1705058400, 4774.4, 4775.7, 4773.5, 4774.7], [1705058700, 4774.9, 4775.7, 4774.5, 4775.2], [1705059000, 4775.5, 4775.5, 4774.0, 4774.2], [1705059300, 4774.4, 4774.7, 4772.5, 4772.5], [1705059600, 4772.6, 4773.0, 4768.7, 4769.2], [1705059900, 4768.7, 4770.0, 4758.0, 4759.5], [1705060200, 4759.7, 4761.0, 4758.5, 4760.0], [1705060500, 4759.7, 4766.0, 4759.2, 4765.7], [1705060800, 4765.2, 4769.5, 4765.2, 4767.7], [1705061100, 4767.9, 4768.4, 4765.2, 4766.2], [1705061400, 4766.4, 4768.2, 4766.0, 4767.7], [1705061700, 4767.0, 4767.7, 4765.2, 4765.2], [1705062000, 4765.0, 4768.2, 4763.6, 4768.0], [1705062300, 4767.9, 4769.7, 4767.5, 4768.2], [1705062600, 4768.5, 4772.2, 4768.5, 4770.7], [1705062900, 4771.5, 4771.5, 4769.0, 4770.5], [1705063200, 4770.4, 4771.0, 4769.5, 4769.9], [1705063500, 4769.7, 4770.1, 4767.5, 4768.9], [1705063800, 4768.7, 4771.0, 4767.4, 4769.5], [1705064100, 4769.2, 4770.2, 4767.5, 4768.0], [1705064400, 4767.2, 4773.5, 4766.1, 4771.7], [1705064700, 4771.9, 4771.9, 4768.7, 4769.0], [1705065000, 4768.7, 4770.2, 4765.9, 4768.0], [1705065300, 4768.1, 4770.1, 4766.2, 4767.0], [1705065600, 4766.7, 4766.7, 4765.0, 4766.0], [1705065900, 4765.9, 4769.4, 4765.5, 4768.7], [1705066200, 4769.1, 4781.2, 4769.1, 4779.7], [1705066500, 4780.2, 4783.2, 4779.2, 4781.9], [1705066800, 4781.7, 4782.5, 4778.0, 4778.7], [1705067100, 4779.2, 4780.2, 4775.6, 4777.5], [1705067400, 4777.7, 4780.2, 4775.9, 4779.7], [1705067700, 4779.5, 4781.0, 4777.0, 4780.7], [1705068000, 4781.2, 4783.0, 4779.2, 4782.5], [1705068300, 4782.4, 4784.0, 4780.2, 4781.0], [1705068600, 4780.9, 4784.0, 4780.5, 4784.0], [1705068900, 4783.7, 4785.7, 4783.2, 4785.0], [1705069200, 4784.7, 4790.0, 4784.7, 4789.5], [1705069500, 4789.2, 4796.2, 4789.0, 4795.2], [1705069800, 4794.95, 4797.45, 4794.25, 4796.45], [1705070100, 4796.95, 4801.75, 4795.75, 4800.25], [1705070400, 4800.45, 4802.25, 4798.95, 4800.45], [1705070700, 4800.95, 4802.45, 4797.45, 4797.45], [1705071000, 4797.75, 4800.15, 4795.75, 4796.75], [1705071300, 4796.55, 4797.55, 4787.55, 4788.25], [1705071600, 4788.05, 4788.05, 4779.55, 4783.05], [1705071900, 4782.75, 4791.55, 4782.25, 4789.55], [1705072200, 4789.45, 4790.45, 4780.45, 4782.15], [1705072500, 4781.65, 4785.95, 4775.45, 4776.25], [1705072800, 4776.55, 4783.05, 4776.55, 4782.75], [1705073100, 4782.55, 4783.55, 4779.05, 4781.55], [1705073400, 4781.75, 4785.75, 4781.25, 4783.25], [1705073700, 4783.05, 4784.05, 4776.55, 4778.05], [1705074000, 4777.75, 4781.55, 4773.25, 4780.25], [1705074300, 4780.05, 4782.05, 4773.25, 4773.75], [1705074600, 4774.05, 4775.55, 4768.75, 4769.75], [1705074900, 4769.55, 4774.75, 4769.15, 4774.25], [1705075200, 4774.05, 4778.05, 4772.55, 4777.25], [1705075500, 4777.05, 4782.05, 4774.55, 4781.25], [1705075800, 4781.05, 4783.05, 4779.05, 4781.05], [1705076100, 4780.75, 4783.55, 4779.55, 4781.75], [1705076400, 4781.55, 4782.55, 4778.75, 4780.55], [1705076700, 4780.25, 4784.25, 4780.25, 4782.25], [1705077000, 4782.55, 4784.75, 4781.55, 4783.55], [1705077300, 4783.25, 4783.55, 4770.55, 4775.25], [1705077600, 4775.55, 4776.55, 4771.75, 4774.55], [1705077900, 4774.25, 4776.05, 4771.05, 4773.25], [1705078200, 4773.55, 4775.55, 4771.05, 4773.95], [1705078500, 4774.25, 4774.75, 4771.65, 4773.05], [1705078800, 4773.25, 4774.55, 4770.05, 4771.05], [1705079100, 4771.25, 4774.55, 4771.05, 4772.75], [1705079400, 4773.05, 4777.05, 4772.55, 4775.45], [1705079700, 4775.25, 4779.05, 4774.55, 4778.05], [1705080000, 4778.25, 4779.55, 4775.25, 4775.25], [1705080300, 4775.05, 4776.05, 4772.05, 4775.75], [1705080600, 4776.05, 4777.75, 4773.75, 4776.55], [1705080900, 4776.25, 4776.25, 4772.55, 4775.25], [1705081200, 4775.05, 4777.55, 4773.25, 4777.05], [1705081500, 4777.25, 4777.25, 4773.75, 4775.55], [1705081800, 4775.05, 4780.55, 4774.25, 4780.25], [1705082100, 4780.55, 4781.25, 4776.05, 4777.75], [1705082400, 4778.05, 4780.75, 4778.05, 4780.55], [1705082700, 4780.35, 4781.75, 4779.25, 4781.25], [1705083000, 4781.35, 4783.25, 4781.05, 4782.05], [1705083300, 4782.25, 4783.05, 4781.05, 4782.05], [1705083600, 4781.85, 4784.05, 4779.75, 4781.65], [1705083900, 4781.75, 4784.05, 4781.75, 4782.75], [1705084200, 4783.05, 4783.75, 4781.55, 4783.05], [1705084500, 4782.85, 4785.05, 4782.05, 4784.55], [1705084800, 4784.75, 4785.55, 4783.55, 4784.25], [1705085100, 4784.15, 4785.05, 4783.05, 4785.05], [1705085400, 4784.75, 4785.55, 4783.05, 4785.25], [1705085700, 4785.55, 4786.75, 4783.85, 4786.05], [1705086000, 4785.75, 4787.25, 4785.75, 4787.25], [1705086300, 4787.55, 4788.25, 4786.75, 4788.05], [1705086600, 4787.75, 4789.05, 4786.55, 4788.55], [1705086900, 4788.25, 4790.05, 4787.85, 4788.55], [1705087200, 4788.35, 4788.75, 4782.75, 4786.55], [1705087500, 4786.25, 4787.55, 4785.05, 4785.75], [1705087800, 4785.85, 4786.05, 4779.55, 4781.55], [1705088100, 4781.25, 4782.25, 4778.25, 4782.05], [1705088400, 4781.85, 4782.65, 4779.85, 4780.55], [1705088700, 4780.25, 4780.55, 4778.75, 4780.25], [1705089000, 4780.05, 4782.55, 4779.75, 4780.55], [1705089300, 4780.35, 4781.25, 4778.25, 4779.25], [1705089600, 4779.05, 4779.55, 4777.55, 4778.55], [1705089900, 4778.25, 4781.25, 4777.55, 4778.25], [1705090200, 4778.35, 4779.25, 4777.25, 4778.55], [1705090500, 4778.35, 4779.55, 4776.75, 4777.25], [1705090800, 4777.55, 4778.05, 4774.25, 4775.55], [1705091100, 4775.75, 4779.75, 4775.65, 4778.55], [1705091400, 4778.35, 4781.25, 4777.55, 4781.05], [1705091700, 4780.85, 4781.75, 4779.55, 4779.75], [1705092000, 4780.05, 4781.75, 4777.55, 4781.55], [1705092300, 4781.25, 4783.75, 4781.25, 4783.75], [1705092600, 4784.05, 4784.55, 4780.75, 4783.75], [1705092900, 4784.25, 4785.75, 4781.55, 4783.05], [1705093200, 4783.0, 4784.0, 4779.8, 4780.5], [1705093500, 4780.6, 4780.8, 4779.0, 4779.5], [1705093800, 4779.6, 4781.0, 4779.6, 4779.8], [1705094100, 4780.0, 4780.0, 4778.8, 4778.8], [1705094400, 4779.0, 4779.3, 4778.8, 4779.0], [1705094700, 4778.8, 4778.8, 4777.8, 4777.8], [1705095000, 4777.5, 4778.0, 4776.3, 4776.3], [1705095300, 4776.4, 4776.8, 4775.8, 4776.3], [1705095600, 4776.1, 4777.5, 4776.1, 4777.0], [1705095900, 4777.3, 4778.3, 4777.0, 4777.5], [1705096200, 4777.6, 4777.8, 4776.8, 4777.0], [1705096500, 4777.1, 4778.0, 4777.0, 4777.35], [1705273200, 4778.8, 4778.9, 4773.8, 4774.0], [1705273500, 4774.1, 4774.4, 4773.0, 4773.5], [1705273800, 4773.6, 4775.5, 4773.5, 4775.0], [1705274100, 4775.3, 4775.6, 4773.8, 4774.0], [1705274400, 4774.3, 4774.5, 4773.3, 4774.3], [1705274700, 4774.4, 4774.8, 4774.0, 4774.6], [1705275000, 4774.5, 4774.8, 4774.3, 4774.8], [1705275300, 4774.9, 4776.8, 4774.9, 4776.8], [1705275600, 4776.5, 4778.0, 4776.3, 4777.3], [1705275900, 4777.0, 4777.0, 4775.5, 4776.0], [1705276200, 4776.1, 4777.0, 4775.0, 4777.0], [1705276500, 4777.1, 4777.3, 4776.5, 4776.8], [1705276800, 4776.5, 4777.0, 4775.3, 4775.4], [1705277100, 4775.5, 4775.8, 4774.3, 4775.5], [1705277400, 4775.4, 4775.8, 4774.9, 4775.5], [1705277700, 4775.6, 4777.8, 4775.6, 4776.3], [1705278000, 4776.4, 4777.3, 4776.3, 4777.3], [1705278300, 4777.4, 4777.4, 4776.8, 4776.9], [1705278600, 4776.8, 4776.8, 4776.0, 4776.5], [1705278900, 4776.6, 4777.0, 4776.3, 4776.5], [1705279200, 4776.3, 4776.5, 4776.0, 4776.5], [1705279500, 4776.8, 4777.5, 4776.5, 4776.5], [1705279800, 4776.8, 4778.3, 4776.5, 4778.0], [1705280100, 4777.8, 4778.0, 4777.3, 4778.0], [1705280400, 4777.8, 4778.8, 4777.8, 4778.5], [1705280700, 4778.4, 4778.8, 4778.0, 4778.3], [1705281000, 4778.4, 4778.5, 4777.0, 4777.3], [1705281300, 4777.5, 4777.5, 4776.8, 4777.3], [1705281600, 4777.0, 4777.5, 4776.5, 4776.8], [1705281900, 4776.9, 4777.0, 4775.5, 4776.0], [1705282200, 4775.9, 4776.0, 4775.0, 4775.8], [1705282500, 4775.5, 4777.5, 4775.5, 4777.3], [1705282800, 4777.4, 4778.8, 4777.0, 4778.5], [1705283100, 4778.6, 4778.8, 4778.0, 4778.3], [1705283400, 4778.1, 4778.8, 4777.9, 4778.4], [1705283700, 4778.5, 4778.6, 4777.8, 4778.3], [1705284000, 4778.4, 4778.8, 4778.3, 4778.8], [1705284300, 4778.6, 4778.8, 4778.3, 4778.8], [1705284600, 4778.6, 4778.8, 4778.5, 4778.5], [1705284900, 4778.6, 4781.3, 4778.5, 4780.8], [1705285200, 4781.0, 4782.1, 4780.8, 4781.3], [1705285500, 4781.1, 4781.8, 4781.0, 4781.5], [1705285800, 4781.6, 4782.3, 4781.3, 4781.3], [1705286100, 4781.5, 4782.0, 4781.3, 4781.5]], "entry_explain": {"bar": 2188, "time": "2024-01-11T20:20:00+00:00", "setup": "confluence entry: 4 pillars vote per side; enter when at least 3 agree on one side and the trend gate allows that side (LONG first if both qualify)", "exit_rule": "E5: out when the OPPOSITE side's confluence reaches the entry threshold.", "warm": true, "sides": {"LONG": {"pillars": [{"name": "RSI+BB", "vote": false, "rule": "RSI(7) < 25.0 and close <= lower Bollinger(20, 2.0)", "readings": {"rsi": 47.0103, "close": 4776.45, "bb_lower": 4767.4541}}, {"name": "Candle", "vote": true, "rule": "bullish engulfing, bullish harami or hammer", "readings": {"bullish_engulfing": false, "bullish_harami": true, "hammer": false}}, {"name": "S/R", "vote": true, "rule": "close within 0.5 ATR(14) of the lowest close of the last 10 bars", "readings": {"close": 4776.45, "support": 4775.05, "proximity": 2.3124, "atr": 4.6248}}, {"name": "Vol+Trend", "vote": true, "rule": "tick volume > SMA(20) of tick volume and close > EMA(50)", "readings": {"volume": 236.0, "volume_baseline": 211.0, "close": 4776.45, "ema_fast": 4770.2217}}], "score": 3, "threshold": 3, "gate": true, "gate_rule": "close > EMA(200)", "gate_readings": {"close": 4776.45, "ema_trend": 4776.3582}}, "SHORT": {"pillars": [{"name": "RSI+BB", "vote": false, "rule": "RSI(7) > 75.0 and close >= upper Bollinger(20, 2.0)", "readings": {"rsi": 47.0103, "close": 4776.45, "bb_upper": 4785.4059}}, {"name": "Candle", "vote": false, "rule": "bearish engulfing, bearish harami or shooting star", "readings": {"bearish_engulfing": false, "bearish_harami": false, "shooting_star": false}}, {"name": "S/R", "vote": false, "rule": "close within 0.5 ATR(14) of the highest close of the last 10 bars", "readings": {"close": 4776.45, "resistance": 4785.55, "proximity": 2.3124, "atr": 4.6248}}, {"name": "Vol+Trend", "vote": false, "rule": "tick volume > SMA(20) of tick volume and close < EMA(50)", "readings": {"volume": 236.0, "volume_baseline": 211.0, "close": 4776.45, "ema_fast": 4770.2217}}], "score": 0, "threshold": 3, "gate": false, "gate_rule": "close < EMA(200)", "gate_readings": {"close": 4776.45, "ema_trend": 4776.3582}}}, "position": null, "events": [{"kind": "entry_fill", "side": "LONG", "time": "2024-01-11T20:21:00+00:00", "price": 4774.5, "stop": 4730.202330586206, "target": null, "size": 0.43}], "action": "ENTER LONG", "blocked_by": ["SHORT: 0 of 3 votes needed (no pillar voted)"]}, "exit_explain": {"bar": 2523, "time": "2024-01-15T02:20:00+00:00", "setup": "confluence entry: 4 pillars vote per side; enter when at least 3 agree on one side and the trend gate allows that side (LONG first if both qualify)", "exit_rule": "E5: out when the OPPOSITE side's confluence reaches the entry threshold.", "warm": true, "sides": {"LONG": {"pillars": [{"name": "RSI+BB", "vote": false, "rule": "RSI(7) < 25.0 and close <= lower Bollinger(20, 2.0)", "readings": {"rsi": 82.0845, "close": 4781.3, "bb_lower": 4775.4263}}, {"name": "Candle", "vote": false, "rule": "bullish engulfing, bullish harami or hammer", "readings": {"bullish_engulfing": false, "bullish_harami": false, "hammer": false}}, {"name": "S/R", "vote": false, "rule": "close within 0.5 ATR(14) of the lowest close of the last 10 bars", "readings": {"close": 4781.3, "support": 4777.3, "proximity": 0.6093, "atr": 1.2185}}, {"name": "Vol+Trend", "vote": false, "rule": "tick volume > SMA(20) of tick volume and close > EMA(50)", "readings": {"volume": 55.0, "volume_baseline": 62.1, "close": 4781.3, "ema_fast": 4777.9768}}], "score": 0, "threshold": 3, "gate": true, "gate_rule": "close > EMA(200)", "gate_readings": {"close": 4781.3, "ema_trend": 4778.1185}}, "SHORT": {"pillars": [{"name": "RSI+BB", "vote": true, "rule": "RSI(7) > 75.0 and close >= upper Bollinger(20, 2.0)", "readings": {"rsi": 82.0845, "close": 4781.3, "bb_upper": 4780.7237}}, {"name": "Candle", "vote": true, "rule": "bearish engulfing, bearish harami or shooting star", "readings": {"bearish_engulfing": false, "bearish_harami": false, "shooting_star": true}}, {"name": "S/R", "vote": true, "rule": "close within 0.5 ATR(14) of the highest close of the last 10 bars", "readings": {"close": 4781.3, "resistance": 4781.3, "proximity": 0.6093, "atr": 1.2185}}, {"name": "Vol+Trend", "vote": false, "rule": "tick volume > SMA(20) of tick volume and close < EMA(50)", "readings": {"volume": 55.0, "volume_baseline": 62.1, "close": 4781.3, "ema_fast": 4777.9768}}], "score": 3, "threshold": 3, "gate": false, "gate_rule": "close < EMA(200)", "gate_readings": {"close": 4781.3, "ema_trend": 4778.1185}}}, "position": {"side": "LONG", "entry_price": 4774.5, "stop": 4730.202330586206, "target": null, "entry_time": "2024-01-11T20:21:00+00:00", "initial_stop": 4730.202330586206}, "events": [{"kind": "exit", "reason": "SIGNAL", "why": "confluence: bearish score 3/3 (RSI+BB+Candle+S/R)", "time": "2024-01-15T02:21:00+00:00", "price": 4780.7, "stop": 4730.202330586206, "target": null, "net_usd": 0.8970886197199219, "r": 0.046899345814280256}], "action": "EXIT", "blocked_by": []}};
+const GRADES = ["good","ok","meh","poor","bad"];
+const fmt = t => new Date(t).toISOString().slice(0,16).replace("T"," ");
+
+function sideClass(s){return s==="LONG"?"side-long":"side-short"}
+
+function explainCard(kind){
+  const story = kind==="entry" ? DATA.entry_explain : DATA.exit_explain;
+  const t = DATA.trade;
+  const el = document.getElementById(kind+"-card");
+  // Entry: the side that entered. Exit: the opposite side, whose confluence is the exit trigger.
+  const side = kind==="entry" ? t.side : (t.side==="LONG"?"SHORT":"LONG");
+  const detail = story.sides[side];
+  const exitEvent = story.events.find(e=>e.kind==="exit");
+  const facts = kind==="entry"
+    ? [["Signal bar", fmt(story.time)+" UTC"],["Filled", fmt(t.entry_time)+" UTC at "+t.entry_price],["Initial stop", exitEvent? exitEvent.stop.toFixed(2) : "–"]]
+    : [["Signal bar", fmt(story.time)+" UTC"],["Filled", fmt(t.exit_time)+" UTC at "+t.exit_price],["Result", (t.r>=0?"+":"")+t.r+" R · "+(t.net_usd>=0?"+":"")+t.net_usd+" USD"]];
+  const why = kind==="entry"
+    ? `${detail.score} of ${detail.threshold} ${t.side==="LONG"?"bullish":"bearish"} votes; trend gate open (${detail.gate_rule}).`
+    : (exitEvent ? exitEvent.why : "");
+  const rows = detail.pillars.map(p=>`<tr><td>${p.vote?"●":"○"} ${p.name}</td><td>${p.rule}</td><td class="mono">${Object.entries(p.readings).map(([k,v])=>`${k} ${v===true?"yes":v===false?"no":v}`).join("<br>")}</td></tr>`).join("");
+  el.innerHTML = `
+    <div class="head"><h2>${kind==="entry"?"Entry":"Exit"} <span class="${sideClass(t.side)}">${t.side}</span></h2><span class="mono muted" style="font-size:.8rem">${kind==="exit"?t.exit_reason:"ENTER"}</span></div>
+    <dl class="facts mono">${facts.map(([a,b])=>`<dt>${a}</dt><dd>${b}</dd>`).join("")}</dl>
+    <div class="chips" aria-label="${side} pillar votes">${detail.pillars.map(p=>`<span class="chip ${p.vote?"on":""}">${p.name}</span>`).join("")}</div>
+    <div class="verdict">${why}</div>
+    <details><summary>${side} pillar readings at this bar</summary>
+      <div class="tablewrap"><table><thead><tr><th>Pillar</th><th>Rule</th><th>Reading</th></tr></thead><tbody>${rows}
+      <tr><td>Trend gate</td><td>${detail.gate_rule}</td><td class="mono">close ${detail.gate_readings.close}<br>ema_trend ${detail.gate_readings.ema_trend}</td></tr></tbody></table></div>
+    </details>
+    <div class="grade">
+      <div class="scale" role="group" aria-label="Grade the ${kind}">${GRADES.map(g=>`<button type="button" id="${kind}-g-${g}" data-g="${g}" aria-pressed="false">${g}</button>`).join("")}</div>
+      <textarea id="${kind}-reason" placeholder="Optional reason, e.g. too late, against structure, exit too sensitive"></textarea>
+      <div class="row"><button class="save" id="${kind}-save" type="button" disabled>Save ${kind} grade</button><span class="saved" id="${kind}-saved">Not graded yet, so not reviewed</span></div>
+    </div>`;
+}
+
+function drawChart(){
+  const c = document.getElementById("chart"), ctx = c.getContext("2d");
+  const css = getComputedStyle(document.documentElement);
+  const col = n => css.getPropertyValue(n).trim();
+  const dpr = window.devicePixelRatio||1, w = c.clientWidth, h = c.clientHeight;
+  c.width = w*dpr; c.height = h*dpr; ctx.scale(dpr,dpr);
+  const bars = DATA.candles, n = bars.length;
+  const lo = Math.min(...bars.map(b=>b[3])), hi = Math.max(...bars.map(b=>b[2]));
+  const pad = 8, y = v => pad + (hi - v)/(hi - lo)*(h-2*pad), bw = w/n;
+  ctx.strokeStyle = col("--grid"); ctx.lineWidth = 1;
+  for(let k=0;k<=4;k++){const yy=pad+k*(h-2*pad)/4; ctx.beginPath(); ctx.moveTo(0,yy); ctx.lineTo(w,yy); ctx.stroke();}
+  bars.forEach((b,i)=>{
+    const up = b[4]>=b[1]; ctx.strokeStyle = ctx.fillStyle = up?col("--candle-up"):col("--candle-down");
+    const x = i*bw + bw/2; ctx.beginPath(); ctx.moveTo(x,y(b[2])); ctx.lineTo(x,y(b[3])); ctx.stroke();
+    ctx.fillRect(x-Math.max(bw*0.3,0.5), y(Math.max(b[1],b[4])), Math.max(bw*0.6,1), Math.max(1,Math.abs(y(b[1])-y(b[4]))));
+  });
+  [[DATA.entry_bar,"--accent"],[DATA.exit_bar,"--warn"]].forEach(([i,v])=>{
+    const x=i*bw+bw/2; ctx.strokeStyle=col(v); ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); ctx.lineWidth=1;
+  });
+  document.getElementById("legend").innerHTML =
+    `<span>${fmt(bars[0][0]*1000)} → ${fmt(bars[n-1][0]*1000)} UTC · ${n} bars</span><span style="color:var(--accent)">│ entry</span><span style="color:var(--warn)">│ exit (held over the weekend)</span><span>range ${lo}–${hi}</span>`;
+}
+
+const state = {entry:{grade:null}, exit:{grade:null}};
+function wireGrades(kind, enabled){
+  GRADES.forEach(g=>{
+    const b = document.getElementById(`${kind}-g-${g}`);
+    b.addEventListener("click",()=>{
+      state[kind].grade = g;
+      GRADES.forEach(o=>document.getElementById(`${kind}-g-${o}`).setAttribute("aria-pressed", String(o===g)));
+      document.getElementById(`${kind}-save`).disabled = !enabled;
+    });
+  });
+}
+
+function keyFor(kind){ return `${DATA.trade.id}--${kind}`; }
+
+async function start(){
+  explainCard("entry"); explainCard("exit"); drawChart();
+  window.addEventListener("resize", drawChart);
+  const status = document.getElementById("dbstatus");
+  const db = window.claude ? await window.claude.use("db") : null;
+  if(!db){
+    status.textContent = "Storage unavailable in this view: grades cannot be saved";
+    status.classList.add("bad");
+    wireGrades("entry", false); wireGrades("exit", false);
+    return;
+  }
+  status.textContent = "Storage connected";
+  ["entry","exit"].forEach(kind=>{
+    wireGrades(kind, true);
+    const saved = document.getElementById(`${kind}-saved`);
+    db.doc(`feedback/${keyFor(kind)}`).onSnapshot(snap=>{
+      if(!snap.exists) return;
+      const d = snap.data();
+      GRADES.forEach(o=>document.getElementById(`${kind}-g-${o}`).setAttribute("aria-pressed", String(o===d.grade)));
+      state[kind].grade = d.grade;
+      const box = document.getElementById(`${kind}-reason`); if(document.activeElement!==box) box.value = d.reason||"";
+      saved.textContent = `Saved ${fmt(d.saved_at)} UTC: ${d.grade}${snap.metadata.hasPendingWrites?" (confirming…)":""}`;
+    }, err=>{ saved.textContent = "Could not load the saved grade ("+err.code+")"; });
+    document.getElementById(`${kind}-save`).addEventListener("click", async ev=>{
+      const btn = ev.currentTarget; btn.disabled = true;
+      const story = kind==="entry"?DATA.entry_explain:DATA.exit_explain;
+      const now = new Date().toISOString();
+      const body = {run_id:DATA.run_id, trade_id:DATA.trade.id, decision:kind, grade:state[kind].grade,
+        reason:document.getElementById(`${kind}-reason`).value.trim(), bar_time:story.time, session:DATA.session.date, saved_at:now};
+      try{
+        await db.doc(`feedback_revisions/${keyFor(kind)}--${now.replace(/[^0-9]/g,"")}`).set(body);
+        await db.doc(`feedback/${keyFor(kind)}`).set(body);
+      }catch(e){
+        saved.textContent = `Not saved (${e.code||"error"}). Your grade is still selected; try Save again.`;
+      }finally{ btn.disabled = false; }
+    });
+  });
+  db.collection("feedback_revisions").orderBy("saved_at","desc").limit(50).onSnapshot(snap=>{
+    const body = document.querySelector("#revisions tbody");
+    body.innerHTML = snap.empty ? `<tr><td colspan="4" class="muted">Nothing saved yet.</td></tr>` :
+      snap.docs.map(d=>{const x=d.data(); return `<tr><td class="mono">${fmt(x.saved_at)}</td><td>${x.decision}</td><td>${x.grade}</td><td>${(x.reason||"").replace(/</g,"&lt;")}</td></tr>`}).join("");
+  }, err=>{ document.querySelector("#revisions tbody").innerHTML = `<tr><td colspan="4">Could not load revisions (${err.code}).</td></tr>`; });
+}
+start();
+</script>

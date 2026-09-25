@@ -1,0 +1,219 @@
+<title>Grade Round Trip</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#F4F6F5; --surface:#FFFFFF; --ink:#18211E; --muted:#5A6863; --rule:#D9E0DD;
+  --accent:#0E6B60; --accent-soft:#DCEFEB; --long:#1C7F46; --short:#B83C27; --lit:#0E6B60;
+  --warn:#9A6400; --warn-soft:#FBF0DA; --ok-soft:#E2F2E8;
+  --candle-up:#1C7F46; --candle-down:#B83C27; --grid:#E6EBE9;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#101614; --surface:#18201E; --ink:#E2EAE7; --muted:#93A39D; --rule:#2B3633;
+    --accent:#56C2B0; --accent-soft:#17332E; --long:#4FC07F; --short:#EE7B63; --lit:#56C2B0;
+    --warn:#E3B04F; --warn-soft:#352A14; --ok-soft:#16301F;
+    --candle-up:#4FC07F; --candle-down:#EE7B63; --grid:#222C29;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#101614; --surface:#18201E; --ink:#E2EAE7; --muted:#93A39D; --rule:#2B3633;
+  --accent:#56C2B0; --accent-soft:#17332E; --long:#4FC07F; --short:#EE7B63; --lit:#56C2B0;
+  --warn:#E3B04F; --warn-soft:#352A14; --ok-soft:#16301F;
+  --candle-up:#4FC07F; --candle-down:#EE7B63; --grid:#222C29;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif;padding-inline:16px;padding-block:20px 48px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:18px}
+h1,h2{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;font-weight:600;margin:0;text-wrap:balance}
+h1{font-size:1.6rem;letter-spacing:-.01em}
+h2{font-size:1.1rem}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:end;gap:10px 24px}
+.eyebrow{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.status{font-size:.85rem;padding:4px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+.status.bad{background:var(--warn-soft);color:var(--warn)}
+.purpose{max-width:68ch;margin:0}
+.chart{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:10px}
+canvas{display:block;width:100%;height:260px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.8rem;color:var(--muted);margin-top:6px}
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:16px;display:grid;gap:12px;align-content:start}
+.head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.side-long{color:var(--long)} .side-short{color:var(--short)}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:2px 14px;font-size:.88rem;margin:0}
+.facts dt{color:var(--muted)} .facts dd{margin:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:.8rem;padding:3px 9px;border-radius:4px;border:1px solid var(--rule);color:var(--muted);background:transparent}
+.chip.on{background:var(--lit);border-color:var(--lit);color:var(--surface)}
+.verdict{font-size:.9rem}
+details{border-top:1px solid var(--rule);padding-top:8px}
+summary{cursor:pointer;font-size:.85rem;color:var(--accent)}
+summary:focus-visible,button:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+table{border-collapse:collapse;width:100%;font-size:.8rem}
+.tablewrap{overflow-x:auto}
+td,th{padding:4px 6px;border-bottom:1px solid var(--grid);text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:500}
+.grade{display:grid;gap:8px;border-top:1px solid var(--rule);padding-top:12px}
+.scale{display:flex;flex-wrap:wrap;gap:6px}
+.scale button{font:inherit;font-size:.88rem;padding:6px 12px;border-radius:4px;border:1px solid var(--rule);background:var(--surface);color:var(--ink);cursor:pointer}
+.scale button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+textarea{font:inherit;font-size:.88rem;width:100%;min-height:54px;padding:8px;border-radius:4px;border:1px solid var(--rule);background:var(--ground);color:var(--ink);resize:vertical}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.save{font:inherit;font-weight:600;font-size:.9rem;padding:7px 16px;border-radius:4px;border:0;background:var(--ink);color:var(--surface);cursor:pointer}
+.save:disabled{opacity:.45;cursor:not-allowed}
+.saved{font-size:.82rem;color:var(--muted)}
+.log{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:16px;display:grid;gap:8px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">US500 · 5-minute · baseline v001 · confluence exit</div>
+      <h1>Grade round trip: 2024-01-11</h1>
+    </div>
+    <span id="dbstatus" class="status">Connecting to storage…</span>
+  </header>
+  <p class="purpose muted">A test of the storage the review page will use, before that page is built. Grade this trade's entry and exit, then save. Reload the page and check the grades are still there. I read them back from my side, then publish an explanation next to them.</p>
+
+  <section class="chart" aria-label="Session chart">
+    <canvas id="chart" width="1040" height="260"></canvas>
+    <div class="legend mono" id="legend"></div>
+  </section>
+
+  <div class="pair">
+    <article class="card" id="entry-card"></article>
+    <article class="card" id="exit-card"></article>
+  </div>
+
+  <section class="log">
+    <h2>Saved in the page's database</h2>
+    <p class="muted" style="margin:0;font-size:.85rem">Every save is kept as a revision. Nothing is overwritten.</p>
+    <div class="tablewrap"><table id="revisions"><thead><tr><th>Saved (UTC)</th><th>Decision</th><th>Grade</th><th>Reason</th></tr></thead><tbody></tbody></table></div>
+  </section>
+</div>
+
+<script>
+const DATA = /*DATA*/;
+const GRADES = ["good","ok","meh","poor","bad"];
+const fmt = t => new Date(t).toISOString().slice(0,16).replace("T"," ");
+
+function sideClass(s){return s==="LONG"?"side-long":"side-short"}
+
+function explainCard(kind){
+  const story = kind==="entry" ? DATA.entry_explain : DATA.exit_explain;
+  const t = DATA.trade;
+  const el = document.getElementById(kind+"-card");
+  // Entry: the side that entered. Exit: the opposite side, whose confluence is the exit trigger.
+  const side = kind==="entry" ? t.side : (t.side==="LONG"?"SHORT":"LONG");
+  const detail = story.sides[side];
+  const exitEvent = story.events.find(e=>e.kind==="exit");
+  const facts = kind==="entry"
+    ? [["Signal bar", fmt(story.time)+" UTC"],["Filled", fmt(t.entry_time)+" UTC at "+t.entry_price],["Initial stop", exitEvent? exitEvent.stop.toFixed(2) : "–"]]
+    : [["Signal bar", fmt(story.time)+" UTC"],["Filled", fmt(t.exit_time)+" UTC at "+t.exit_price],["Result", (t.r>=0?"+":"")+t.r+" R · "+(t.net_usd>=0?"+":"")+t.net_usd+" USD"]];
+  const why = kind==="entry"
+    ? `${detail.score} of ${detail.threshold} ${t.side==="LONG"?"bullish":"bearish"} votes; trend gate open (${detail.gate_rule}).`
+    : (exitEvent ? exitEvent.why : "");
+  const rows = detail.pillars.map(p=>`<tr><td>${p.vote?"●":"○"} ${p.name}</td><td>${p.rule}</td><td class="mono">${Object.entries(p.readings).map(([k,v])=>`${k} ${v===true?"yes":v===false?"no":v}`).join("<br>")}</td></tr>`).join("");
+  el.innerHTML = `
+    <div class="head"><h2>${kind==="entry"?"Entry":"Exit"} <span class="${sideClass(t.side)}">${t.side}</span></h2><span class="mono muted" style="font-size:.8rem">${kind==="exit"?t.exit_reason:"ENTER"}</span></div>
+    <dl class="facts mono">${facts.map(([a,b])=>`<dt>${a}</dt><dd>${b}</dd>`).join("")}</dl>
+    <div class="chips" aria-label="${side} pillar votes">${detail.pillars.map(p=>`<span class="chip ${p.vote?"on":""}">${p.name}</span>`).join("")}</div>
+    <div class="verdict">${why}</div>
+    <details><summary>${side} pillar readings at this bar</summary>
+      <div class="tablewrap"><table><thead><tr><th>Pillar</th><th>Rule</th><th>Reading</th></tr></thead><tbody>${rows}
+      <tr><td>Trend gate</td><td>${detail.gate_rule}</td><td class="mono">close ${detail.gate_readings.close}<br>ema_trend ${detail.gate_readings.ema_trend}</td></tr></tbody></table></div>
+    </details>
+    <div class="grade">
+      <div class="scale" role="group" aria-label="Grade the ${kind}">${GRADES.map(g=>`<button type="button" id="${kind}-g-${g}" data-g="${g}" aria-pressed="false">${g}</button>`).join("")}</div>
+      <textarea id="${kind}-reason" placeholder="Optional reason, e.g. too late, against structure, exit too sensitive"></textarea>
+      <div class="row"><button class="save" id="${kind}-save" type="button" disabled>Save ${kind} grade</button><span class="saved" id="${kind}-saved">Not graded yet, so not reviewed</span></div>
+    </div>`;
+}
+
+function drawChart(){
+  const c = document.getElementById("chart"), ctx = c.getContext("2d");
+  const css = getComputedStyle(document.documentElement);
+  const col = n => css.getPropertyValue(n).trim();
+  const dpr = window.devicePixelRatio||1, w = c.clientWidth, h = c.clientHeight;
+  c.width = w*dpr; c.height = h*dpr; ctx.scale(dpr,dpr);
+  const bars = DATA.candles, n = bars.length;
+  const lo = Math.min(...bars.map(b=>b[3])), hi = Math.max(...bars.map(b=>b[2]));
+  const pad = 8, y = v => pad + (hi - v)/(hi - lo)*(h-2*pad), bw = w/n;
+  ctx.strokeStyle = col("--grid"); ctx.lineWidth = 1;
+  for(let k=0;k<=4;k++){const yy=pad+k*(h-2*pad)/4; ctx.beginPath(); ctx.moveTo(0,yy); ctx.lineTo(w,yy); ctx.stroke();}
+  bars.forEach((b,i)=>{
+    const up = b[4]>=b[1]; ctx.strokeStyle = ctx.fillStyle = up?col("--candle-up"):col("--candle-down");
+    const x = i*bw + bw/2; ctx.beginPath(); ctx.moveTo(x,y(b[2])); ctx.lineTo(x,y(b[3])); ctx.stroke();
+    ctx.fillRect(x-Math.max(bw*0.3,0.5), y(Math.max(b[1],b[4])), Math.max(bw*0.6,1), Math.max(1,Math.abs(y(b[1])-y(b[4]))));
+  });
+  [[DATA.entry_bar,"--accent"],[DATA.exit_bar,"--warn"]].forEach(([i,v])=>{
+    const x=i*bw+bw/2; ctx.strokeStyle=col(v); ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); ctx.lineWidth=1;
+  });
+  document.getElementById("legend").innerHTML =
+    `<span>${fmt(bars[0][0]*1000)} → ${fmt(bars[n-1][0]*1000)} UTC · ${n} bars</span><span style="color:var(--accent)">│ entry</span><span style="color:var(--warn)">│ exit (held over the weekend)</span><span>range ${lo}–${hi}</span>`;
+}
+
+const state = {entry:{grade:null}, exit:{grade:null}};
+function wireGrades(kind, enabled){
+  GRADES.forEach(g=>{
+    const b = document.getElementById(`${kind}-g-${g}`);
+    b.addEventListener("click",()=>{
+      state[kind].grade = g;
+      GRADES.forEach(o=>document.getElementById(`${kind}-g-${o}`).setAttribute("aria-pressed", String(o===g)));
+      document.getElementById(`${kind}-save`).disabled = !enabled;
+    });
+  });
+}
+
+function keyFor(kind){ return `${DATA.trade.id}--${kind}`; }
+
+async function start(){
+  explainCard("entry"); explainCard("exit"); drawChart();
+  window.addEventListener("resize", drawChart);
+  const status = document.getElementById("dbstatus");
+  const db = window.claude ? await window.claude.use("db") : null;
+  if(!db){
+    status.textContent = "Storage unavailable in this view: grades cannot be saved";
+    status.classList.add("bad");
+    wireGrades("entry", false); wireGrades("exit", false);
+    return;
+  }
+  status.textContent = "Storage connected";
+  ["entry","exit"].forEach(kind=>{
+    wireGrades(kind, true);
+    const saved = document.getElementById(`${kind}-saved`);
+    db.doc(`feedback/${keyFor(kind)}`).onSnapshot(snap=>{
+      if(!snap.exists) return;
+      const d = snap.data();
+      GRADES.forEach(o=>document.getElementById(`${kind}-g-${o}`).setAttribute("aria-pressed", String(o===d.grade)));
+      state[kind].grade = d.grade;
+      const box = document.getElementById(`${kind}-reason`); if(document.activeElement!==box) box.value = d.reason||"";
+      saved.textContent = `Saved ${fmt(d.saved_at)} UTC: ${d.grade}${snap.metadata.hasPendingWrites?" (confirming…)":""}`;
+    }, err=>{ saved.textContent = "Could not load the saved grade ("+err.code+")"; });
+    document.getElementById(`${kind}-save`).addEventListener("click", async ev=>{
+      const btn = ev.currentTarget; btn.disabled = true;
+      const story = kind==="entry"?DATA.entry_explain:DATA.exit_explain;
+      const now = new Date().toISOString();
+      const body = {run_id:DATA.run_id, trade_id:DATA.trade.id, decision:kind, grade:state[kind].grade,
+        reason:document.getElementById(`${kind}-reason`).value.trim(), bar_time:story.time, session:DATA.session.date, saved_at:now};
+      try{
+        await db.doc(`feedback_revisions/${keyFor(kind)}--${now.replace(/[^0-9]/g,"")}`).set(body);
+        await db.doc(`feedback/${keyFor(kind)}`).set(body);
+      }catch(e){
+        saved.textContent = `Not saved (${e.code||"error"}). Your grade is still selected; try Save again.`;
+      }finally{ btn.disabled = false; }
+    });
+  });
+  db.collection("feedback_revisions").orderBy("saved_at","desc").limit(50).onSnapshot(snap=>{
+    const body = document.querySelector("#revisions tbody");
+    body.innerHTML = snap.empty ? `<tr><td colspan="4" class="muted">Nothing saved yet.</td></tr>` :
+      snap.docs.map(d=>{const x=d.data(); return `<tr><td class="mono">${fmt(x.saved_at)}</td><td>${x.decision}</td><td>${x.grade}</td><td>${(x.reason||"").replace(/</g,"&lt;")}</td></tr>`}).join("");
+  }, err=>{ document.querySelector("#revisions tbody").innerHTML = `<tr><td colspan="4">Could not load revisions (${err.code}).</td></tr>`; });
+}
+start();
+</script>
