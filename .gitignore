@@ -79,6 +79,7 @@ research/runs/
 # Generated review payloads — rebuild with research/review/export_trade_review.py
 research/review/*-data.js
 research/review/*-data.json
+research/review/days/
 
 # stray minute-bar cache written by a path bug; the real one is research/engine/.cache
 /engine/

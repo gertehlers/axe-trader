@@ -2,7 +2,8 @@
 
 For each timeframe x exit arm in the version: run `engine.dayrun.run_day`, write the run record
 append-only under `research/review/runs/<run_id>/` (committed), then emit `day-review-data.js`
-(gitignored, reproducible from the records) for `day-review.html`.
+`days/<date>.js` plus `days/index.js` (gitignored, reproducible from the records) for
+`day-review.html`.
 
     cd research/engine && PYTHONPATH=. .venv/bin/python ../review/build_day.py \
         --day 2024-01-11 --strategy v001
@@ -34,6 +35,7 @@ from engine.explain import GATE_RULES, PILLAR_READINGS, RULES
 from engine.instruments import load_instruments
 
 REVIEW = Path(__file__).resolve().parent
+DAYS = REVIEW / "days"
 ENGINE = REVIEW.parent / "engine"
 READINGS = ["close", "rsi", "bb_upper", "bb_lower", "ema_fast", "ema_trend", "atr", "support",
             "resistance", "proximity", "volume", "volume_baseline"]
@@ -229,7 +231,8 @@ def main() -> None:
     parser.add_argument("--strategy", default="v001")
     parser.add_argument("--db", type=Path, default=REVIEW.parents[1] / "data" / "axe-trader.sqlite")
     parser.add_argument("--epic", default="US500")
-    parser.add_argument("--out", type=Path, default=REVIEW / "day-review-data.js")
+    parser.add_argument("--out", type=Path, default=None,
+                        help="defaults to days/<date>.js; days/index.js is rewritten to list every built day")
     parser.add_argument("--compare", help="parent strategy version to show before/after against")
     parser.add_argument("--feedback", type=Path, help="exported review iteration holding the owner's grades and marks")
     args = parser.parse_args()
@@ -266,8 +269,23 @@ def main() -> None:
         "engine": {"commit": commit, "dirty": dirty},
         "built": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
     }
-    args.out.write_text("window.DAY = " + json.dumps(data, separators=(",", ":"), default=str) + ";\n")
-    print(f"wrote {args.out} ({args.out.stat().st_size / 1024:.0f} KiB)")
+    out = args.out or DAYS / f"{args.day.isoformat()}.js"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(f"(window.DAYS = window.DAYS || {{}})[{json.dumps(args.day.isoformat())}] = "
+                   + json.dumps(data, separators=(",", ":"), default=str) + ";\n")
+    print(f"wrote {out} ({out.stat().st_size / 1024:.0f} KiB)")
+    write_index()
+
+
+def write_index() -> None:
+    """days/index.js: every built day, its strategy and what it is compared with."""
+    entries = []
+    for path in sorted(DAYS.glob("20??-??-??.js")):
+        text = path.read_text()
+        payload = json.loads(text[text.index("= ") + 2:].rstrip().rstrip(";"))
+        entries.append({"date": path.stem, "strategy": payload["strategy"]["version"],
+                        "compare": (payload.get("compare") or {}).get("parent"), "built": payload["built"]})
+    (DAYS / "index.js").write_text("window.DAY_INDEX = " + json.dumps(entries) + ";\n")
 
 
 if __name__ == "__main__":
