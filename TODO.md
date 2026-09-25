@@ -30,8 +30,23 @@ text + §13 decisions). Branch `feat/confluence-exit-matrix`, pushed per commit.
 the signal bar (at label + 1 minute), up to timeframe−1 minutes before the signal existed. Fixed in
 `5d80834`. All prior resampled-bar simulator figures carried it; no conclusion changes.
 
-**Next:** owner grades 2024-01-11 on the day page → ingest + answer → propose ONE change (v002) →
-rerun the same day → before/after comparison (step 7, not built yet).
+**Iteration 001 on 2024-01-11 done → v002.** Owner graded both confluence exits "too late, missed a
+take-profit" and marked 6 missed moves; the trend gate + one-position-no-take-profit explain nearly
+all of them (`research/review/feedback/2024-01-11/iteration-001/FINDINGS.md`). Owner chose change #1:
+**v002 = 3 ATR take-profit on the confluence exit** (`strategies/v002.yaml`). Same day: both bad
+exits changed, day −1.05 → +0.55 R, 0/6 marked moves caught (entries unchanged). Dev history only:
+5m −0.078 → −0.032 R/trade, 15m −0.040 → −0.038; still negative after costs.
+Rebuild: `build_day.py --day 2024-01-11 --strategy v002 --compare v001 --feedback ../review/feedback/2024-01-11/iteration-001`.
+
+**Logged, not acted on:** 5m/15m agreement at extremes (owner, iteration 001) as a candidate entry change.
+
+**Reserved-period breach (2026-09-25):** full-history `engine.run` calls earlier this session loaded
+US500 through 2026-09-17, i.e. into the reserved period, and aggregate results were printed. No rule
+was chosen from them; `engine.run` now excludes it by default (`--include-reserved` to override).
+Owner to decide whether the reserved start moves.
+
+**Next:** owner grades the v002 exit on the day page → accept/reject v002 → freeze → run it unchanged
+on the next session (2024-01-12) as a first pass (Milestone 3 tooling not built yet).
 
 ## SESSION STATE — 2026-09-19 (later): the engine produces trades, and 1:1 is the worst exit
 
