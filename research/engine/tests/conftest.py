@@ -67,3 +67,22 @@ def make_bar_frame(n=400, seed=7):
 @pytest.fixture
 def bar_frame():
     return make_bar_frame
+
+
+def make_minute_frame(n=12_000, seed=11):
+    """A synthetic 1-minute bid/ask series long enough to warm the confluence strategy up on 15m."""
+    import numpy as np
+    import pandas as pd
+
+    rng = np.random.default_rng(seed)
+    close = 100.0 + np.cumsum(rng.normal(0, 0.05, n))
+    open_ = np.concatenate([[close[0]], close[:-1]])
+    high = np.maximum(open_, close) + rng.uniform(0, 0.05, n)
+    low = np.minimum(open_, close) - rng.uniform(0, 0.05, n)
+    index = pd.date_range("2024-01-02", periods=n, freq="min", tz="UTC", name="minute")
+    frame = pd.DataFrame(index=index)
+    for name, values in (("open", open_), ("high", high), ("low", low), ("close", close)):
+        frame[f"{name}_bid"] = values - 0.01
+        frame[f"{name}_ask"] = values + 0.01
+    frame["volume"] = rng.integers(50, 150, n).astype(float)
+    return frame

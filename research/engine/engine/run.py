@@ -17,15 +17,18 @@ import numpy as np
 import pandas as pd
 
 from engine.simulator import SimConfig, Trade
-from engine.strategies.confluence import ReversalExit, SymmetricExit, TimeExit, TrailingExit
+from engine.strategies.confluence import (OppositeConfluenceExit, ReversalExit, SymmetricExit,
+                                          TimeExit, TrailingExit)
 
 ARMS = {"trailing": TrailingExit, "time": TimeExit,
-        "reversal": ReversalExit, "symmetric": SymmetricExit}
+        "reversal": ReversalExit, "symmetric": SymmetricExit,
+        "confluence": OppositeConfluenceExit}
 
 # Which keyword arguments each arm accepts, so an irrelevant flag is a clear error rather than
 # a silently ignored one.
 ARM_PARAMETERS = {"trailing": {"brake_atr", "trail_atr"}, "time": {"brake_atr", "max_bars"},
-                  "reversal": {"brake_atr"}, "symmetric": {"stop_atr"}}
+                  "reversal": {"brake_atr"}, "symmetric": {"stop_atr"},
+                  "confluence": {"brake_atr"}}
 
 
 def build_strategy(name: str, frame: pd.DataFrame, **kwargs):

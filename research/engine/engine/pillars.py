@@ -51,6 +51,9 @@ class PillarVotes:
     long_gate: np.ndarray
     short_gate: np.ndarray
     atr: np.ndarray = field(default_factory=lambda: np.array([]))
+    # The raw values each vote was decided from, keyed by name, so an explanation can quote the
+    # exact numbers the rule saw instead of recomputing them. Adding these changes no vote.
+    readings: dict[str, np.ndarray] = field(default_factory=dict)
 
 
 def compute_pillars(frame: pd.DataFrame, config: PillarConfig) -> PillarVotes:
@@ -71,20 +74,23 @@ def compute_pillars(frame: pd.DataFrame, config: PillarConfig) -> PillarVotes:
     support = lowest(mid_close, config.swing_lookback_bars)
     resistance = highest(mid_close, config.swing_lookback_bars)
     high_volume = volume > volume_baseline
+    candle = (mid_open, mid_high, mid_low, mid_close)
+    patterns = {
+        "bullish_engulfing": bullish_engulfing(*candle), "bullish_harami": bullish_harami(*candle),
+        "hammer": hammer(*candle), "bearish_engulfing": bearish_engulfing(*candle),
+        "bearish_harami": bearish_harami(*candle), "shooting_star": shooting_star(*candle),
+    }
 
     bullish = {
         "RSI+BB": (rsi_values < config.rsi_oversold) & (mid_close <= band_lower),
-        "Candle": (bullish_engulfing(mid_open, mid_high, mid_low, mid_close)
-                   | bullish_harami(mid_open, mid_high, mid_low, mid_close)
-                   | hammer(mid_open, mid_high, mid_low, mid_close)),
+        "Candle": (patterns["bullish_engulfing"] | patterns["bullish_harami"] | patterns["hammer"]),
         "S/R": np.abs(mid_close - support) < proximity,
         "Vol+Trend": high_volume & (mid_close > fast_ema),
     }
     bearish = {
         "RSI+BB": (rsi_values > config.rsi_overbought) & (mid_close >= band_upper),
-        "Candle": (bearish_engulfing(mid_open, mid_high, mid_low, mid_close)
-                   | bearish_harami(mid_open, mid_high, mid_low, mid_close)
-                   | shooting_star(mid_open, mid_high, mid_low, mid_close)),
+        "Candle": (patterns["bearish_engulfing"] | patterns["bearish_harami"]
+                   | patterns["shooting_star"]),
         "S/R": np.abs(mid_close - resistance) < proximity,
         "Vol+Trend": high_volume & (mid_close < fast_ema),
     }
@@ -101,6 +107,13 @@ def compute_pillars(frame: pd.DataFrame, config: PillarConfig) -> PillarVotes:
         long_gate=np.nan_to_num(np.asarray(mid_close > trend_ema, dtype=float), nan=0.0).astype(bool),
         short_gate=np.nan_to_num(np.asarray(mid_close < trend_ema, dtype=float), nan=0.0).astype(bool),
         atr=atr_values,
+        readings={
+            "close": mid_close, "rsi": rsi_values, "bb_upper": band_upper, "bb_lower": band_lower,
+            "ema_fast": fast_ema, "ema_trend": trend_ema, "atr": atr_values,
+            "support": support, "resistance": resistance, "proximity": proximity,
+            "volume": volume, "volume_baseline": volume_baseline,
+            **{name: np.asarray(values, dtype=bool) for name, values in patterns.items()},
+        },
     )
 
 

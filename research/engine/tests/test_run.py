@@ -149,15 +149,17 @@ import pytest
 
 from conftest import make_bar_frame
 from engine.run import ARMS, build_strategy
-from engine.strategies.confluence import ReversalExit, SymmetricExit, TimeExit, TrailingExit
+from engine.strategies.confluence import (OppositeConfluenceExit, ReversalExit, SymmetricExit,
+                                          TimeExit, TrailingExit)
 
 
 def test_every_arm_in_the_spec_is_reachable_by_name():
-    assert set(ARMS) == {"trailing", "time", "reversal", "symmetric"}
+    assert set(ARMS) == {"trailing", "time", "reversal", "symmetric", "confluence"}
     assert ARMS["trailing"] is TrailingExit
     assert ARMS["time"] is TimeExit
     assert ARMS["reversal"] is ReversalExit
     assert ARMS["symmetric"] is SymmetricExit
+    assert ARMS["confluence"] is OppositeConfluenceExit
 
 
 def test_build_strategy_passes_arm_parameters_through():

@@ -3,8 +3,8 @@ import pytest
 from conftest import make_bar_frame
 from engine.lookahead import check_lookahead
 from engine.pillars import PillarConfig
-from engine.strategies.confluence import (ConfluenceBase, ReversalExit, SymmetricExit,
-                                          TimeExit, TrailingExit)
+from engine.strategies.confluence import (ConfluenceBase, OppositeConfluenceExit, ReversalExit,
+                                          SymmetricExit, TimeExit, TrailingExit)
 from engine.strategy import BarsView, Enter, Exit, MoveStop, PositionView
 
 # A 3-of-4 confluence fires on ~0.6% of real bars and almost never on a short synthetic frame.
@@ -146,3 +146,45 @@ def test_reversal_exit_reads_the_held_side_not_the_other_one():
     for i in range(strategy.warmup, len(f)):
         expected = [] if strategy.votes.bearish_score[i] >= 3 else [Exit()]
         assert strategy.on_bar(BarsView(f, i), short) == expected
+
+
+def test_opposite_confluence_exit_fires_when_the_other_side_reaches_the_threshold():
+    f = make_bar_frame(n=2000)
+    strategy = OppositeConfluenceExit(f, config=PillarConfig(confluence_threshold=2))
+    held = PositionView(side="LONG", entry_price=100.0, stop=90.0, target=None, size=1.0)
+    fired = 0
+    for i in range(strategy.warmup, len(f)):
+        intents = strategy.on_bar(BarsView(f, i), held)
+        if strategy.votes.bearish_score[i] >= 2:
+            assert intents == [Exit()]
+            fired += 1
+        else:
+            assert intents == []
+    assert fired, "the opposite side never reached the threshold: the test proves nothing"
+
+
+def test_opposite_confluence_exit_ignores_the_held_side_dropping_out():
+    # The difference from ReversalExit: the held side losing its votes is not a reason to leave.
+    f = make_bar_frame(n=2000)
+    strategy = OppositeConfluenceExit(f)
+    short = PositionView(side="SHORT", entry_price=100.0, stop=110.0, target=None, size=1.0)
+    for i in range(strategy.warmup, len(f)):
+        expected = [Exit()] if strategy.votes.bullish_score[i] >= 3 else []
+        assert strategy.on_bar(BarsView(f, i), short) == expected
+
+
+def test_opposite_confluence_exit_names_the_pillars_that_turned():
+    f = make_bar_frame(n=2000)
+    strategy = OppositeConfluenceExit(f, config=PillarConfig(confluence_threshold=1))
+    held = PositionView(side="LONG", entry_price=100.0, stop=90.0, target=None, size=1.0)
+    for i in range(strategy.warmup, len(f)):
+        intents = strategy.on_bar(BarsView(f, i), held)
+        if intents:
+            assert "bearish" in intents[0].why
+            assert any(name in intents[0].why for name in strategy.votes.names)
+            return
+    pytest.fail("no exit fired")
+
+
+def test_opposite_confluence_exit_passes_the_lookahead_guard():
+    check_lookahead(lambda frame_: OppositeConfluenceExit(frame_), make_bar_frame())

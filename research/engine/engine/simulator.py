@@ -51,7 +51,14 @@ class Trade:
 
 
 def simulate(strategy, minutes: pd.DataFrame, signal_bars: pd.DataFrame, spec: dict,
-             config: SimConfig) -> tuple[list[Trade], int]:
+             config: SimConfig, trace: dict | None = None) -> tuple[list[Trade], int]:
+    """Run `strategy` over `signal_bars`, filling on `minutes`.
+
+    `trace`, when given, is filled with the decision record the review page explains from:
+    `{bar_index: {"time", "position", "intents", "events"}}` for every bar that held a position,
+    produced an intent or had an event. A bar absent from it was flat and asked for nothing. The
+    trace only observes; a traced run produces exactly the untraced trades.
+    """
     value_per_point = usd_per_point(spec, config.fx_rate)
     slip = config.slippage_ticks * config.tick_size
     trades: list[Trade] = []
@@ -68,7 +75,21 @@ def simulate(strategy, minutes: pd.DataFrame, signal_bars: pd.DataFrame, spec: d
 
     position: dict | None = None
 
-    def close(exit_index: int, exit_price: float, reason: str) -> None:
+    def record(bar_index: int) -> dict | None:
+        if trace is None:
+            return None
+        return trace.setdefault(bar_index, {"time": signal_bars.index[bar_index].isoformat(),
+                                            "position": None, "intents": [], "events": []})
+
+    def holding_bar(minute: int) -> int:
+        """The signal bar whose period contains `minute`: where a stop or target hit belongs."""
+        return int(signal_bars.index.searchsorted(minute_index[minute], side="right")) - 1
+
+    def note(bar_index: int, event: dict) -> None:
+        if trace is not None:
+            record(bar_index)["events"].append(event)
+
+    def close(exit_index: int, exit_price: float, reason: str, bar_index: int, why: str = "") -> None:
         nonlocal position, balance
         trade = _close(position, minute_index[exit_index], float(exit_price), reason, spec, config,
                        value_per_point, slip,
@@ -76,6 +97,10 @@ def simulate(strategy, minutes: pd.DataFrame, signal_bars: pd.DataFrame, spec: d
                        exit_spread=open_ask[exit_index] - open_bid[exit_index])
         trades.append(trade)
         balance += trade.net_usd
+        note(bar_index, {"kind": "exit", "reason": reason, "why": why,
+                         "time": trade.exit_time.isoformat(), "price": trade.exit_price,
+                         "stop": trade.stop, "target": trade.target,
+                         "net_usd": trade.net_usd, "r": trade.r})
         position = None
 
     for bar_index in range(len(signal_bars)):
@@ -84,30 +109,49 @@ def simulate(strategy, minutes: pd.DataFrame, signal_bars: pd.DataFrame, spec: d
             side=position["side"], entry_price=position["entry_price"], stop=position["stop"],
             target=position["target"], size=position["size"])
 
-        for intent in strategy.on_bar(BarsView(signal_bars, bar_index), view):
+        intents = strategy.on_bar(BarsView(signal_bars, bar_index), view)
+        if trace is not None and (view or intents):
+            entry = record(bar_index)
+            if view:
+                entry["position"] = {"side": view.side, "entry_price": view.entry_price,
+                                     "stop": view.stop, "target": view.target,
+                                     "entry_time": position["entry_time"].isoformat(),
+                                     "initial_stop": position["initial_stop"]}
+            entry["intents"] = [_describe(intent) for intent in intents]
+
+        for intent in intents:
             fills = minute_index.searchsorted(bar_time, side="right")
             if isinstance(intent, Enter) and position is None:
                 if fills >= len(minute_index):
+                    note(bar_index, {"kind": "entry_skipped", "why": "no minute left to fill on"})
                     continue
                 entry_price = (open_ask[fills] + slip) if intent.side == "LONG" else (open_bid[fills] - slip)
                 stop_distance = abs(entry_price - intent.stop)
                 if stop_distance <= 0:
+                    note(bar_index, {"kind": "entry_skipped", "why": "stop is not beyond the fill"})
                     continue
                 risk_usd = balance * config.risk_pct / 100.0 * intent.risk_r
                 size = position_size(risk_usd, stop_distance, value_per_point,
                                      spec["min_deal_size"], spec["size_increment"])
                 if size == 0.0:
                     skipped += 1
+                    note(bar_index, {"kind": "entry_skipped", "why": "position size rounds to zero"})
                     continue
                 position = {"side": intent.side, "entry_price": float(entry_price),
                             "stop": intent.stop, "target": intent.target, "size": size,
                             "entry_index": int(fills), "entry_time": minute_index[fills],
-                            "scan_from": int(fills), "risk_usd": risk_usd}
+                            "scan_from": int(fills), "risk_usd": risk_usd,
+                            "initial_stop": intent.stop}
+                note(bar_index, {"kind": "entry_fill", "side": intent.side,
+                                 "time": minute_index[fills].isoformat(),
+                                 "price": float(entry_price), "stop": intent.stop,
+                                 "target": intent.target, "size": size})
             elif isinstance(intent, MoveStop) and position is not None:
+                note(bar_index, {"kind": "stop_move", "from": position["stop"], "to": intent.price})
                 position["stop"] = intent.price
             elif isinstance(intent, Exit) and position is not None and fills < len(minute_index):
                 price = (open_bid[fills] - slip) if position["side"] == "LONG" else (open_ask[fills] + slip)
-                close(int(fills), price, "SIGNAL")
+                close(int(fills), price, "SIGNAL", bar_index, intent.why)
 
         if position is None:
             continue
@@ -123,21 +167,35 @@ def simulate(strategy, minutes: pd.DataFrame, signal_bars: pd.DataFrame, spec: d
             if position["side"] == "LONG":
                 if low_bid[i] <= position["stop"]:
                     price = open_bid[i] if open_bid[i] < position["stop"] else position["stop"]
-                    close(i, price - slip, "STOP")
+                    close(i, price - slip, "STOP", holding_bar(i), _stop_why(position))
                     break
                 if position["target"] is not None and high_bid[i] > position["target"]:
-                    close(i, position["target"], "TARGET")
+                    close(i, position["target"], "TARGET", holding_bar(i), "target traded through")
                     break
             else:
                 if high_ask[i] >= position["stop"]:
                     price = open_ask[i] if open_ask[i] > position["stop"] else position["stop"]
-                    close(i, price + slip, "STOP")
+                    close(i, price + slip, "STOP", holding_bar(i), _stop_why(position))
                     break
                 if position["target"] is not None and low_ask[i] < position["target"]:
-                    close(i, position["target"], "TARGET")
+                    close(i, position["target"], "TARGET", holding_bar(i), "target traded through")
                     break
 
     return trades, skipped
+
+
+def _describe(intent) -> dict:
+    if isinstance(intent, Enter):
+        return {"kind": "enter", "side": intent.side, "stop": intent.stop, "target": intent.target}
+    if isinstance(intent, MoveStop):
+        return {"kind": "move_stop", "to": intent.price}
+    return {"kind": "exit", "why": intent.why}
+
+
+def _stop_why(position: dict) -> str:
+    if position["stop"] == position["initial_stop"]:
+        return "initial stop hit"
+    return "moved stop hit"
 
 
 def _close(position: dict, exit_time: pd.Timestamp, exit_price: float, reason: str,

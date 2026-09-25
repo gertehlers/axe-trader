@@ -1,4 +1,4 @@
-"""The frozen 4-pillar confluence entry, and the four exit arms built on it (spec 4).
+"""The frozen 4-pillar confluence entry, and the five exit arms built on it (spec 4).
 
 Every arm shares one entry so that differences between them are attributable to the exit.
 Indicators are precomputed over the whole frame in __init__, which is why these classes MUST be
@@ -26,6 +26,7 @@ class ConfluenceBase:
         self.config = config or PillarConfig()
         self.brake_atr = brake_atr
         self.votes = compute_pillars(frame, self.config)
+        self.bar_times = frame.index          # for explanations only; never read by a decision
         self.mid_close = ((frame["close_bid"] + frame["close_ask"]) / 2.0).to_numpy()
         self.mid_high = ((frame["high_bid"] + frame["high_ask"]) / 2.0).to_numpy()
         self.mid_low = ((frame["low_bid"] + frame["low_ask"]) / 2.0).to_numpy()
@@ -101,7 +102,10 @@ class TimeExit(ConfluenceBase):
     def exit_intents(self, index: int, position: PositionView) -> list[Intent]:
         if self.entry_index is None:
             return []
-        return [Exit()] if index - self.entry_index >= self.max_bars else []
+        held = index - self.entry_index
+        if held < self.max_bars:
+            return []
+        return [Exit(why=f"time: held {held} bars, limit {self.max_bars} bars")]
 
 
 class TrailingExit(ConfluenceBase):
@@ -132,4 +136,28 @@ class ReversalExit(ConfluenceBase):
     def exit_intents(self, index: int, position: PositionView) -> list[Intent]:
         score = (self.votes.bullish_score if position.side == "LONG"
                  else self.votes.bearish_score)
-        return [] if score[index] >= self.config.confluence_threshold else [Exit()]
+        threshold = self.config.confluence_threshold
+        if score[index] >= threshold:
+            return []
+        held = "bullish" if position.side == "LONG" else "bearish"
+        return [Exit(why=f"reversal: {held} score {int(score[index])} fell below {threshold}")]
+
+
+class OppositeConfluenceExit(ConfluenceBase):
+    """E5: out when the OPPOSITE side's confluence reaches the entry threshold.
+
+    Holding LONG, leave when enough bearish pillars agree to have opened a SHORT (the trend gate
+    is not required: this is a warning, not an entry). Unlike ReversalExit, the held side merely
+    losing its votes is no reason to leave, which matters because two of the four pillars are
+    one-bar events and drop out almost immediately. The brake stays as the protective stop.
+    """
+
+    def exit_intents(self, index: int, position: PositionView) -> list[Intent]:
+        against = "bearish" if position.side == "LONG" else "bullish"
+        table = self.votes.bearish if position.side == "LONG" else self.votes.bullish
+        score = self.votes.bearish_score if position.side == "LONG" else self.votes.bullish_score
+        threshold = self.config.confluence_threshold
+        if score[index] < threshold:
+            return []
+        voted = "+".join(name for name in self.votes.names if table[name][index])
+        return [Exit(why=f"confluence: {against} score {int(score[index])}/{threshold} ({voted})")]

@@ -7,7 +7,7 @@ fill price; only the simulator does that, from the 1-minute bid/ask series.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol, Union
 
 import numpy as np
@@ -30,7 +30,9 @@ class Enter:
 
 @dataclass(frozen=True)
 class Exit:
-    pass
+    # Why the strategy asked to leave, for the decision trace. Excluded from equality so an
+    # explanation can never change what counts as the same decision.
+    why: str = field(default="", compare=False)
 
 
 @dataclass(frozen=True)
