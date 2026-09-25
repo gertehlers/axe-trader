@@ -1,0 +1,37 @@
+# Strategy version v001 — the baseline. IMMUTABLE: never edit a published version; add v002 with
+# `parent: v001` and the agreed hypothesis instead. Runs record this file's sha256.
+version: v001
+parent: null
+agreed: 2026-09-25
+hypothesis: >
+  Baseline, unchanged from the frozen research engine: the 4-pillar confluence entry
+  (RSI+BB, Candle, S/R, Vol+Trend; 3 of 4 on one side) behind an EMA(200) trend gate,
+  traded with five exit rules. The fifth, the opposite-confluence exit, was the owner's
+  request before any review, so it is part of the baseline, not a change.
+pillars:                     # engine.pillars.PillarConfig
+  rsi_period: 7
+  rsi_oversold: 25.0
+  rsi_overbought: 75.0
+  bb_period: 20
+  bb_multiplier: 2.0
+  ema_period: 50
+  trend_ema_period: 200
+  atr_period: 14
+  proximity_atr_multiple: 0.5
+  swing_lookback_bars: 10
+  volume_sma_period: 20
+  confluence_threshold: 3
+arms:                        # engine.run.ARMS, with each arm's parameters
+  confluence: {brake_atr: 10.0}
+  symmetric: {stop_atr: 1.0}
+  trailing: {brake_atr: 10.0, trail_atr: 2.0}
+  time: {brake_atr: 10.0, max_bars: 6}
+  reversal: {brake_atr: 10.0}
+execution:
+  timeframes: [5min, 15min]
+  entry_hours: any           # no time-of-day restriction (owner: open question for review)
+  overnight: hold            # positions may be held overnight and over weekends; financing charged
+  warmup_bars: 600
+  starting_balance_usd: 2000.0
+  risk_pct: 1.0
+  slippage_ticks: 0.0

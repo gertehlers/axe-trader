@@ -34,7 +34,7 @@ ARM_PARAMETERS = {"trailing": {"brake_atr", "trail_atr"}, "time": {"brake_atr", 
 def build_strategy(name: str, frame: pd.DataFrame, **kwargs):
     if name not in ARMS:
         raise ValueError(f"unknown arm {name!r}; expected one of {sorted(ARMS)}")
-    allowed = ARM_PARAMETERS[name]
+    allowed = ARM_PARAMETERS[name] | {"config"}      # every arm takes a PillarConfig
     unknown = set(kwargs) - allowed
     if unknown:
         raise ValueError(f"arm {name!r} does not take {sorted(unknown)}; it takes {sorted(allowed)}")
