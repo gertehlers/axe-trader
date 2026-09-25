@@ -282,7 +282,7 @@ def write_index() -> None:
     entries = []
     for path in sorted(DAYS.glob("20??-??-??.js")):
         text = path.read_text()
-        payload = json.loads(text[text.index("= ") + 2:].rstrip().rstrip(";"))
+        payload = json.loads(text[text.index("] = ") + 4:].rstrip().rstrip(";"))
         entries.append({"date": path.stem, "strategy": payload["strategy"]["version"],
                         "compare": (payload.get("compare") or {}).get("parent"), "built": payload["built"]})
     (DAYS / "index.js").write_text("window.DAY_INDEX = " + json.dumps(entries) + ";\n")

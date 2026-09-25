@@ -1,0 +1,19 @@
+[
+  {
+    "entry_time": "2024-01-12T19:40:00+00:00",
+    "entry_price": 4782.2,
+    "exit_time": "2024-01-12T19:45:00+00:00",
+    "exit_price": 4779.9,
+    "side": "LONG",
+    "size": 0.55,
+    "stop": 4746.618508667457,
+    "target": null,
+    "exit_reason": "SIGNAL",
+    "gross_usd": -1.2650000000001,
+    "spread_cost_usd": 0.7700000000003002,
+    "financing_usd": 0.0,
+    "slippage_usd": 0.0,
+    "net_usd": -1.2650000000001,
+    "r": -0.0635744202666256
+  }
+]
