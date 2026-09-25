@@ -175,7 +175,8 @@ def reviewed_run_matches(grades: list[dict], parent_tfs: dict) -> dict:
     return report
 
 
-def compare_payload(parent, parent_tfs: dict, child_tfs: dict, feedback_dir: Path | None) -> dict:
+def compare_payload(parent, parent_tfs: dict, child_tfs: dict, feedback_dir: Path | None,
+                    child_runs: dict) -> dict:
     grades, marks = load_feedback(feedback_dir)
     moves = [m for m in marks if m.get("status") == "active" and m.get("kind") == "missed_move"]
     out = {"parent": parent.version, "parent_sha256": parent.sha256, "timeframes": {},
@@ -188,6 +189,21 @@ def compare_payload(parent, parent_tfs: dict, child_tfs: dict, feedback_dir: Pat
         for arm, child_arm in child["arms"].items():
             parent_arm = parent_tfs[tf]["arms"][arm]
             rows = match_trades(parent_arm["trades"], child_arm["trades"], minutes_per_bar)
+            # A parent trade the child still takes, but exits outside the review day, is not
+            # "removed": find it in the child's full run and report the changed exit.
+            full = child_runs[tf][arm].all_trades
+            for r in rows:
+                if r["status"] != "removed":
+                    continue
+                p = r["parent"]
+                same = next((t for t in full if t["side"] == p["side"]
+                             and pd.Timestamp(t["entry_time"]) == pd.Timestamp(p["entry_time"])), None)
+                if same is not None:
+                    r["status"] = "exit_changed"
+                    r["child"] = {"id": None, "side": same["side"], "entry_time": same["entry_time"],
+                                  "exit_time": same["exit_time"], "exit_reason": same["exit_reason"],
+                                  "exit_price": _num(same["exit_price"]), "entry_price": _num(same["entry_price"]),
+                                  "r": _num(same["r"], 3), "outside_day": True}
             # grades attach to the parent trade the owner actually reviewed, via the shared suffix
             by_suffix = {f"{_suffix(g['trade_id'])}--{g['decision']}": g["grade"] for g in grades
                          if g["timeframe"] == tf and g["arm"] == arm}
@@ -198,7 +214,9 @@ def compare_payload(parent, parent_tfs: dict, child_tfs: dict, feedback_dir: Pat
             out["timeframes"][tf][arm] = {
                 "parent_run_id": parent_arm["run_id"], "parent_trades": parent_arm["trades"],
                 "rows": [{"status": r["status"], "parent": r["parent"]["id"] if r["parent"] else None,
-                          "child": r["child"]["id"] if r["child"] else None} for r in rows],
+                          "child": r["child"]["id"] if r["child"] else None,
+                          "child_outside": r["child"] if r["child"] and r["child"].get("outside_day") else None}
+                         for r in rows],
                 "parent_grades": keyed,
                 "scorecard": scorecard(rows, keyed, tf_moves, minutes_per_bar),
             }
@@ -230,7 +248,7 @@ def main() -> None:
         parent = load_version(REVIEW / "strategies" / f"{args.compare}.yaml")
         parent_tfs, parent_runs, _ = build_version(parent, minutes, spec, args, commit, dirty)
         run_ids += [r.record["run_id"] for tf in parent_runs for r in parent_runs[tf].values()]
-        compare = compare_payload(parent, parent_tfs, timeframes, args.feedback)
+        compare = compare_payload(parent, parent_tfs, timeframes, args.feedback, runs)
 
     data = {
         "epic": args.epic, "session": session,

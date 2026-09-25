@@ -94,6 +94,7 @@ class DayRun:
     strategy: object
     bars: pd.DataFrame
     display: tuple[int, int]          # [first, last] signal-bar indexes shown on the page
+    all_trades: list[dict] = dataclasses.field(default_factory=list)   # the full run, for matching
 
 
 def _trade_dict(trade) -> dict:
@@ -166,7 +167,8 @@ def run_day(minutes: pd.DataFrame, version: StrategyVersion, day: dt.date, timef
         "summary": {"trades_in_window": len(kept), "skipped_in_full_run": int(skipped)},
     }
     return DayRun(record=record, trades=[_trade_dict(t) for t in kept], decisions=decisions,
-                  strategy=strategy, bars=bars, display=(first_bar, last_bar))
+                  strategy=strategy, bars=bars, display=(first_bar, last_bar),
+                  all_trades=[_trade_dict(t) for t in trades])
 
 
 def write_run(run_dir: Path, day_run: DayRun) -> Path:
