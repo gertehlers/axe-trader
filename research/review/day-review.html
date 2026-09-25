@@ -28,6 +28,7 @@
   --mark:#B79BF0; --sel:rgba(183,155,240,.14);
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{background:var(--ground);color:var(--ink);font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif;padding-inline:16px;padding-block:18px 56px}
 .wrap{max-width:1280px;margin:0 auto;display:grid;gap:14px}
 h1,h2,h3{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;font-weight:600;margin:0;text-wrap:balance}
@@ -120,7 +121,9 @@ textarea{font:inherit;font-size:.86rem;width:100%;min-height:48px;padding:7px 8p
       <h1 id="title">Day review</h1>
       <div class="meta" id="meta"></div>
     </div>
-    <span id="dbstatus" class="pill">Connecting to storage…</span>
+    <div class="row"><label class="label" for="daypick">Review day</label>
+      <span class="seg" id="daypick" role="group" aria-label="Review day"></span>
+      <span id="dbstatus" class="pill">Connecting to storage…</span></div>
   </header>
 
   <div class="toolbar" role="toolbar" aria-label="Chart controls">
@@ -162,10 +165,35 @@ textarea{font:inherit;font-size:.86rem;width:100%;min-height:48px;padding:7px 8p
   <section class="foot" id="foot"></section>
 </div>
 
-<script src="day-review-data.js"></script>
+<script src="days/index.js"></script>
 <script>
+// Multi-day shell: load one day's data file, boot the page on it; switching days rebuilds the page
+// from its pristine markup and drops every live subscription first.
+const WRAP = document.querySelector(".wrap"), TEMPLATE = WRAP.innerHTML;
+const RUNTIME = {unsubs: [], onResize: null};
+function loadDay(date) {
+  try { localStorage.setItem("dayreview.day", date); } catch (e) {}
+  RUNTIME.unsubs.forEach(u => { try { u(); } catch (e) {} }); RUNTIME.unsubs = [];
+  if (RUNTIME.onResize) window.removeEventListener("resize", RUNTIME.onResize);
+  WRAP.innerHTML = TEMPLATE;
+  const go = () => boot(window.DAYS[date], date);
+  if (window.DAYS && window.DAYS[date]) return go();
+  const tag = document.createElement("script"); tag.src = `days/${date}.js`; tag.onload = go;
+  tag.onerror = () => { WRAP.innerHTML = `<p class="empty">Could not load the data for ${date}.</p>`; };
+  document.body.appendChild(tag);
+}
 (() => {
-const D = window.DAY;
+  const days = (window.DAY_INDEX || []).map(d => d.date);
+  let pick = null; try { pick = localStorage.getItem("dayreview.day"); } catch (e) {}
+  if (location.hash && days.includes(location.hash.slice(1))) pick = location.hash.slice(1);
+  loadDay(days.includes(pick) ? pick : days[days.length - 1]);
+})();
+
+function boot(D, date) {
+{
+document.getElementById("daypick").innerHTML = (window.DAY_INDEX || []).map(d =>
+  `<button type="button" data-day="${d.date}" aria-pressed="${d.date === date}" title="strategy ${d.strategy}${d.compare ? " vs " + d.compare : ""}">${d.date.slice(5)}</button>`).join("");
+document.getElementById("daypick").onclick = e => { const b = e.target.closest("button[data-day]"); if (b && b.dataset.day !== date) loadDay(b.dataset.day); };
 const TFS = ["5min", "15min"];
 const TF_MIN = {"5min": 5, "15min": 15};
 const GRADES = ["good", "ok", "meh", "poor", "bad"];
@@ -736,7 +764,7 @@ const panelEl = document.getElementById("panel");
 panelEl.addEventListener("input", () => { state.editing = true; });
 panelEl.addEventListener("click", e => { if (e.target.closest(".scale button,.tags button")) state.editing = true;
   if (e.target.closest(".save,.ghost")) state.editing = false; });
-window.addEventListener("resize", drawAll);
+RUNTIME.onResize = drawAll; window.addEventListener("resize", drawAll);
 renderAll();
 
 // ---------- storage ----------
@@ -747,10 +775,12 @@ renderAll();
   state.db = db; status.textContent = "Storage connected"; renderPanel();
   const fail = what => err => { status.textContent = `Could not load ${what} (${err.code})`; status.classList.add("bad"); };
   const into = (map, keyOf) => snap => { map.clear(); snap.docs.forEach(d => map.set(keyOf(d), d.data())); refreshFromStore(); };
-  db.collection("feedback").where("session", "==", D.session.date).onSnapshot(into(state.feedback, d => d.id), fail("grades"));
-  db.collection("marks").where("session", "==", D.session.date).onSnapshot(into(state.marks, d => d.id), fail("marks"));
-  db.collection("explanations").where("session", "==", D.session.date).onSnapshot(into(state.explanations, d => d.id), fail("answers"));
-  db.collection("requests").where("session", "==", D.session.date).onSnapshot(into(state.requests, d => d.id), fail("requests"));
+  RUNTIME.unsubs.push(
+    db.collection("feedback").where("session", "==", D.session.date).onSnapshot(into(state.feedback, d => d.id), fail("grades")),
+    db.collection("marks").where("session", "==", D.session.date).onSnapshot(into(state.marks, d => d.id), fail("marks")),
+    db.collection("explanations").where("session", "==", D.session.date).onSnapshot(into(state.explanations, d => d.id), fail("answers")),
+    db.collection("requests").where("session", "==", D.session.date).onSnapshot(into(state.requests, d => d.id), fail("requests")));
 })();
-})();
+}
+}
 </script>

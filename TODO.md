@@ -45,8 +45,21 @@ US500 through 2026-09-17, i.e. into the reserved period, and aggregate results w
 was chosen from them; `engine.run` now excludes it by default (`--include-reserved` to override).
 Owner to decide whether the reserved start moves.
 
-**Next:** owner grades the v002 exit on the day page → accept/reject v002 → freeze → run it unchanged
-on the next session (2024-01-12) as a first pass (Milestone 3 tooling not built yet).
+**Iteration 002 (2024-01-11):** v002 exit graded good ("exactly what I meant"); entry still bad; the
+owner's better-entry mark at 17:40 had 0/3 votes (momentum turn: not represented). **v002 accepted
+and frozen** (`research/review/strategies/ACCEPTED.md`).
+
+**2024-01-12 first pass (v002 unchanged), committed in `526f2f4` before any review.** One new
+entry: LONG 19:40 UTC, on all five exit rules. The confluence version ran into the weekend and
+exited Mon 01-15 02:25 at -0.13 R (best +3.55 pts, so the 3 ATR target was never near). The 01-11
+20:25 trade carries in and hits its take-profit at 14:25 (+0.28 R).
+
+The page is now multi-day (`days/<date>.js` + `days/index.js`, gitignored; day picker on the page).
+Build a day: `build_day.py --day <date> --strategy v002 [--compare vNNN --feedback <iteration dir>]`,
+then republish with every `days/*.js` in `files`.
+
+**Next:** owner reviews 2024-01-12 → ingest into `feedback/2024-01-12/iteration-001/` → answer →
+if a change follows, rerun 2024-01-11 as well to check for regressions (plan §2B).
 
 ## SESSION STATE — 2026-09-19 (later): the engine produces trades, and 1:1 is the worst exit
 
