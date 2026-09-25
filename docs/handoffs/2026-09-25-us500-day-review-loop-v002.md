@@ -1,6 +1,7 @@
 ---
 date: 2026-09-25
-status: open
+status: landed
+landed: f909ba2
 branch: feat/confluence-exit-matrix
 head: 74cede0
 next: Owner grades the v002 exit on the day page and accepts or rejects v002; if accepted, build the next-day first pass for 2024-01-12
