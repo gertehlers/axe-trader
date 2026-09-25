@@ -1,0 +1,40 @@
+# Strategy version v002 — v001 plus one agreed change. IMMUTABLE: never edit a published version;
+# add a new version with `parent:` and the agreed hypothesis instead. Runs record this file's sha256.
+version: v002
+parent: v001
+agreed: 2026-09-25        # owner chose "Take-profit 3 ATR"
+hypothesis: >
+  Owner's first agreed change (2024-01-11, review iteration 001): the confluence exit gets a
+  take-profit at 3 x ATR(14) from the signal close, on top of the opposite-confluence exit and the
+  10 ATR brake. Owner graded both confluence exits 'too late' and asked for a take-profit
+  (~4800 and ~4790). Expected better: winners are banked instead of given back, and the
+  position frees up sooner. Expected worse: big runs are capped at 3 ATR, entries in quiet hours
+  get small targets, and more trades mean more spread paid. Entries and every other exit rule are
+  unchanged.
+pillars:                     # engine.pillars.PillarConfig
+  rsi_period: 7
+  rsi_oversold: 25.0
+  rsi_overbought: 75.0
+  bb_period: 20
+  bb_multiplier: 2.0
+  ema_period: 50
+  trend_ema_period: 200
+  atr_period: 14
+  proximity_atr_multiple: 0.5
+  swing_lookback_bars: 10
+  volume_sma_period: 20
+  confluence_threshold: 3
+arms:                        # engine.run.ARMS, with each arm's parameters
+  confluence: {brake_atr: 10.0, target_atr: 3.0}   # CHANGED from v001: take-profit added
+  symmetric: {stop_atr: 1.0}
+  trailing: {brake_atr: 10.0, trail_atr: 2.0}
+  time: {brake_atr: 10.0, max_bars: 6}
+  reversal: {brake_atr: 10.0}
+execution:
+  timeframes: [5min, 15min]
+  entry_hours: any           # no time-of-day restriction (owner: open question for review)
+  overnight: hold            # positions may be held overnight and over weekends; financing charged
+  warmup_bars: 600
+  starting_balance_usd: 2000.0
+  risk_pct: 1.0
+  slippage_ticks: 0.0

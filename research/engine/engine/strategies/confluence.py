@@ -152,6 +152,20 @@ class OppositeConfluenceExit(ConfluenceBase):
     one-bar events and drop out almost immediately. The brake stays as the protective stop.
     """
 
+    def __init__(self, frame: pd.DataFrame, target_atr: float | None = None, **kwargs) -> None:
+        super().__init__(frame, **kwargs)
+        self.target_atr = target_atr
+
+    def enter(self, index: int, side: str) -> list[Intent]:
+        """The brake as the stop; with `target_atr`, a take-profit that many ATR from the signal
+        close (v002, owner's first agreed change). Without it, exactly the v001 entry."""
+        if self.target_atr is None:
+            return super().enter(index, side)
+        distance = self.target_atr * float(self.votes.atr[index])
+        price = float(self.mid_close[index])
+        target = price + distance if side == "LONG" else price - distance
+        return [Enter(side=side, stop=self.brake_price(index, side), target=target)]
+
     def exit_intents(self, index: int, position: PositionView) -> list[Intent]:
         against = "bearish" if position.side == "LONG" else "bullish"
         table = self.votes.bearish if position.side == "LONG" else self.votes.bullish

@@ -188,3 +188,30 @@ def test_opposite_confluence_exit_names_the_pillars_that_turned():
 
 def test_opposite_confluence_exit_passes_the_lookahead_guard():
     check_lookahead(lambda frame_: OppositeConfluenceExit(frame_), make_bar_frame())
+
+
+def test_confluence_exit_take_profit_sits_at_the_atr_multiple():
+    f = make_bar_frame(n=2000)
+    strategy = OppositeConfluenceExit(f, config=EASY, target_atr=3.0)
+    mid = ((f["close_bid"] + f["close_ask"]) / 2.0).to_numpy()
+    for i in range(len(f)):
+        intents = strategy.on_bar(BarsView(f, i), PositionView.flat())
+        if intents and isinstance(intents[0], Enter):
+            entry = intents[0]
+            distance = 3.0 * strategy.votes.atr[i]
+            expected = mid[i] + distance if entry.side == "LONG" else mid[i] - distance
+            assert entry.target == pytest.approx(expected)
+            assert abs(entry.stop - mid[i]) == pytest.approx(10.0 * strategy.votes.atr[i])  # brake unchanged
+            return
+    pytest.fail("no entry fired")
+
+
+def test_confluence_exit_without_a_target_is_unchanged():
+    f = make_bar_frame(n=2000)
+    plain, explicit = OppositeConfluenceExit(f, config=EASY), OppositeConfluenceExit(f, config=EASY, target_atr=None)
+    for i in range(len(f)):
+        a = plain.on_bar(BarsView(f, i), PositionView.flat())
+        b = explicit.on_bar(BarsView(f, i), PositionView.flat())
+        assert a == b
+        if a:
+            assert a[0].target is None

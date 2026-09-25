@@ -28,7 +28,7 @@ ARMS = {"trailing": TrailingExit, "time": TimeExit,
 # a silently ignored one.
 ARM_PARAMETERS = {"trailing": {"brake_atr", "trail_atr"}, "time": {"brake_atr", "max_bars"},
                   "reversal": {"brake_atr"}, "symmetric": {"stop_atr"},
-                  "confluence": {"brake_atr"}}
+                  "confluence": {"brake_atr", "target_atr"}}
 
 
 def build_strategy(name: str, frame: pd.DataFrame, **kwargs):

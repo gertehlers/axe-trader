@@ -7,6 +7,10 @@ append-only under `research/review/runs/<run_id>/` (committed), then emit `day-r
     cd research/engine && PYTHONPATH=. .venv/bin/python ../review/build_day.py \
         --day 2024-01-11 --strategy v001
 
+With `--compare v001 --feedback ../review/feedback/2024-01-11/iteration-001`, the parent version is
+rerun on the same engine, checked against the run the owner reviewed (a regression check), and
+matched trade by trade against the child for the before/after view.
+
 The page data holds only engine output: bars, the pillar votes and the raw readings they were
 decided from, and each arm's trades and per-bar decisions from the simulator's trace. The page
 renders these; it computes no explanation of its own.
@@ -24,6 +28,7 @@ import numpy as np
 import pandas as pd
 
 from engine.cache import load_cached_minutes
+from engine.compare import CATCH_AFTER_SHARE, CATCH_BEFORE_BARS, MOVE_BARS, match_trades, scorecard
 from engine.dayrun import load_version, run_day, write_run
 from engine.explain import GATE_RULES, PILLAR_READINGS, RULES
 from engine.instruments import load_instruments
@@ -126,6 +131,80 @@ def timeframe_payload(day_runs: dict, minutes: pd.DataFrame, version) -> dict:
     return payload
 
 
+def build_version(version, minutes, spec, args, commit, dirty):
+    timeframes, runs, session = {}, {}, None
+    for timeframe in version.execution["timeframes"]:
+        day_runs = {}
+        for arm in version.arms:
+            run = run_day(minutes, version, args.day, timeframe, arm, spec, commit,
+                          epic=args.epic, engine_dirty=dirty)
+            write_run(REVIEW / "runs", run)
+            day_runs[arm] = run
+            session = run.record["session"] | {"window": run.record["window"]}
+            print(f"{version.version} {timeframe:>5} {arm:<10} {len(run.trades)} trade(s)  {run.record['run_id']}")
+        timeframes[timeframe] = timeframe_payload(day_runs, minutes, version)
+        runs[timeframe] = day_runs
+    return timeframes, runs, session
+
+
+def _suffix(trade_id: str) -> str:
+    """'<run_id>--T20240111T2025-LONG' -> 'T20240111T2025-LONG': the part a rerun shares."""
+    return trade_id.rsplit("--", 1)[-1]
+
+
+def load_feedback(folder: Path | None) -> tuple[list[dict], list[dict]]:
+    if folder is None:
+        return [], []
+    read = lambda sub: [json.loads(p.read_text()) for p in sorted((folder / sub).glob("*.json"))]
+    unwrap = lambda docs: [d.get("data", d) for d in docs]
+    return unwrap(read("feedback")), unwrap(read("marks"))
+
+
+def reviewed_run_matches(grades: list[dict], parent_tfs: dict) -> dict:
+    """Regression check: is the rerun parent the same set of trades the owner reviewed?"""
+    report = {}
+    for run_id in sorted({g["run_id"] for g in grades}):
+        path = REVIEW / "runs" / run_id / "trades.json"
+        g = next(g for g in grades if g["run_id"] == run_id)
+        reviewed = json.loads(path.read_text()) if path.exists() else None
+        rerun = parent_tfs[g["timeframe"]]["arms"][g["arm"]]["trades"]
+        same = reviewed is not None and [(t["entry_time"], t["side"], t["exit_time"], t["exit_reason"],
+                                          round(t["exit_price"], 2)) for t in reviewed] == \
+            [(t["entry_time"], t["side"], t["exit_time"], t["exit_reason"], t["exit_price"]) for t in rerun]
+        report[run_id] = {"record_found": reviewed is not None, "trades_identical": bool(same)}
+    return report
+
+
+def compare_payload(parent, parent_tfs: dict, child_tfs: dict, feedback_dir: Path | None) -> dict:
+    grades, marks = load_feedback(feedback_dir)
+    moves = [m for m in marks if m.get("status") == "active" and m.get("kind") == "missed_move"]
+    out = {"parent": parent.version, "parent_sha256": parent.sha256, "timeframes": {},
+           "tolerance": {"moved_within_bars": MOVE_BARS, "caught_from_bars_before": CATCH_BEFORE_BARS,
+                         "caught_until_share_of_move": CATCH_AFTER_SHARE},
+           "regression": reviewed_run_matches(grades, parent_tfs) if grades else {}}
+    for tf, child in child_tfs.items():
+        minutes_per_bar = int(pd.Timedelta(tf).total_seconds() // 60)
+        out["timeframes"][tf] = {}
+        for arm, child_arm in child["arms"].items():
+            parent_arm = parent_tfs[tf]["arms"][arm]
+            rows = match_trades(parent_arm["trades"], child_arm["trades"], minutes_per_bar)
+            # grades attach to the parent trade the owner actually reviewed, via the shared suffix
+            by_suffix = {f"{_suffix(g['trade_id'])}--{g['decision']}": g["grade"] for g in grades
+                         if g["timeframe"] == tf and g["arm"] == arm}
+            keyed = {f"{r['parent']['id']}--{d}": by_suffix[f"{_suffix(r['parent']['id'])}--{d}"]
+                     for r in rows if r["parent"] for d in ("entry", "exit")
+                     if f"{_suffix(r['parent']['id'])}--{d}" in by_suffix}
+            tf_moves = [m for m in moves if m["tf"] == tf]
+            out["timeframes"][tf][arm] = {
+                "parent_run_id": parent_arm["run_id"], "parent_trades": parent_arm["trades"],
+                "rows": [{"status": r["status"], "parent": r["parent"]["id"] if r["parent"] else None,
+                          "child": r["child"]["id"] if r["child"] else None} for r in rows],
+                "parent_grades": keyed,
+                "scorecard": scorecard(rows, keyed, tf_moves, minutes_per_bar),
+            }
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--day", required=True, type=dt.date.fromisoformat)
@@ -133,6 +212,8 @@ def main() -> None:
     parser.add_argument("--db", type=Path, default=REVIEW.parents[1] / "data" / "axe-trader.sqlite")
     parser.add_argument("--epic", default="US500")
     parser.add_argument("--out", type=Path, default=REVIEW / "day-review-data.js")
+    parser.add_argument("--compare", help="parent strategy version to show before/after against")
+    parser.add_argument("--feedback", type=Path, help="exported review iteration holding the owner's grades and marks")
     args = parser.parse_args()
 
     version = load_version(REVIEW / "strategies" / f"{args.strategy}.yaml")
@@ -142,20 +223,14 @@ def main() -> None:
     if dirty:
         print("WARNING: research/engine has uncommitted changes; runs are marked engine.dirty")
 
-    timeframes = {}
-    run_ids = []
-    session = None
-    for timeframe in version.execution["timeframes"]:
-        day_runs = {}
-        for arm in version.arms:
-            run = run_day(minutes, version, args.day, timeframe, arm, spec, commit,
-                          epic=args.epic, engine_dirty=dirty)
-            write_run(REVIEW / "runs", run)
-            day_runs[arm] = run
-            run_ids.append(run.record["run_id"])
-            session = run.record["session"] | {"window": run.record["window"]}
-            print(f"{timeframe:>5} {arm:<10} {len(run.trades)} trade(s)  {run.record['run_id']}")
-        timeframes[timeframe] = timeframe_payload(day_runs, minutes, version)
+    timeframes, runs, session = build_version(version, minutes, spec, args, commit, dirty)
+    run_ids = [r.record["run_id"] for tf in runs for r in runs[tf].values()]
+    compare = None
+    if args.compare:
+        parent = load_version(REVIEW / "strategies" / f"{args.compare}.yaml")
+        parent_tfs, parent_runs, _ = build_version(parent, minutes, spec, args, commit, dirty)
+        run_ids += [r.record["run_id"] for tf in parent_runs for r in parent_runs[tf].values()]
+        compare = compare_payload(parent, parent_tfs, timeframes, args.feedback)
 
     data = {
         "epic": args.epic, "session": session,
@@ -168,6 +243,7 @@ def main() -> None:
                     "gate": {side: g.format(**vars(version.pillars)) for side, g in GATE_RULES.items()},
                     "readings": PILLAR_READINGS, "threshold": version.pillars.confluence_threshold},
         "timeframes": timeframes,
+        "compare": compare,
         "run_ids": run_ids,
         "engine": {"commit": commit, "dirty": dirty},
         "built": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
