@@ -1,0 +1,74 @@
+{
+  "run_id": "us500-15min-v001-symmetric-2024-01-11-c38288a478",
+  "strategy": {
+    "version": "v001",
+    "parent": null,
+    "sha256": "fcda98d55c500b50880e6cd4b7338218f064a03f3da320bf26d9127554307576",
+    "path": "/Users/gertehlers/Development/projects/axe-trader/research/review/strategies/v001.yaml"
+  },
+  "session": {
+    "date": "2024-01-11",
+    "cash_open": "2024-01-11T14:30:00+00:00",
+    "cash_close": "2024-01-11T21:00:00+00:00",
+    "early_close": false
+  },
+  "window": {
+    "start": "2024-01-10T21:00:00+00:00",
+    "end": "2024-01-11T21:00:00+00:00",
+    "display_start": "2024-01-10T21:00:00+00:00",
+    "display_end": "2024-01-11T21:00:00+00:00"
+  },
+  "timeframe": "15min",
+  "arm": "symmetric",
+  "arm_parameters": {
+    "stop_atr": 1.0
+  },
+  "data": {
+    "epic": "US500",
+    "fingerprint_sha256": "3a3698db72ab6ceba1fa5cca0afbbe92b0143a6d48e5e67c6520a32a337bbdf9",
+    "minutes": 18386,
+    "first_minute": "2024-01-01T23:01:00+00:00",
+    "last_minute": "2024-01-19T21:59:00+00:00",
+    "cutoff": "2024-01-21T21:00:00+00:00",
+    "reserved_from": "2026-08-01T00:00:00+00:00"
+  },
+  "engine": {
+    "commit": "5d80834",
+    "dirty": false
+  },
+  "execution": {
+    "timeframes": [
+      "5min",
+      "15min"
+    ],
+    "entry_hours": "any",
+    "overnight": "hold",
+    "warmup_bars": 600,
+    "starting_balance_usd": 2000.0,
+    "risk_pct": 1.0,
+    "slippage_ticks": 0.0,
+    "sim_config": {
+      "starting_balance_usd": 2000.0,
+      "risk_pct": 1.0,
+      "slippage_ticks": 0.0,
+      "tick_size": 0.0,
+      "weekend_multiplier": 1.0,
+      "fx_rate": 1.0
+    },
+    "fills": "1-minute bid/ask; stop wins a minute that touches stop and target",
+    "costs": {
+      "spread": "paid via bid/ask",
+      "financing": {
+        "charge_time_utc": "21:00",
+        "interval_minutes": 1440,
+        "long_rate": -0.0215402,
+        "short_rate": -0.000682
+      }
+    }
+  },
+  "calendar": "NYSE via pandas_market_calendars; review day = previous cash close to this close",
+  "summary": {
+    "trades_in_window": 0,
+    "skipped_in_full_run": 0
+  }
+}
