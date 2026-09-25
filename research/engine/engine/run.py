@@ -220,9 +220,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--trail-atr", type=float, default=2.0)
     parser.add_argument("--max-bars", type=int, default=6)
     parser.add_argument("--stop-atr", type=float, default=1.0)
+    parser.add_argument("--target-atr", type=float, default=None, help="confluence arm take-profit (v002: 3.0)")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--balance", type=float, default=2000.0)
     parser.add_argument("--risk-pct", type=float, default=1.0)
+    parser.add_argument("--include-reserved", action="store_true",
+                        help="also load the reserved evaluation period (engine.dayrun.RESERVED_FROM onward); "
+                             "only for a pre-registered final evaluation")
     args = parser.parse_args(argv)
 
     from engine.bars import resample
@@ -234,13 +238,16 @@ def main(argv: list[str] | None = None) -> None:
 
     engine_dir = Path(__file__).resolve().parents[1]      # research/engine
     minutes = load_cached_minutes(args.db, args.epic, engine_dir / ".cache")
+    from engine.dayrun import RESERVED_FROM
+    if not args.include_reserved:
+        minutes = minutes[minutes.index < RESERVED_FROM]
     signal_bars = resample(minutes, args.timeframe)
     spec = load_instruments(engine_dir / "instruments.yaml")[args.epic]
 
     kwargs = {k: v for k, v in {
         "brake_atr": args.brake_atr, "trail_atr": args.trail_atr,
-        "max_bars": args.max_bars, "stop_atr": args.stop_atr,
-    }.items() if k in ARM_PARAMETERS[args.arm]}
+        "max_bars": args.max_bars, "stop_atr": args.stop_atr, "target_atr": args.target_atr,
+    }.items() if k in ARM_PARAMETERS[args.arm] and v is not None}
     strategy = build_strategy(args.arm, signal_bars, **kwargs)
 
     config = SimConfig(starting_balance_usd=args.balance, risk_pct=args.risk_pct)

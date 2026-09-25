@@ -178,3 +178,24 @@ def test_an_irrelevant_parameter_is_an_error_not_a_silent_no_op():
     # Passing --trail-atr to the time arm should say so rather than be quietly ignored.
     with pytest.raises(ValueError, match="does not take"):
         build_strategy("time", make_bar_frame(), trail_atr=3.0)
+
+
+def test_the_cli_never_loads_the_reserved_period_by_default(tmp_path, monkeypatch):
+    import engine.cache
+    from engine.dayrun import RESERVED_FROM
+    from engine.run import main
+    seen = {}
+    index = pd.date_range(RESERVED_FROM - pd.Timedelta(days=3), RESERVED_FROM + pd.Timedelta(days=3),
+                          freq="1min", tz="UTC", name="minute")
+    frame = pd.DataFrame({c: 100.0 for c in ["open_bid", "open_ask", "high_bid", "high_ask", "low_bid",
+                                             "low_ask", "close_bid", "close_ask"]}, index=index)
+    frame["volume"] = 1.0
+    monkeypatch.setattr(engine.cache, "load_cached_minutes", lambda *a, **k: frame)
+
+    def stop(minutes, timeframe):
+        seen["last"] = minutes.index[-1]
+        raise SystemExit
+    monkeypatch.setattr("engine.bars.resample", stop)
+    with pytest.raises(SystemExit):
+        main(["--db", "x", "--epic", "US500", "--arm", "time", "--out", str(tmp_path)])
+    assert seen["last"] < RESERVED_FROM
