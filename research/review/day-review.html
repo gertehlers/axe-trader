@@ -1,0 +1,681 @@
+<title>US500 Day Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#F4F6F5; --surface:#FFFFFF; --sunk:#EEF2F0; --ink:#18211E; --muted:#5A6863; --rule:#D9E0DD;
+  --accent:#0E6B60; --accent-soft:#DCEFEB; --long:#1C7F46; --short:#B83C27;
+  --warn:#9A6400; --warn-soft:#FBF0DA; --cash:rgba(14,107,96,.07); --grid:#E6EBE9;
+  --up:#1C7F46; --down:#B83C27; --muted-bull:rgba(28,127,70,.35); --muted-bear:rgba(184,60,39,.35);
+  --mark:#6A3FB5; --sel:rgba(106,63,181,.12);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#101614; --surface:#18201E; --sunk:#141B19; --ink:#E2EAE7; --muted:#93A39D; --rule:#2B3633;
+    --accent:#56C2B0; --accent-soft:#17332E; --long:#4FC07F; --short:#EE7B63;
+    --warn:#E3B04F; --warn-soft:#352A14; --cash:rgba(86,194,176,.07); --grid:#222C29;
+    --up:#4FC07F; --down:#EE7B63; --muted-bull:rgba(79,192,127,.35); --muted-bear:rgba(238,123,99,.35);
+    --mark:#B79BF0; --sel:rgba(183,155,240,.14);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#101614; --surface:#18201E; --sunk:#141B19; --ink:#E2EAE7; --muted:#93A39D; --rule:#2B3633;
+  --accent:#56C2B0; --accent-soft:#17332E; --long:#4FC07F; --short:#EE7B63;
+  --warn:#E3B04F; --warn-soft:#352A14; --cash:rgba(86,194,176,.07); --grid:#222C29;
+  --up:#4FC07F; --down:#EE7B63; --muted-bull:rgba(79,192,127,.35); --muted-bear:rgba(238,123,99,.35);
+  --mark:#B79BF0; --sel:rgba(183,155,240,.14);
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif;padding-inline:16px;padding-block:18px 56px}
+.wrap{max-width:1280px;margin:0 auto;display:grid;gap:14px}
+h1,h2,h3{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;font-weight:600;margin:0;text-wrap:balance}
+h1{font-size:1.7rem;letter-spacing:-.01em} h2{font-size:1.1rem} h3{font-size:.95rem}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.eyebrow{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:end;gap:10px 24px}
+.meta{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:.84rem;color:var(--muted)}
+.pill{font-size:.82rem;padding:4px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent);white-space:nowrap}
+.pill.bad{background:var(--warn-soft);color:var(--warn)}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--ground);padding-block:8px;border-bottom:1px solid var(--rule)}
+.seg{display:inline-flex;border:1px solid var(--rule);border-radius:5px;overflow:hidden;background:var(--surface)}
+.seg button{font:inherit;font-size:.84rem;padding:5px 11px;border:0;background:transparent;color:var(--ink);cursor:pointer;border-right:1px solid var(--rule)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--surface)}
+.label{font-size:.75rem;color:var(--muted);margin-right:6px}
+button:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.charts{display:grid;gap:10px}
+.pane{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:8px 10px 6px}
+.pane-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;font-size:.84rem}
+.pane canvas{display:block;width:100%;touch-action:none;cursor:crosshair}
+.readout{font-size:.78rem;color:var(--muted);min-height:1.2em}
+.hint{font-size:.8rem;color:var(--muted)}
+.lower{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:14px;align-items:start}
+@media (max-width:900px){.lower{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:14px 16px;display:grid;gap:12px;align-content:start}
+.empty{color:var(--muted);font-size:.9rem}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:2px 14px;font-size:.86rem;margin:0}
+.facts dt{color:var(--muted)} .facts dd{margin:0}
+.side-long{color:var(--long)} .side-short{color:var(--short)}
+.votes{display:grid;gap:6px}
+.vrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:.84rem}
+.vrow .who{width:4.2em;font-weight:600}
+.chip{font-size:.78rem;padding:2px 8px;border-radius:4px;border:1px solid var(--rule);color:var(--muted)}
+.chip.on-long{background:var(--long);border-color:var(--long);color:var(--surface)}
+.chip.on-short{background:var(--short);border-color:var(--short);color:var(--surface)}
+.gate{font-size:.78rem;padding:2px 8px;border-radius:4px;background:var(--sunk);color:var(--muted)}
+.gate.open{color:var(--ink)}
+.decision{font-size:.9rem;display:grid;gap:4px}
+.decision ul{margin:0;padding-left:18px}
+.action{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.85rem;font-weight:500}
+details{border-top:1px solid var(--rule);padding-top:8px}
+summary{cursor:pointer;font-size:.84rem;color:var(--accent)}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.78rem}
+td,th{padding:4px 6px;border-bottom:1px solid var(--grid);text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:500}
+.section{display:grid;gap:8px;border-top:1px solid var(--rule);padding-top:10px}
+.scale{display:flex;flex-wrap:wrap;gap:6px}
+.scale button,.tags button{font:inherit;font-size:.84rem;padding:5px 11px;border-radius:4px;border:1px solid var(--rule);background:var(--surface);color:var(--ink);cursor:pointer}
+.tags button{font-size:.78rem;padding:3px 9px;border-radius:999px}
+.scale button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.tags button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+textarea{font:inherit;font-size:.86rem;width:100%;min-height:48px;padding:7px 8px;border-radius:4px;border:1px solid var(--rule);background:var(--ground);color:var(--ink);resize:vertical}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.save{font:inherit;font-weight:600;font-size:.86rem;padding:6px 14px;border-radius:4px;border:0;background:var(--ink);color:var(--surface);cursor:pointer}
+.save:disabled{opacity:.45;cursor:not-allowed}
+.ghost{font:inherit;font-size:.8rem;padding:4px 10px;border-radius:4px;border:1px solid var(--rule);background:transparent;color:var(--muted);cursor:pointer}
+.saved{font-size:.8rem;color:var(--muted)}
+.flag{font-size:.75rem;padding:2px 8px;border-radius:999px;background:var(--warn-soft);color:var(--warn)}
+.reply{border-left:3px solid var(--accent);background:var(--accent-soft);padding:9px 12px;border-radius:0 4px 4px 0;display:grid;gap:6px;font-size:.86rem}
+.reply p{margin:0} .reply .hind{color:var(--muted);font-style:italic}
+.hind{color:var(--muted);font-style:italic}
+.list{display:grid;gap:0}
+.item{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;align-items:baseline;padding:8px 4px;border-bottom:1px solid var(--grid);font-size:.84rem;cursor:pointer;background:transparent;border-left:0;border-right:0;border-top:0;text-align:left;color:inherit;font-family:inherit;width:100%}
+.item:hover{background:var(--sunk)}
+.item .sub{grid-column:2/4;color:var(--muted);font-size:.78rem}
+.tfbadge{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.72rem;padding:1px 6px;border-radius:3px;background:var(--sunk);color:var(--muted)}
+.foot{font-size:.78rem;color:var(--muted);display:grid;gap:4px}
+.foot code{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.74rem;word-break:break-all}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow" id="eyebrow">US500 · review day</div>
+      <h1 id="title">Day review</h1>
+      <div class="meta" id="meta"></div>
+    </div>
+    <span id="dbstatus" class="pill">Connecting to storage…</span>
+  </header>
+
+  <div class="toolbar" role="toolbar" aria-label="Chart controls">
+    <div><span class="label">Exit rule</span><span class="seg" id="arms"></span></div>
+    <div><span class="label">Mode</span><span class="seg" id="modes">
+      <button type="button" id="mode-inspect" aria-pressed="true">Inspect</button>
+      <button type="button" id="mode-move" aria-pressed="false">Mark a move</button></span></div>
+    <div><span class="label">View</span><span class="seg">
+      <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+      <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
+      <button type="button" id="zoom-day">Review day</button>
+      <button type="button" id="zoom-cash">Cash session</button>
+      <button type="button" id="zoom-all">All</button></span></div>
+  </div>
+
+  <div class="charts">
+    <section class="pane" aria-label="5-minute chart">
+      <div class="pane-head"><h3>5-minute</h3><span class="readout mono" id="readout-5min"></span></div>
+      <canvas id="chart-5min" height="360"></canvas>
+    </section>
+    <section class="pane" aria-label="15-minute chart">
+      <div class="pane-head"><h3>15-minute</h3><span class="readout mono" id="readout-15min"></span></div>
+      <canvas id="chart-15min" height="280"></canvas>
+    </section>
+    <div class="hint" id="hint">Click a candle to see why the strategy did or did not act there. Click an entry ▲▼ or exit ● marker to grade it. Drag to pan; ⌘/Ctrl + scroll or the buttons to zoom. The strip under each chart shows the vote count per bar: green up = bullish pillars, red down = bearish; solid = reached the threshold.</div>
+  </div>
+
+  <div class="lower">
+    <article class="card" id="panel" aria-live="polite"><p class="empty">Select a candle, a trade marker or a mark on either chart.</p></article>
+    <div style="display:grid;gap:14px">
+      <section class="card"><h2>Trades on this day</h2><div class="list" id="trades"></div></section>
+      <section class="card"><h2>Your feedback</h2><div class="list" id="feedback"></div></section>
+    </div>
+  </div>
+
+  <section class="foot" id="foot"></section>
+</div>
+
+<script src="day-review-data.js"></script>
+<script>
+(() => {
+const D = window.DAY;
+const TFS = ["5min", "15min"];
+const TF_MIN = {"5min": 5, "15min": 15};
+const GRADES = ["good", "ok", "meh", "poor", "bad"];
+const ENTRY_TAGS = ["too late", "too early", "against the trend", "against structure", "should have stayed out", "good location"];
+const EXIT_TAGS = ["too late", "too early", "stop too tight", "stop too wide", "exit too sensitive", "gave back too much", "right call despite result"];
+const MARK_KINDS = {
+  better_entry: "Better entry here", better_exit: "Better exit here",
+  no_trade_right: "Staying out was right", missed_move: "Missed move", note: "Note",
+};
+const NY = new Intl.DateTimeFormat("en-US", {timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false});
+const NYDAY = new Intl.DateTimeFormat("en-US", {timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric"});
+const utc = t => new Date(t).toISOString().slice(0, 16).replace("T", " ");
+const utcShort = t => new Date(t).toISOString().slice(5, 16).replace("T", " ");
+const ny = t => NY.format(new Date(t));
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const fmtNum = (v, d = 2) => v === null || v === undefined ? "–" : (typeof v === "boolean" ? (v ? "yes" : "no") : Number(v).toFixed(d));
+
+// ---------- state ----------
+const state = {
+  arm: "confluence", mode: "inspect", view: null, selected: null, pending: null, editing: false,
+  feedback: new Map(), marks: new Map(), explanations: new Map(), requests: new Map(), db: null,
+};
+try { const a = localStorage.getItem("dayreview.arm"); if (a && D.strategy.arms[a]) state.arm = a; } catch (e) {}
+
+// ---------- shared time axis: slots of the 5-minute series, gaps compressed ----------
+const base = D.timeframes["5min"].bars.map(b => b[0] * 1000);
+function slotOf(ms) {             // fractional slot position of a timestamp
+  let lo = 0, hi = base.length - 1;
+  if (ms <= base[0]) return (ms - base[0]) / 300000;
+  if (ms >= base[hi]) return hi + (ms - base[hi]) / 300000;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (base[mid] <= ms) lo = mid; else hi = mid; }
+  return lo + Math.min(1, (ms - base[lo]) / 300000);
+}
+function slotToTime(x) { const i = Math.max(0, Math.min(base.length - 1, Math.floor(x))); return base[i]; }
+const winStart = Date.parse(D.session.window.start), winEnd = Date.parse(D.session.window.end);
+const cashOpen = Date.parse(D.session.cash_open), cashClose = Date.parse(D.session.cash_close);
+const fullView = [-1, base.length + 1];
+const dayView = [slotOf(winStart) - 2, slotOf(winEnd) + 2];
+const cashView = [slotOf(cashOpen) - 3, slotOf(cashClose) + 3];
+state.view = dayView.slice();
+
+// ---------- header ----------
+const dayLabel = NYDAY.format(new Date(cashOpen)) + " " + new Date(cashOpen).getUTCFullYear();
+document.getElementById("title").textContent = dayLabel;
+document.getElementById("eyebrow").textContent = `${D.epic} · review day · strategy ${D.strategy.version}`;
+document.getElementById("meta").innerHTML = [
+  `Cash session ${ny(cashOpen)}–${ny(cashClose)} New York (${utc(cashOpen).slice(11)}–${utc(cashClose).slice(11)} UTC)${D.session.early_close ? " · early close" : ""}`,
+  `Review day ${utcShort(winStart)} → ${utcShort(winEnd)} UTC`,
+  `Entry: ${D.pillars.threshold} of 4 pillars + EMA(200) trend gate`,
+].map(s => `<span>${s}</span>`).join("");
+
+// ---------- toolbar ----------
+const ARM_LABEL = {confluence: "Confluence", symmetric: "Stop+target 1:1", trailing: "Trailing", time: "Time", reversal: "Reversal"};
+const armsEl = document.getElementById("arms");
+armsEl.innerHTML = Object.keys(D.strategy.arms).map(a => `<button type="button" id="arm-${a}" data-arm="${a}" aria-pressed="${a === state.arm}">${ARM_LABEL[a] || a}</button>`).join("");
+armsEl.addEventListener("click", e => {
+  const b = e.target.closest("button[data-arm]"); if (!b) return;
+  state.arm = b.dataset.arm; try { localStorage.setItem("dayreview.arm", state.arm); } catch (err) {}
+  armsEl.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.arm === state.arm)));
+  if (state.selected && state.selected.type === "trade") state.selected = null;
+  renderAll();
+});
+function setMode(m) {
+  state.mode = m; state.pending = null;
+  document.getElementById("mode-inspect").setAttribute("aria-pressed", String(m === "inspect"));
+  document.getElementById("mode-move").setAttribute("aria-pressed", String(m === "move"));
+  document.getElementById("hint").textContent = m === "move"
+    ? "Drag on either chart from where the move started to where it ran out. Release to measure it, then describe and save it below."
+    : "Click a candle to see why the strategy did or did not act there. Click an entry ▲▼ or exit ● marker to grade it. Drag to pan; ⌘/Ctrl + scroll or the buttons to zoom. The strip under each chart shows the vote count per bar: green up = bullish pillars, red down = bearish; solid = reached the threshold.";
+  drawAll();
+}
+document.getElementById("mode-inspect").onclick = () => setMode("inspect");
+document.getElementById("mode-move").onclick = () => setMode("move");
+function zoom(f, centre) {
+  const [a, b] = state.view, c = centre ?? (a + b) / 2, w = Math.max(12, Math.min(fullView[1] - fullView[0], (b - a) * f));
+  state.view = [c - (c - a) / (b - a) * w, c + (b - c) / (b - a) * w]; drawAll();
+}
+document.getElementById("zoom-in").onclick = () => zoom(0.6);
+document.getElementById("zoom-out").onclick = () => zoom(1 / 0.6);
+document.getElementById("zoom-day").onclick = () => { state.view = dayView.slice(); drawAll(); };
+document.getElementById("zoom-cash").onclick = () => { state.view = cashView.slice(); drawAll(); };
+document.getElementById("zoom-all").onclick = () => { state.view = fullView.slice(); drawAll(); };
+
+// ---------- data helpers ----------
+const T = tf => D.timeframes[tf];
+const armData = tf => T(tf).arms[state.arm];
+function barSlot(tf, i) { return slotOf(T(tf).bars[i][0] * 1000); }
+function barWidthSlots(tf) { return TF_MIN[tf] / 5; }
+function votes(tf, i, side) {
+  const mask = (side === "LONG" ? T(tf).bull : T(tf).bear)[i];
+  return D.pillars.names.map((n, k) => ({name: n, vote: !!(mask & (1 << k))}));
+}
+function score(tf, i, side) { return votes(tf, i, side).filter(v => v.vote).length; }
+function gateOpen(tf, i, side) { return (side === "LONG" ? T(tf).gate_long : T(tf).gate_short)[i]; }
+function reading(tf, i, key) { const T0 = T(tf); return key in T0.readings ? T0.readings[key][i] : T0.patterns[key][i]; }
+function tradeKey(trade, decision) { return `${trade.id}--${decision}`; }
+function findTrade(id) { for (const tf of TFS) for (const t of armData(tf).trades) if (t.id === id) return [tf, t]; return [null, null]; }
+
+// ---------- charts ----------
+const charts = {};
+TFS.forEach(tf => {
+  const c = document.getElementById("chart-" + tf);
+  charts[tf] = {canvas: c, ctx: c.getContext("2d"), h: +c.getAttribute("height"), tape: 64, layout: null};
+  wirePointer(tf);
+});
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+function drawChart(tf) {
+  const ch = charts[tf], c = ch.canvas, ctx = ch.ctx, dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth, h = ch.h; c.width = w * dpr; c.height = h * dpr; c.style.height = h + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  const [v0, v1] = state.view, axisW = 58, priceH = h - ch.tape - 18, tapeTop = priceH + 18;
+  const X = s => (s - v0) / (v1 - v0) * (w - axisW);
+  const bars = T(tf).bars, bw = barWidthSlots(tf);
+  const visible = [];
+  bars.forEach((b, i) => { const s = barSlot(tf, i); if (s + bw >= v0 && s <= v1) visible.push(i); });
+  let lo = Infinity, hi = -Infinity;
+  visible.forEach(i => { lo = Math.min(lo, bars[i][3]); hi = Math.max(hi, bars[i][2]); });
+  const sel = state.selected;
+  if (sel && sel.type === "trade") { const [, t] = findTrade(sel.id); if (t) { lo = Math.min(lo, t.stop ?? lo); } }
+  if (!isFinite(lo)) { lo = 0; hi = 1; }
+  const padP = (hi - lo) * 0.06 || 1; lo -= padP; hi += padP;
+  const Y = p => 6 + (hi - p) / (hi - lo) * (priceH - 12);
+  ch.layout = {X, Y, v0, v1, w, axisW, priceH, tapeTop, lo, hi};
+
+  // cash session + review window shading
+  ctx.fillStyle = css("--cash"); const cx0 = X(slotOf(cashOpen)), cx1 = X(slotOf(cashClose));
+  ctx.fillRect(cx0, 0, cx1 - cx0, priceH);
+  ctx.strokeStyle = css("--rule"); ctx.setLineDash([3, 3]);
+  [winStart, winEnd].forEach(t => { const x = X(slotOf(t)); ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); });
+  ctx.setLineDash([]);
+  // grid + price axis
+  ctx.strokeStyle = css("--grid"); ctx.fillStyle = css("--muted"); ctx.font = "11px 'IBM Plex Mono', monospace"; ctx.textAlign = "left";
+  const step = niceStep((hi - lo) / 5);
+  for (let p = Math.ceil(lo / step) * step; p <= hi; p += step) {
+    const y = Y(p); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w - axisW, y); ctx.stroke();
+    ctx.fillText(p.toFixed(step < 1 ? 1 : 0), w - axisW + 6, y + 4);
+  }
+  // time labels + gap separators
+  ctx.textAlign = "center";
+  let lastLabel = -Infinity;
+  visible.forEach(i => {
+    const t = bars[i][0] * 1000, x = X(barSlot(tf, i));
+    if (i > 0 && t - bars[i - 1][0] * 1000 > 3600000) {
+      ctx.strokeStyle = css("--rule"); ctx.setLineDash([1, 3]); ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, priceH); ctx.stroke(); ctx.setLineDash([]);
+    }
+    const d = new Date(t);
+    if (d.getUTCMinutes() === 0 && x - lastLabel > 70 && x > 22 && x < w - axisW - 22) { ctx.fillText(utcShort(t).slice(6), x, priceH + 13); lastLabel = x; }
+  });
+  // candles, trades and marks are clipped to the plot area so nothing runs over the price axis
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w - axisW, h); ctx.clip();
+  const pxw = Math.max(1, X(bw) - X(0));
+  visible.forEach(i => {
+    const [, o, hh, l, cl] = bars[i], x = X(barSlot(tf, i)) + pxw / 2;
+    const up = cl >= o; ctx.strokeStyle = ctx.fillStyle = up ? css("--up") : css("--down");
+    ctx.beginPath(); ctx.moveTo(x, Y(hh)); ctx.lineTo(x, Y(l)); ctx.stroke();
+    const bwpx = Math.max(1, pxw * 0.65);
+    ctx.fillRect(x - bwpx / 2, Y(Math.max(o, cl)), bwpx, Math.max(1, Math.abs(Y(o) - Y(cl))));
+  });
+  // selected bar
+  if (sel && sel.type === "bar" && sel.tf === tf) {
+    const x = X(barSlot(tf, sel.i)); ctx.fillStyle = css("--sel"); ctx.fillRect(x, 0, pxw, h);
+  }
+  // vote tape
+  const mid = tapeTop + ch.tape / 2, unit = (ch.tape / 2 - 2) / 4, thr = D.pillars.threshold;
+  ctx.strokeStyle = css("--grid"); ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w - axisW, mid); ctx.stroke();
+  visible.forEach(i => {
+    const x = X(barSlot(tf, i)) + pxw * 0.15, bwpx = Math.max(1, pxw * 0.7);
+    const bu = score(tf, i, "LONG"), be = score(tf, i, "SHORT");
+    if (bu) { ctx.fillStyle = bu >= thr ? css("--up") : css("--muted-bull"); ctx.fillRect(x, mid - bu * unit, bwpx, bu * unit); }
+    if (be) { ctx.fillStyle = be >= thr ? css("--down") : css("--muted-bear"); ctx.fillRect(x, mid, bwpx, be * unit); }
+  });
+  ctx.strokeStyle = css("--muted"); ctx.setLineDash([2, 3]);
+  [mid - thr * unit, mid + thr * unit].forEach(y => { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w - axisW, y); ctx.stroke(); });
+  ctx.setLineDash([]);
+  // trades
+  ch.hits = [];
+  armData(tf).trades.forEach(t => {
+    const xe = X(barSlot(tf, t.entry_bar)) + pxw, xx = X(slotOf(Date.parse(t.exit_time)));
+    const ye = Y(t.entry_price), yx = Y(t.exit_price), isSel = sel && sel.type === "trade" && sel.id === t.id;
+    const col = t.r >= 0 ? css("--up") : css("--down");
+    if (isSel && t.stop) {
+      ctx.strokeStyle = css("--warn"); ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(xe, Y(t.stop)); ctx.lineTo(xx, Y(t.stop)); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.strokeStyle = col; ctx.lineWidth = isSel ? 2 : 1.2; ctx.setLineDash([5, 3]);
+    ctx.beginPath(); ctx.moveTo(xe, ye); ctx.lineTo(xx, yx); ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1;
+    triangle(ctx, xe, ye, t.side, t.side === "LONG" ? css("--long") : css("--short"), isSel);
+    ctx.beginPath(); ctx.arc(xx, yx, isSel ? 6 : 5, 0, Math.PI * 2); ctx.fillStyle = css("--surface"); ctx.fill();
+    ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1;
+    ch.hits.push({x: xe, y: ye, kind: "entry", trade: t}, {x: xx, y: yx, kind: "exit", trade: t});
+    [["entry", xe, ye], ["exit", xx, yx]].forEach(([d, x, y]) => {
+      const fb = state.feedback.get(tradeKey(t, d)), rq = state.requests.get(tradeKey(t, d));
+      if (fb || rq) { ctx.fillStyle = fb ? css("--accent") : css("--warn"); ctx.font = "600 10px 'IBM Plex Sans', sans-serif"; ctx.textAlign = "center"; ctx.fillText(fb ? fb.grade : "grade?", x, t.side === "LONG" === (d === "entry") ? y + 20 : y - 12); }
+    });
+  });
+  // marks
+  state.marks.forEach(m => {
+    if (m.status === "withdrawn") return;
+    ctx.strokeStyle = ctx.fillStyle = css("--mark");
+    if (m.kind === "missed_move") {
+      const x1 = X(slotOf(Date.parse(m.from_time))), x2 = X(slotOf(Date.parse(m.to_time)));
+      arrow(ctx, x1, Y(m.from_price), x2, Y(m.to_price));
+      ch.hits.push({x: (x1 + x2) / 2, y: (Y(m.from_price) + Y(m.to_price)) / 2, kind: "mark", mark: m});
+    } else {
+      const x = X(slotOf(Date.parse(m.bar_time))) + pxw / 2, y = Y(m.price);
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - 16); ctx.stroke();
+      ctx.fillRect(x, y - 16, 8, 6);
+      ch.hits.push({x, y: y - 12, kind: "mark", mark: m});
+    }
+  });
+  if (state.pending && state.pending.tf === tf && state.pending.drag) {
+    const p = state.pending.drag; ctx.strokeStyle = css("--mark"); ctx.setLineDash([4, 3]);
+    arrow(ctx, X(p.s0), Y(p.p0), X(p.s1), Y(p.p1)); ctx.setLineDash([]);
+  }
+  ctx.restore();
+  ctx.fillStyle = css("--muted"); ctx.textAlign = "left"; ctx.font = "10px 'IBM Plex Mono', monospace";
+  ctx.fillText("bull", w - axisW + 6, tapeTop + 12); ctx.fillText("bear", w - axisW + 6, tapeTop + ch.tape - 4);
+}
+function niceStep(raw) { const m = Math.pow(10, Math.floor(Math.log10(raw))); return [1, 2, 2.5, 5, 10].map(k => k * m).find(s => s >= raw) || raw; }
+function triangle(ctx, x, y, side, col, big) {
+  const s = big ? 8 : 6, dir = side === "LONG" ? 1 : -1, yy = y + dir * 4;
+  ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x - s, yy + dir * s * 1.4); ctx.lineTo(x + s, yy + dir * s * 1.4); ctx.closePath();
+  ctx.fillStyle = col; ctx.fill();
+}
+function arrow(ctx, x1, y1, x2, y2) {
+  ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.lineWidth = 1;
+  const a = Math.atan2(y2 - y1, x2 - x1); ctx.beginPath(); ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - 9 * Math.cos(a - 0.4), y2 - 9 * Math.sin(a - 0.4)); ctx.lineTo(x2 - 9 * Math.cos(a + 0.4), y2 - 9 * Math.sin(a + 0.4)); ctx.closePath(); ctx.fill();
+}
+function drawAll() { TFS.forEach(drawChart); }
+
+// ---------- pointer: select, pan, drag-to-mark ----------
+function barAt(tf, px) {
+  const L = charts[tf].layout; const s = L.v0 + px / (L.w - L.axisW) * (L.v1 - L.v0);
+  const bars = T(tf).bars, bw = barWidthSlots(tf); let best = -1;
+  for (let i = 0; i < bars.length; i++) { const b = barSlot(tf, i); if (s >= b && s < b + bw) { best = i; break; } }
+  return best;
+}
+function wirePointer(tf) {
+  const c = charts[tf].canvas; let down = null;
+  c.addEventListener("pointerdown", e => {
+    const r = c.getBoundingClientRect(); c.setPointerCapture(e.pointerId);
+    down = {x: e.clientX - r.left, y: e.clientY - r.top, view: state.view.slice(), moved: false};
+    if (state.mode === "move") {
+      const L = charts[tf].layout, s = L.v0 + down.x / (L.w - L.axisW) * (L.v1 - L.v0);
+      const p = L.hi - (down.y - 6) / (L.priceH - 12) * (L.hi - L.lo);
+      state.pending = {tf, drag: {s0: s, p0: p, s1: s, p1: p}};
+    }
+  });
+  c.addEventListener("pointermove", e => {
+    const r = c.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, L = charts[tf].layout;
+    readout(tf, barAt(tf, x));
+    if (!down) return;
+    if (Math.abs(x - down.x) + Math.abs(y - down.y) > 4) down.moved = true;
+    if (state.mode === "move" && state.pending && state.pending.drag) {
+      const d = state.pending.drag; d.s1 = L.v0 + x / (L.w - L.axisW) * (L.v1 - L.v0);
+      d.p1 = L.hi - (y - 6) / (L.priceH - 12) * (L.hi - L.lo); drawAll();
+    } else if (state.mode === "inspect" && down.moved) {
+      const ds = (x - down.x) / (L.w - L.axisW) * (down.view[1] - down.view[0]);
+      state.view = [down.view[0] - ds, down.view[1] - ds]; drawAll();
+    }
+  });
+  c.addEventListener("pointerup", e => {
+    const r = c.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    if (!down) return; const wasMoved = down.moved; down = null;
+    if (state.mode === "move") { if (wasMoved) finishMove(tf); else { state.pending = null; drawAll(); } return; }
+    if (wasMoved) return;
+    const hit = (charts[tf].hits || []).find(h => Math.hypot(h.x - x, h.y - y) < 11);
+    if (hit && hit.kind === "mark") state.selected = {type: "mark", id: hit.mark.id};
+    else if (hit) state.selected = {type: "trade", id: hit.trade.id, focus: hit.kind};
+    else { const i = barAt(tf, x); if (i >= 0) state.selected = {type: "bar", tf, i}; }
+    renderAll();
+  });
+  c.addEventListener("pointerleave", () => readout(tf, -1));
+  c.addEventListener("wheel", e => {
+    if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault();
+    const r = c.getBoundingClientRect(), L = charts[tf].layout, s = L.v0 + (e.clientX - r.left) / (L.w - L.axisW) * (L.v1 - L.v0);
+    zoom(e.deltaY > 0 ? 1.15 : 1 / 1.15, s);
+  }, {passive: false});
+}
+function readout(tf, i) {
+  const el = document.getElementById("readout-" + tf);
+  if (i < 0) { el.textContent = ""; return; }
+  const [t, o, h, l, c] = T(tf).bars[i];
+  el.textContent = `${utc(t * 1000)} UTC (${ny(t * 1000)} NY)  O ${o} H ${h} L ${l} C ${c}  bull ${score(tf, i, "LONG")} · bear ${score(tf, i, "SHORT")}`;
+}
+function finishMove(tf) {
+  const d = state.pending.drag, a = Math.min(d.s0, d.s1), b = Math.max(d.s0, d.s1);
+  const [pa, pb] = d.s0 <= d.s1 ? [d.p0, d.p1] : [d.p1, d.p0];
+  const t0 = slotToTime(a), t1 = slotToTime(b);
+  const i0 = T(tf).bars.findIndex(x => x[0] * 1000 >= t0);
+  const atr = i0 >= 0 ? reading(tf, i0, "atr") : null;
+  state.pending = {tf, move: {from_time: new Date(t0).toISOString(), to_time: new Date(t1).toISOString(),
+    from_price: +pa.toFixed(2), to_price: +pb.toFixed(2), direction: pb >= pa ? "LONG" : "SHORT",
+    points: +Math.abs(pb - pa).toFixed(2), atr, minutes: Math.round((t1 - t0) / 60000)}};
+  state.selected = {type: "pending"}; renderAll();
+}
+
+// ---------- explanation blocks (engine output only) ----------
+function voteRows(tf, i) {
+  return ["LONG", "SHORT"].map(side => {
+    const vs = votes(tf, i, side), n = vs.filter(v => v.vote).length, g = gateOpen(tf, i, side);
+    return `<div class="vrow"><span class="who ${side === "LONG" ? "side-long" : "side-short"}">${side}</span>
+      ${vs.map(v => `<span class="chip ${v.vote ? (side === "LONG" ? "on-long" : "on-short") : ""}">${v.name}</span>`).join("")}
+      <span class="mono">${n}/${D.pillars.threshold}</span>
+      <span class="gate ${g ? "open" : ""}">gate ${g ? "open" : "closed"}</span></div>`;
+  }).join("");
+}
+function readingsTable(tf, i) {
+  const rows = ["LONG", "SHORT"].map(side => {
+    const vs = votes(tf, i, side);
+    const pr = vs.map(v => `<tr><td>${side} ${v.vote ? "●" : "○"} ${v.name}</td><td>${esc(D.pillars.rules[side][v.name])}</td><td class="mono">${
+      D.pillars.readings[side][v.name].map(k => `${k} ${fmtNum(reading(tf, i, k))}`).join("<br>")}</td></tr>`).join("");
+    const g = `<tr><td>${side} trend gate ${gateOpen(tf, i, side) ? "●" : "○"}</td><td>${esc(D.pillars.gate[side])}</td><td class="mono">close ${fmtNum(reading(tf, i, "close"))}<br>ema_trend ${fmtNum(reading(tf, i, "ema_trend"))}</td></tr>`;
+    return pr + g;
+  }).join("");
+  return `<details><summary>Indicators checked at this bar, with their readings</summary><div class="tablewrap"><table><thead><tr><th>Pillar</th><th>Rule</th><th>Reading</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="hint">Volume here is Capital.com tick activity (price updates per minute), not exchange volume.</p></details>`;
+}
+function eventText(e) {
+  if (e.kind === "entry_fill") return `Filled ${e.side} at ${fmtNum(e.price)} (${utc(e.time)} UTC); stop ${fmtNum(e.stop)}${e.target ? ", target " + fmtNum(e.target) : ""}`;
+  if (e.kind === "exit") return `Exit ${e.reason}: ${esc(e.why || "")} at ${fmtNum(e.price)} (${utc(e.time)} UTC), ${e.r >= 0 ? "+" : ""}${fmtNum(e.r, 2)} R`;
+  if (e.kind === "stop_move") return `Stop moved ${fmtNum(e.from)} → ${fmtNum(e.to)}`;
+  if (e.kind === "entry_skipped") return `Entry skipped: ${esc(e.why)}`;
+  return esc(JSON.stringify(e));
+}
+function decisionBlock(tf, i) {
+  const d = armData(tf).decisions[i];
+  if (!d) return `<p class="hint">No decision recorded for this bar under this exit rule.</p>`;
+  const pos = d.p ? `<div class="hint">Holding ${d.p.side} from ${utc(d.p.entry_time)} UTC at ${fmtNum(d.p.entry_price)}, stop ${fmtNum(d.p.stop)}</div>` : "";
+  const why = d.b.length ? `<ul>${d.b.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+  const ev = d.e.length ? `<ul>${d.e.map(x => `<li>${eventText(x)}</li>`).join("")}</ul>` : "";
+  return `<div class="decision"><div><span class="action">${esc(d.a)}</span> <span class="hint">what the engine did (${ARM_LABEL[state.arm]} exit rule)</span></div>${pos}${ev}${why}</div>`;
+}
+function replyBlock(key) {
+  const x = state.explanations.get(key); if (!x) return "";
+  return `<div class="reply"><div class="eyebrow" style="color:var(--accent)">Claude's answer</div>${(x.recorded || []).map(t => `<p>${esc(t)}</p>`).join("")}${(x.hindsight || []).map(t => `<p class="hind">Hindsight, not available at the time: ${esc(t)}</p>`).join("")}${x.classification ? `<p><strong>${esc(x.classification)}</strong></p>` : ""}</div>`;
+}
+
+// ---------- panel ----------
+function renderPanel() {
+  const el = document.getElementById("panel"), s = state.selected;
+  if (!s) { el.innerHTML = `<p class="empty">Select a candle, a trade marker or a mark on either chart.</p>`; return; }
+  if (s.type === "bar") return renderBarPanel(el, s.tf, s.i);
+  if (s.type === "trade") return renderTradePanel(el, s.id);
+  if (s.type === "mark") return renderMarkPanel(el, state.marks.get(s.id));
+  if (s.type === "pending") return renderPendingPanel(el);
+}
+function renderBarPanel(el, tf, i) {
+  const [t, o, h, l, c] = T(tf).bars[i], ms = t * 1000;
+  el.innerHTML = `<div class="row" style="justify-content:space-between"><h2>${utc(ms)} UTC <span class="muted" style="font-weight:500">· ${ny(ms)} New York</span></h2><span class="tfbadge">${tf}</span></div>
+    <dl class="facts mono"><dt>OHLC</dt><dd>${o} / ${h} / ${l} / ${c}</dd></dl>
+    <div class="votes">${voteRows(tf, i)}</div>
+    ${decisionBlock(tf, i)}
+    ${readingsTable(tf, i)}
+    <div class="section"><h3>Mark this bar</h3>
+      <div class="tags" id="mk-kinds">${["better_entry", "better_exit", "no_trade_right", "note"].map(k => `<button type="button" data-k="${k}" aria-pressed="false">${MARK_KINDS[k]}</button>`).join("")}</div>
+      <div class="tags" id="mk-dir">${["LONG", "SHORT"].map(d => `<button type="button" data-d="${d}" aria-pressed="false">${d}</button>`).join("")}<span class="hint">direction, for a better entry</span></div>
+      <textarea id="mk-text" placeholder="What did you see here? e.g. higher low after the opening flush"></textarea>
+      <div class="row"><button class="save" id="mk-save" type="button" disabled>Save mark</button><span class="saved" id="mk-status"></span></div>
+    </div>`;
+  let kind = null, dir = null;
+  const saveBtn = el.querySelector("#mk-save");
+  const refresh = () => { saveBtn.disabled = !state.db || !kind || (kind === "better_entry" && !dir); };
+  el.querySelector("#mk-kinds").onclick = e => { const b = e.target.closest("button"); if (!b) return; kind = b.dataset.k; el.querySelectorAll("#mk-kinds button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); refresh(); };
+  el.querySelector("#mk-dir").onclick = e => { const b = e.target.closest("button"); if (!b) return; dir = b.dataset.d; el.querySelectorAll("#mk-dir button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); refresh(); };
+  saveBtn.onclick = () => saveMark({kind, direction: dir, tf, bar_time: new Date(ms).toISOString(), price: c,
+    text: el.querySelector("#mk-text").value.trim()}, el.querySelector("#mk-status"), saveBtn);
+  refresh();
+}
+function renderPendingPanel(el) {
+  const p = state.pending && state.pending.move; if (!p) { el.innerHTML = `<p class="empty">Drag on a chart to measure a move.</p>`; return; }
+  el.innerHTML = `<div class="row" style="justify-content:space-between"><h2>Missed move <span class="${p.direction === "LONG" ? "side-long" : "side-short"}">${p.direction}</span></h2><span class="tfbadge">${state.pending.tf}</span></div>
+    <dl class="facts mono"><dt>From</dt><dd>${utc(p.from_time)} UTC at ${p.from_price}</dd><dt>To</dt><dd>${utc(p.to_time)} UTC at ${p.to_price}</dd>
+    <dt>Size</dt><dd>${p.points} pts${p.atr ? ` · ${(p.points / p.atr).toFixed(1)} ATR` : ""} · ${p.minutes} min</dd></dl>
+    <textarea id="mv-text" placeholder="What setup should have caught it? e.g. reclaim of VWAP after the open flush"></textarea>
+    <div class="row"><button class="save" id="mv-save" type="button" ${state.db ? "" : "disabled"}>Save missed move</button><button class="ghost" id="mv-cancel" type="button">Discard</button><span class="saved" id="mv-status"></span></div>`;
+  el.querySelector("#mv-cancel").onclick = () => { state.pending = null; state.selected = null; renderAll(); };
+  el.querySelector("#mv-save").onclick = ev => saveMark({kind: "missed_move", tf: state.pending.tf, ...p,
+    text: el.querySelector("#mv-text").value.trim()}, el.querySelector("#mv-status"), ev.currentTarget, true);
+}
+function renderTradePanel(el, id) {
+  const [tf, t] = findTrade(id); if (!t) { el.innerHTML = `<p class="empty">This trade is not part of the selected exit rule.</p>`; return; }
+  const run = armData(tf).run_id, opp = t.side === "LONG" ? "SHORT" : "LONG";
+  const hold = (Date.parse(t.exit_time) - Date.parse(t.entry_time)) / 3600000;
+  el.innerHTML = `<div class="row" style="justify-content:space-between"><h2><span class="${t.side === "LONG" ? "side-long" : "side-short"}">${t.side}</span> ${utcShort(t.entry_time)} → ${utcShort(t.exit_time)} UTC</h2><span class="tfbadge">${tf} · ${ARM_LABEL[state.arm]}</span></div>
+    <dl class="facts mono"><dt>Result</dt><dd>${t.r >= 0 ? "+" : ""}${t.r} R · ${t.net_usd >= 0 ? "+" : ""}${t.net_usd} USD (financing ${t.financing_usd})</dd>
+      <dt>Held</dt><dd>${hold.toFixed(1)} h${Date.parse(t.entry_time) < winStart ? " · carried in from the previous day" : ""}${Date.parse(t.exit_time) > winEnd ? " · carried past the close" : ""}</dd>
+      <dt class="hind">Hindsight</dt><dd class="hind">best +${t.mfe_pts} pts · worst −${t.mae_pts} pts · best→exit ${t.giveback_pts} pts</dd></dl>
+    <div class="section"><h3>Entry · ${utc(t.entry_time)} UTC at ${t.entry_price}</h3>
+      <div class="votes">${voteRows(tf, t.entry_bar)}</div>${decisionBlock(tf, t.entry_bar)}${readingsTable(tf, t.entry_bar)}
+      ${gradeBlock(t, "entry", tf, run)}</div>
+    <div class="section"><h3>Exit · ${utc(t.exit_time)} UTC at ${t.exit_price} · ${t.exit_reason}</h3>
+      <p class="decision">${esc(t.exit_why)}${t.exit_reason === "STOP" ? ` (stop ${t.stop})` : ""}</p>
+      ${t.exit_bar < T(tf).bars.length ? `<div class="votes">${voteRows(tf, t.exit_bar)}</div>${decisionBlock(tf, t.exit_bar)}${readingsTable(tf, t.exit_bar)}` : ""}
+      ${gradeBlock(t, "exit", tf, run)}</div>`;
+  wireGrade(el, t, "entry", tf, run); wireGrade(el, t, "exit", tf, run);
+  const focus = el.querySelector(`#g-${state.selected.focus || "entry"}`); if (focus && state.selected.focus) focus.scrollIntoView({block: "nearest"});
+}
+function gradeBlock(t, decision, tf, run) {
+  const key = tradeKey(t, decision), fb = state.feedback.get(key), rq = state.requests.get(key), tags = decision === "entry" ? ENTRY_TAGS : EXIT_TAGS;
+  return `<div class="section" id="g-${decision}"><div class="row"><h3>Grade the ${decision}</h3>${rq && !fb ? `<span class="flag">please grade${rq.note ? ": " + esc(rq.note) : ""}</span>` : ""}</div>
+    <div class="scale" data-scale="${decision}">${GRADES.map(g => `<button type="button" data-g="${g}" aria-pressed="${fb && fb.grade === g}">${g}</button>`).join("")}</div>
+    <div class="tags" data-tags="${decision}">${tags.map(x => `<button type="button" data-t="${esc(x)}" aria-pressed="${!!(fb && (fb.reasons || []).includes(x))}">${esc(x)}</button>`).join("")}</div>
+    <textarea data-text="${decision}" placeholder="Anything else? Optional.">${esc(fb ? fb.text : "")}</textarea>
+    <div class="row"><button class="save" type="button" data-save="${decision}" ${state.db && fb ? "" : "disabled"}>Save ${decision} grade</button>
+      <span class="saved">${fb ? `Saved ${utc(fb.saved_at)} UTC: ${esc(fb.grade)}` : "Not graded: not reviewed"}</span></div>
+    ${replyBlock(key)}</div>`;
+}
+function wireGrade(el, t, decision, tf, run) {
+  const scale = el.querySelector(`[data-scale="${decision}"]`), tags = el.querySelector(`[data-tags="${decision}"]`);
+  const save = el.querySelector(`[data-save="${decision}"]`), status = save.nextElementSibling;
+  const fb = state.feedback.get(tradeKey(t, decision));
+  let grade = fb ? fb.grade : null; const reasons = new Set(fb ? fb.reasons || [] : []);
+  scale.onclick = e => { const b = e.target.closest("button"); if (!b) return; grade = b.dataset.g; scale.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); save.disabled = !state.db; };
+  tags.onclick = e => { const b = e.target.closest("button"); if (!b) return; const v = b.dataset.t; reasons.has(v) ? reasons.delete(v) : reasons.add(v); b.setAttribute("aria-pressed", String(reasons.has(v))); if (grade) save.disabled = !state.db; };
+  save.onclick = async () => {
+    save.disabled = true; const now = new Date().toISOString(), key = tradeKey(t, decision);
+    const bar = decision === "entry" ? t.entry_bar : t.exit_bar;
+    const body = {session: D.session.date, strategy: D.strategy.version, timeframe: tf, arm: state.arm, run_id: run, trade_id: t.id,
+      decision, grade, reasons: [...reasons], text: el.querySelector(`[data-text="${decision}"]`).value.trim(),
+      bar_time: T(tf).bars[Math.min(bar, T(tf).bars.length - 1)] ? new Date(T(tf).bars[Math.min(bar, T(tf).bars.length - 1)][0] * 1000).toISOString() : null,
+      saved_at: now, revision_of: fb ? fb.saved_at : null};
+    try {
+      await state.db.doc(`feedback_revisions/${key}--${now.replace(/[^0-9]/g, "")}`).set(body);
+      await state.db.doc(`feedback/${key}`).set(body);
+      status.textContent = `Saved ${utc(now)} UTC: ${grade}`;
+    } catch (err) { status.textContent = `Not saved (${err.code || "error"}). Your choices are still selected; try again.`; save.disabled = false; }
+  };
+}
+function renderMarkPanel(el, m) {
+  if (!m) { el.innerHTML = `<p class="empty">That mark is no longer available.</p>`; return; }
+  const where = m.kind === "missed_move"
+    ? `<dt>From</dt><dd>${utc(m.from_time)} UTC at ${m.from_price}</dd><dt>To</dt><dd>${utc(m.to_time)} UTC at ${m.to_price}</dd><dt>Size</dt><dd>${m.points} pts · ${m.minutes} min</dd>`
+    : `<dt>Bar</dt><dd>${utc(m.bar_time)} UTC at ${m.price}</dd>`;
+  el.innerHTML = `<div class="row" style="justify-content:space-between"><h2>${MARK_KINDS[m.kind]}${m.direction ? ` <span class="${m.direction === "LONG" ? "side-long" : "side-short"}">${m.direction}</span>` : ""}</h2><span class="tfbadge">${m.tf}</span></div>
+    <dl class="facts mono">${where}<dt>Saved</dt><dd>${utc(m.saved_at)} UTC${m.status === "withdrawn" ? " · withdrawn" : ""}</dd></dl>
+    ${m.text ? `<p style="margin:0">${esc(m.text)}</p>` : ""}
+    ${replyBlock(m.id)}
+    <div class="row">${m.status !== "withdrawn" ? `<button class="ghost" id="mk-withdraw" type="button" ${state.db ? "" : "disabled"}>Withdraw this mark</button>` : ""}<span class="saved" id="mk-wstatus"></span></div>`;
+  const w = el.querySelector("#mk-withdraw");
+  if (w) w.onclick = async () => {
+    w.disabled = true; const now = new Date().toISOString(), body = {...m, status: "withdrawn", saved_at: now, revision_of: m.saved_at};
+    try { await state.db.doc(`mark_revisions/${m.id}--${now.replace(/[^0-9]/g, "")}`).set(body); await state.db.doc(`marks/${m.id}`).set(body); }
+    catch (err) { el.querySelector("#mk-wstatus").textContent = `Not withdrawn (${err.code || "error"}).`; w.disabled = false; }
+  };
+}
+async function saveMark(fields, statusEl, btn, clearPending) {
+  btn.disabled = true; const now = new Date().toISOString();
+  const id = `m-${D.session.date}-${fields.tf}-${now.replace(/[^0-9]/g, "")}`;
+  const body = {id, session: D.session.date, strategy: D.strategy.version, arm: state.arm, run_id: armData(fields.tf).run_id,
+    status: "active", saved_at: now, ...fields};
+  Object.keys(body).forEach(k => body[k] === undefined && delete body[k]);
+  try {
+    await state.db.doc(`mark_revisions/${id}--0`).set(body); await state.db.doc(`marks/${id}`).set(body);
+    statusEl.textContent = `Saved ${utc(now)} UTC`;
+    if (clearPending) { state.pending = null; state.selected = {type: "mark", id}; }
+  } catch (err) { statusEl.textContent = `Not saved (${err.code || "error"}). Try again.`; btn.disabled = false; }
+}
+
+// ---------- lists ----------
+function renderLists() {
+  const rows = [];
+  TFS.forEach(tf => armData(tf).trades.forEach(t => rows.push([tf, t])));
+  document.getElementById("trades").innerHTML = rows.length ? rows.map(([tf, t]) => {
+    const ge = state.feedback.get(tradeKey(t, "entry")), gx = state.feedback.get(tradeKey(t, "exit"));
+    const want = !ge && state.requests.has(tradeKey(t, "entry")) || !gx && state.requests.has(tradeKey(t, "exit"));
+    return `<button type="button" class="item" data-trade="${esc(t.id)}"><span class="tfbadge">${tf}</span>
+      <span><span class="${t.side === "LONG" ? "side-long" : "side-short"}">${t.side}</span> ${utcShort(t.entry_time)} → ${utcShort(t.exit_time)}</span>
+      <span class="mono">${t.r >= 0 ? "+" : ""}${t.r} R</span>
+      <span class="sub">${t.exit_reason} · entry ${ge ? ge.grade : "ungraded"} · exit ${gx ? gx.grade : "ungraded"}${want ? " · please grade" : ""}</span></button>`;
+  }).join("") : `<p class="empty">No trades under the ${ARM_LABEL[state.arm]} exit rule on either timeframe.</p>`;
+  const fb = [...state.feedback.values()].map(f => ({t: f.saved_at, html: `<button type="button" class="item" data-trade="${esc(f.trade_id)}"><span class="tfbadge">${f.timeframe}</span><span>${f.decision} graded <strong>${esc(f.grade)}</strong>${(f.reasons || []).length ? " · " + esc(f.reasons.join(", ")) : ""}</span><span>${state.explanations.has(`${f.trade_id}--${f.decision}`) ? "answered" : ""}</span><span class="sub">${esc(ARM_LABEL[f.arm] || f.arm)} · ${utc(f.saved_at)} UTC${f.text ? " · " + esc(f.text) : ""}</span></button>`}));
+  const mk = [...state.marks.values()].filter(m => m.status !== "withdrawn").map(m => ({t: m.saved_at, html: `<button type="button" class="item" data-mark="${esc(m.id)}"><span class="tfbadge">${m.tf}</span><span>${MARK_KINDS[m.kind]}${m.direction ? " " + m.direction : ""}</span><span>${state.explanations.has(m.id) ? "answered" : ""}</span><span class="sub">${m.kind === "missed_move" ? `${utcShort(m.from_time)} → ${utcShort(m.to_time)} · ${m.points} pts` : utcShort(m.bar_time)}${m.text ? " · " + esc(m.text) : ""}</span></button>`}));
+  const all = fb.concat(mk).sort((a, b) => b.t.localeCompare(a.t));
+  document.getElementById("feedback").innerHTML = all.length ? all.map(x => x.html).join("") : `<p class="empty">Nothing saved for this day yet.</p>`;
+}
+document.querySelector(".lower").addEventListener("click", e => {
+  const tr = e.target.closest("[data-trade]"), mk = e.target.closest("[data-mark]");
+  if (tr) {
+    const id = tr.dataset.trade; let [tf, t] = findTrade(id);
+    if (!t) {                                   // graded under another exit rule: switch to it
+      const arm = Object.keys(D.strategy.arms).find(a => TFS.some(x => T(x).arms[a].trades.some(y => y.id === id)));
+      if (arm) { state.arm = arm; armsEl.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.arm === arm))); [tf, t] = findTrade(id); }
+    }
+    if (t) { state.selected = {type: "trade", id}; focusOn(Date.parse(t.entry_time), Date.parse(t.exit_time)); renderAll(); }
+  } else if (mk) {
+    const m = state.marks.get(mk.dataset.mark); state.selected = {type: "mark", id: mk.dataset.mark};
+    if (m) focusOn(Date.parse(m.from_time || m.bar_time), Date.parse(m.to_time || m.bar_time)); renderAll();
+  }
+});
+function focusOn(a, b) {
+  const s0 = slotOf(a), s1 = slotOf(b), [v0, v1] = state.view;
+  if (s0 < v0 || s1 > v1) { const pad = Math.max(12, (s1 - s0) * 0.2); state.view = [s0 - pad, s1 + pad]; }
+}
+
+// ---------- footer ----------
+document.getElementById("foot").innerHTML = `<div>Strategy ${esc(D.strategy.version)} (<code>${esc(D.strategy.sha256.slice(0, 12))}</code>) · engine <code>${esc(D.engine.commit)}</code>${D.engine.dirty ? " (uncommitted changes)" : ""} · built ${esc(D.built)}</div>
+  <div>Runs: ${D.run_ids.map(r => `<code>${esc(r)}</code>`).join(" · ")}</div>
+  <div>Fills: 1-minute bid/ask at the first minute after the signal bar closes; stops checked minute by minute. Everything shown is engine output; "hindsight" figures are what happened after the decision and were not available to it.</div>`;
+
+function renderAll() { state.editing = false; drawAll(); renderPanel(); renderLists(); }
+// A live update must not wipe a grade or mark the viewer is part-way through.
+function refreshFromStore() { drawAll(); renderLists(); if (!state.editing) renderPanel(); }
+const panelEl = document.getElementById("panel");
+panelEl.addEventListener("input", () => { state.editing = true; });
+panelEl.addEventListener("click", e => { if (e.target.closest(".scale button,.tags button")) state.editing = true;
+  if (e.target.closest(".save,.ghost")) state.editing = false; });
+window.addEventListener("resize", drawAll);
+renderAll();
+
+// ---------- storage ----------
+(async () => {
+  const status = document.getElementById("dbstatus");
+  const db = window.claude ? await window.claude.use("db") : null;
+  if (!db) { status.textContent = "Storage unavailable: feedback cannot be saved in this view"; status.classList.add("bad"); return; }
+  state.db = db; status.textContent = "Storage connected"; renderPanel();
+  const fail = what => err => { status.textContent = `Could not load ${what} (${err.code})`; status.classList.add("bad"); };
+  const into = (map, keyOf) => snap => { map.clear(); snap.docs.forEach(d => map.set(keyOf(d), d.data())); refreshFromStore(); };
+  db.collection("feedback").where("session", "==", D.session.date).onSnapshot(into(state.feedback, d => d.id), fail("grades"));
+  db.collection("marks").where("session", "==", D.session.date).onSnapshot(into(state.marks, d => d.id), fail("marks"));
+  db.collection("explanations").where("session", "==", D.session.date).onSnapshot(into(state.explanations, d => d.id), fail("answers"));
+  db.collection("requests").where("session", "==", D.session.date).onSnapshot(into(state.requests, d => d.id), fail("requests"));
+})();
+})();
+</script>

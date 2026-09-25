@@ -7,7 +7,33 @@ North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades
 (not scalping), reproducible via 5-pillar confluence, with each instrument tuned as its own
 "personality" rather than one shared config.
 
-## ⭐ SESSION STATE — 2026-09-19 (later): the engine produces trades, and 1:1 is the worst exit
+## ⭐ SESSION STATE — 2026-09-25: US500 day-by-day review loop (oil dropped)
+
+**Read this first.** Plan: `docs/superpowers/plans/2026-09-25-us500-day-review-loop.md` (owner's
+text + §13 decisions). Branch `feat/confluence-exit-matrix`, pushed per commit. Never `git add -u`.
+
+**Where the loop stands (Milestone 1):**
+- Steps 1–5 done. Engine records a per-bar decision trace; `engine.explain.explain_bar` quotes it.
+  NYSE calendar (`engine.cash_session`), fifth exit arm `confluence` (opposite side reaches 3 votes).
+- Strategy versions are immutable files: `research/review/strategies/v001.yaml` (baseline).
+  Run records (append-only, id = hash of inputs): `research/review/runs/<run_id>/`.
+  Build a day: `cd research/engine && PYTHONPATH=. ./.venv/bin/python ../review/build_day.py --day 2024-01-11`.
+- **Day-review page:** https://claude.ai/artifact/UhUZuY6FgUGCHwY18s3WEp (source
+  `research/review/day-review.html`). Grades → `feedback/`, marks → `marks/`, each with an
+  append-only `*_revisions/` copy; my answers → `explanations/`; "please grade" → `requests/`.
+- Storage round trip proven on https://claude.ai/artifact/Pijcec2z7Xx5TEhUNRg8nU; owner's first two
+  grades exported to `research/review/feedback/2024-01-11/roundtrip-001.json`.
+- **Session 1 = 2024-01-11** (first day both 5m and 15m are warmed up). Reserved, never reviewed:
+  US500 2026-08-01 onward (`engine.dayrun.RESERVED_FROM`).
+
+**Engine correction found this session (ledger INDEX note):** the simulator filled intents inside
+the signal bar (at label + 1 minute), up to timeframe−1 minutes before the signal existed. Fixed in
+`5d80834`. All prior resampled-bar simulator figures carried it; no conclusion changes.
+
+**Next:** owner grades 2024-01-11 on the day page → ingest + answer → propose ONE change (v002) →
+rerun the same day → before/after comparison (step 7, not built yet).
+
+## SESSION STATE — 2026-09-19 (later): the engine produces trades, and 1:1 is the worst exit
 
 **Read this first.** Work is on branch `feat/confluence-exit-matrix`, pushed, 8 commits ahead of
 `main`. The owner switched to push-per-commit this session. The 253 MB

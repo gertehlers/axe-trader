@@ -9,6 +9,21 @@ keeps its source in this directory.
 
 ## Current pages
 
+**Start here (2026-09-25):** the US500 day-by-day loop in
+`docs/superpowers/plans/2026-09-25-us500-day-review-loop.md`.
+
+| page | artifact | built from |
+|---|---|---|
+| `day-review.html` — **US500 Day Review** | https://claude.ai/artifact/UhUZuY6FgUGCHwY18s3WEp | `build_day.py --day <date>` → `runs/<run_id>/` + gitignored `day-review-data.js` |
+| `roundtrip/roundtrip.html` — **Grade Round Trip** | https://claude.ai/artifact/Pijcec2z7Xx5TEhUNRg8nU | one 2024-01-11 trade; proved the db round trip |
+
+Day page storage (artifact `db`): `feedback/<trade_id>--entry|exit` and `marks/<id>`, each with an
+append-only `feedback_revisions/` / `mark_revisions/` copy; Claude writes `explanations/<key>` and
+`requests/<key>`. Export grades into `feedback/<session>/` before acting on them. Republish with
+`files: {"day-review-data.js": ...}` after rebuilding the data.
+
+### Earlier pages (oil era)
+
 | page | artifact | built from | published |
 |---|---|---|---|
 | `research-state.html` — **Four Dead Hypotheses** | https://claude.ai/artifact/YTkPaQr27cT4njL7uEnjx9 | `research/cost-reality/2026-09-19.md`, `research/ledger/INDEX.md`, `research/experiments/2026-09-19-*.json` | 2026-09-19 |
