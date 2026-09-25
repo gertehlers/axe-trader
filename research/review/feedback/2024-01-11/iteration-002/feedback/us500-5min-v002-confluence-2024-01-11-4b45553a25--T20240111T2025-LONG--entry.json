@@ -1,0 +1,17 @@
+{
+  "arm": "confluence",
+  "bar_time": "2024-01-11T20:20:00.000Z",
+  "decision": "entry",
+  "grade": "bad",
+  "reasons": [
+    "too late"
+  ],
+  "revision_of": null,
+  "run_id": "us500-5min-v002-confluence-2024-01-11-4b45553a25",
+  "saved_at": "2026-09-25T07:21:55.308Z",
+  "session": "2024-01-11",
+  "strategy": "v002",
+  "text": "see comment about Better Entry, this could have been that entry. Instead it entered after the run and in choppy waters, see the cnadles around this",
+  "timeframe": "5min",
+  "trade_id": "us500-5min-v002-confluence-2024-01-11-4b45553a25--T20240111T2025-LONG"
+}

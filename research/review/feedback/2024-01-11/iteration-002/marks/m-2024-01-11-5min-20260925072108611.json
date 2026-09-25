@@ -1,0 +1,15 @@
+{
+  "arm": "confluence",
+  "bar_time": "2024-01-11T17:40:00.000Z",
+  "direction": "LONG",
+  "id": "m-2024-01-11-5min-20260925072108611",
+  "kind": "better_entry",
+  "price": 4755.05,
+  "run_id": "us500-5min-v002-confluence-2024-01-11-4b45553a25",
+  "saved_at": "2026-09-25T07:21:08.611Z",
+  "session": "2024-01-11",
+  "status": "active",
+  "strategy": "v002",
+  "text": "repeated pushes upward, trend forming in candles, not sure about TA indicators but definite better run, and directly after a down trend so predictable upward bounce could have been spotted",
+  "tf": "5min"
+}

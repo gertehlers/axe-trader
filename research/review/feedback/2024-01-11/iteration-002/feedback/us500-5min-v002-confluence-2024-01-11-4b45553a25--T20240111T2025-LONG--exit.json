@@ -1,0 +1,15 @@
+{
+  "arm": "confluence",
+  "bar_time": "2024-01-12T14:20:00.000Z",
+  "decision": "exit",
+  "grade": "good",
+  "reasons": [],
+  "revision_of": null,
+  "run_id": "us500-5min-v002-confluence-2024-01-11-4b45553a25",
+  "saved_at": "2026-09-25T07:22:20.690Z",
+  "session": "2024-01-11",
+  "strategy": "v002",
+  "text": "with the entry it had, this exit was exactly what i meant",
+  "timeframe": "5min",
+  "trade_id": "us500-5min-v002-confluence-2024-01-11-4b45553a25--T20240111T2025-LONG"
+}
