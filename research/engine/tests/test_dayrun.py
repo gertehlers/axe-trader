@@ -99,7 +99,9 @@ def test_run_day_keeps_trades_that_touch_the_window_and_explains_every_bar(synth
         assert pd.Timestamp(trade["entry_time"]) <= end
     times = [pd.Timestamp(d["time"]) for d in day.decisions]
     assert times == sorted(times)
-    assert times[0] >= start - pd.Timedelta("15min")
+    earliest_entry = min([start] + [pd.Timestamp(t["entry_time"]) for t in day.trades])
+    assert times[0] <= earliest_entry          # a carried-in trade is shown from its entry
+    assert times[0] >= earliest_entry - pd.Timedelta("15min")
     assert all(d["action"] in {"NONE", "HOLD", "EXIT"} or d["action"].startswith("ENTER")
                for d in day.decisions)
 

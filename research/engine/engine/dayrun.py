@@ -123,7 +123,11 @@ def run_day(minutes: pd.DataFrame, version: StrategyVersion, day: dt.date, timef
 
     kept = [t for t in trades if t.exit_time > start and t.entry_time <= end]
     last = max([end] + [t.exit_time for t in kept])
-    first_bar = int(bars.index.searchsorted(start, side="left"))
+    # A trade carried in from before the window is shown from its entry signal bar.
+    begin = min([start] + [t.entry_time for t in kept])
+    first_bar = int(bars.index.searchsorted(begin, side="left"))
+    if begin < start:
+        first_bar = max(0, first_bar - 1)
     last_bar = int(bars.index.searchsorted(last, side="right")) - 1
     decisions = []
     for bar in range(first_bar, last_bar + 1):
@@ -148,7 +152,7 @@ def run_day(minutes: pd.DataFrame, version: StrategyVersion, day: dt.date, timef
         "session": {"date": day.isoformat(), "cash_open": session.open_utc.isoformat(),
                     "cash_close": session.close_utc.isoformat(), "early_close": session.early_close},
         "window": {"start": start.isoformat(), "end": end.isoformat(),
-                   "display_end": last.isoformat()},
+                   "display_start": bars.index[first_bar].isoformat(), "display_end": last.isoformat()},
         "timeframe": timeframe, "arm": arm, "arm_parameters": arm_parameters,
         "data": {"epic": epic, "fingerprint_sha256": fingerprint, "minutes": int(len(data)),
                  "first_minute": data.index[0].isoformat(), "last_minute": data.index[-1].isoformat(),
