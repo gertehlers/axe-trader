@@ -35,7 +35,15 @@ Press on a ◆ and drag right → ideal exit (points, ATR, minutes from the sign
 Stored on the same `watch_feedback` doc: `verdict`, `exit {time, price, points, atr_multiple, minutes}`, `text`.
 Rings: green good / red bad / amber other; saved exits drawn as dashed lines. The measured fall line is labelled.
 
-**Next:** owner gives feedback on a few markers → read `watch_feedback` → propose the structured UX.
+**Rebound feedback 001 read** (`feedback/2024-01-12/rebound-001/FINDINGS.md`): 5m 7 good / 15m 0 good;
+cash-session signals clean, overnight ones needed 4–12 ATR of room. Owner (2026-09-29): **keep reviewing
+day by day for a while — no aggregate run yet, no new UX yet.** Owner's open question: how far to let
+exits run and what defence stops a wipe-out. Checked on the 11 judged 5m markers: stop 0.25 ATR beyond the
+drop's extreme → the 3 overnight longs (01:45, 04:45, 08:10) are stopped in the Europe morning, all
+cash-session ones survive, the "bad" 01:15 short is stopped within an hour. Defence layers proposed:
+stop at the invalidation point + size to 1% risk, breakeven/trail after 1R, daily loss cap, one position.
+
+**Next (older):** owner gives feedback on a few markers → read `watch_feedback` → propose the structured UX.
 Then: owner reduces the noise with the knobs (and may name extra filters) → read
 `watch_settings/rebound` → step 2: port the rule to `research/engine` with tests and measure it over
 dev history only (< 2026-02-01): how often price actually rebounds, by how much, after costs →
