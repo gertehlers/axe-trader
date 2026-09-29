@@ -25,7 +25,13 @@ Toggle "Strategy trades" hides trades so the markers can be judged alone.
 Defaults fire on 5 of the 6 distinct marked moves, early (e.g. LONG 01-12 12:00 with 31 of 32 pts
 left), but ~5–11 times per review day on 5m (01-11: 5, 01-12: 11) — mostly unjudged.
 
-**Next:** owner reduces the noise with the knobs (and may name extra filters) → read
+**Rebound notes (same day):** click a ◆ → free-text note, saved to db `watch_feedback/<day>--<tf>--<bar ts>--<side>`
+(+ `watch_feedback_revisions/`), with the settings and signal numbers at save time. Noted markers are
+ringed; a note whose marker no longer fires under current settings shows as a hollow ◇. Free text on
+purpose: read the first notes, then design structured feedback from what the owner actually says.
+
+**Next:** owner writes notes on a few markers → read `watch_feedback` → propose the structured UX.
+Then: owner reduces the noise with the knobs (and may name extra filters) → read
 `watch_settings/rebound` → step 2: port the rule to `research/engine` with tests and measure it over
 dev history only (< 2026-02-01): how often price actually rebounds, by how much, after costs →
 only then a candidate pillar / trend-gate exception as v003, rerun 01-11 and 01-12.

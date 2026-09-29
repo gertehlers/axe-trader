@@ -230,7 +230,7 @@ const fmtNum = (v, d = 2) => v === null || v === undefined ? "–" : (typeof v =
 // ---------- state ----------
 const state = {
   arm: "confluence", mode: "inspect", view: null, selected: null, pending: null, editing: false, ghost: true,
-  feedback: new Map(), marks: new Map(), explanations: new Map(), requests: new Map(), db: null,
+  feedback: new Map(), marks: new Map(), explanations: new Map(), requests: new Map(), watchNotes: new Map(), db: null,
 };
 try { const a = localStorage.getItem("dayreview.arm"); if (a && D.strategy.arms[a]) state.arm = a; } catch (e) {}
 
@@ -337,7 +337,7 @@ function wireWatch() {
   };
   Object.entries(ids).forEach(([k, id]) => document.getElementById(id).addEventListener("input", e => {
     const v = parseFloat(e.target.value); if (!isFinite(v) || v < +e.target.min) return;
-    c[k] = k === "drop" ? v : Math.round(v); save(); recomputeWatch(); drawAll(); if (state.selected && state.selected.type === "bar") renderPanel();
+    c[k] = k === "drop" ? v : Math.round(v); save(); recomputeWatch(); drawAll(); if (state.selected && state.selected.type === "bar" && !state.editing) renderPanel();
   }));
   document.getElementById("watch-toggle").onclick = () => { c.on = !c.on; save(); sync(); recomputeWatch(); drawAll(); renderPanel(); };
   document.getElementById("trades-toggle").onclick = () => { c.trades = !c.trades; save(); sync(); drawAll(); };
@@ -435,14 +435,23 @@ function drawChart(tf) {
   if (sel && sel.type === "bar" && sel.tf === tf) {
     const x = X(barSlot(tf, sel.i)); ctx.fillStyle = css("--sel"); ctx.fillRect(x, 0, pxw, h);
   }
-  // rebound watch: ◆ under the candle for LONG, over it for SHORT; for the selected one, the fall it followed
+  // rebound watch: ◆ under the candle for LONG, over it for SHORT; ringed once you've left a note;
+  // hollow ◇ where you left a note but your current settings no longer fire; for the selected one, the fall it followed
+  ch.hits = [];
   if (state.watchCfg.on) {
     const ws = state.watch[tf] || new Map(), vis = new Set(visible);
     ctx.fillStyle = ctx.strokeStyle = css("--warn");
-    ws.forEach(x => {
-      if (!vis.has(x.i)) return;
-      const cx = X(barSlot(tf, x.i)) + pxw / 2, cy = x.side === "LONG" ? Y(bars[x.i][3]) + 11 : Y(bars[x.i][2]) - 11;
-      ctx.beginPath(); ctx.moveTo(cx, cy - 5); ctx.lineTo(cx + 5, cy); ctx.lineTo(cx, cy + 5); ctx.lineTo(cx - 5, cy); ctx.closePath(); ctx.fill();
+    const diamond = (i, side, filled, noted) => {
+      const cx = X(barSlot(tf, i)) + pxw / 2, cy = side === "LONG" ? Y(bars[i][3]) + 11 : Y(bars[i][2]) - 11;
+      ctx.beginPath(); ctx.moveTo(cx, cy - 5); ctx.lineTo(cx + 5, cy); ctx.lineTo(cx, cy + 5); ctx.lineTo(cx - 5, cy); ctx.closePath();
+      if (filled) ctx.fill(); else { ctx.lineWidth = 1.5; ctx.stroke(); ctx.lineWidth = 1; }
+      if (noted) { ctx.beginPath(); ctx.arc(cx, cy, 8.5, 0, Math.PI * 2); ctx.stroke(); }
+      ch.hits.push({x: cx, y: cy, kind: "watch", i});
+    };
+    ws.forEach(x => { if (vis.has(x.i)) diamond(x.i, x.side, true, state.watchNotes.has(watchKey(tf, x.i, x.side))); });
+    state.watchNotes.forEach(n => {
+      if (n.tf !== tf) return; const i = watchBarIndex(n);
+      if (i >= 0 && vis.has(i) && !(ws.get(i) && ws.get(i).side === n.side)) diamond(i, n.side, false, true);
     });
     const sx = sel && sel.type === "bar" && sel.tf === tf ? ws.get(sel.i) : null;
     if (sx) {
@@ -477,7 +486,6 @@ function drawChart(tf) {
     });
   }
   // trades
-  ch.hits = [];
   (state.watchCfg.trades ? armData(tf).trades : []).forEach(t => {
     const xe = X(barSlot(tf, t.entry_bar)) + pxw, xx = X(slotOf(Date.parse(t.exit_time)));
     const ye = Y(t.entry_price), yx = Y(t.exit_price), isSel = sel && sel.type === "trade" && sel.id === t.id;
@@ -570,6 +578,7 @@ function wirePointer(tf) {
     if (wasMoved) return;
     const hit = (charts[tf].hits || []).find(h => Math.hypot(h.x - x, h.y - y) < 11);
     if (hit && hit.kind === "mark") state.selected = {type: "mark", id: hit.mark.id};
+    else if (hit && hit.kind === "watch") state.selected = {type: "bar", tf, i: hit.i};
     else if (hit) state.selected = {type: "trade", id: hit.trade.id, focus: hit.kind};
     else { const i = barAt(tf, x); if (i >= 0) state.selected = {type: "bar", tf, i}; }
     renderAll();
@@ -671,14 +680,50 @@ function renderBarPanel(el, tf, i) {
   saveBtn.onclick = () => saveMark({kind, direction: dir, tf, bar_time: new Date(ms).toISOString(), price: c,
     text: el.querySelector("#mk-text").value.trim()}, el.querySelector("#mk-status"), saveBtn);
   refresh();
+  wireWatchNotes(el, tf, i);
 }
+// one note per marker (day, timeframe, bar, side); every save also goes to watch_feedback_revisions
+function watchKey(tf, i, side) { return `${D.session.date}--${tf}--${T(tf).bars[i][0]}--${side}`; }
+function watchBarIndex(n) { const ts = Date.parse(n.bar_time) / 1000; return T(n.tf).bars.findIndex(b => b[0] === ts); }
 function watchBlock(tf, i) {
-  const x = state.watchCfg.on && state.watch[tf] && state.watch[tf].get(i); if (!x) return "";
-  const bars = T(tf).bars, t = k => utc(bars[k][0] * 1000).slice(11), colour = x.side === "LONG" ? "green" : "red";
-  return `<div class="watchbox"><div class="eyebrow" style="color:var(--warn)">◆ Rebound watch · <span class="${x.side === "LONG" ? "side-long" : "side-short"}">${x.side}</span></div>
-    <p>Over the ${state.watchCfg.look} bars ${t(x.from)} → ${t(x.s)} UTC the close ${x.fallPts < 0 ? "fell" : "rose"} ${Math.abs(x.fallPts).toFixed(2)} pts,
-      which is ${Math.abs(x.fallAtr).toFixed(1)} ATR (ATR ${x.atr.toFixed(2)}). Then ${state.watchCfg.run} ${colour} candles in a row, ending with this one.</p>
-    <p class="hint">Computed in this page from the candles, with your settings above. It is a marker to look at: the strategy does not trade it.</p></div>`;
+  const live = state.watchCfg.on && state.watch[tf] && state.watch[tf].get(i);
+  const notes = ["LONG", "SHORT"].map(side => state.watchNotes.get(watchKey(tf, i, side))).filter(Boolean);
+  const sides = [...new Set([...(live ? [live.side] : []), ...notes.map(n => n.side)])];
+  if (!sides.length) return "";
+  const bars = T(tf).bars, t = k => utc(bars[k][0] * 1000).slice(11);
+  return sides.map(side => {
+    const x = live && live.side === side ? live : null, n = state.watchNotes.get(watchKey(tf, i, side));
+    const what = x
+      ? `<p>Over the ${state.watchCfg.look} bars ${t(x.from)} → ${t(x.s)} UTC the close ${x.fallPts < 0 ? "fell" : "rose"} ${Math.abs(x.fallPts).toFixed(2)} pts,
+          which is ${Math.abs(x.fallAtr).toFixed(1)} ATR (ATR ${x.atr.toFixed(2)}). Then ${state.watchCfg.run} ${side === "LONG" ? "green" : "red"} candles in a row, ending with this one.</p>`
+      : `<p>Your current settings no longer fire here. When you wrote the note it fired with: fell ≥ ${n.settings.drop_atr} ATR over ${n.settings.look_bars} bars, then ${n.settings.run_candles} candles (${Math.abs(n.signal.fall_atr).toFixed(1)} ATR fall).</p>`;
+    return `<div class="watchbox"><div class="eyebrow" style="color:var(--warn)">${x ? "◆" : "◇"} Rebound watch · <span class="${side === "LONG" ? "side-long" : "side-short"}">${side}</span></div>
+      ${what}
+      <p class="hint">Computed in this page from the candles, with your settings above. It is a marker to look at: the strategy does not trade it.</p>
+      ${x || n ? `<textarea data-wnote="${side}" placeholder="What do you see here? Good rebound, false alarm, too early or late, what else should it have checked…">${esc(n ? n.text : "")}</textarea>
+      <div class="row"><button class="save" type="button" data-wsave="${side}" ${state.db ? "" : "disabled"}>${n ? "Update note" : "Save note"}</button>
+        <span class="saved" data-wstatus="${side}">${n ? `Saved ${utc(n.saved_at)} UTC` : ""}</span></div>${replyBlock(watchKey(tf, i, side))}` : ""}</div>`;
+  }).join("");
+}
+function wireWatchNotes(el, tf, i) {
+  el.querySelectorAll("[data-wsave]").forEach(btn => btn.onclick = async () => {
+    const side = btn.dataset.wsave, key = watchKey(tf, i, side), prev = state.watchNotes.get(key);
+    const text = el.querySelector(`[data-wnote="${side}"]`).value.trim(), status = el.querySelector(`[data-wstatus="${side}"]`);
+    if (!text) { status.textContent = "Write something first."; return; }
+    const x = state.watch[tf] && state.watch[tf].get(i), now = new Date().toISOString(), c = state.watchCfg;
+    const body = {session: D.session.date, tf, side, bar_time: new Date(T(tf).bars[i][0] * 1000).toISOString(), text, saved_at: now,
+      revision_of: prev ? prev.saved_at : null,
+      settings: x ? {drop_atr: c.drop, look_bars: c.look, run_candles: c.run} : prev.settings,
+      signal: x ? {fall_pts: +x.fallPts.toFixed(2), fall_atr: +x.fallAtr.toFixed(2), atr: +x.atr.toFixed(3),
+        from_time: new Date(T(tf).bars[x.from][0] * 1000).toISOString(), streak_start: new Date(T(tf).bars[x.s + 1][0] * 1000).toISOString()} : prev.signal};
+    btn.disabled = true;
+    try {
+      await state.db.doc(`watch_feedback_revisions/${key}--${now.replace(/[^0-9]/g, "")}`).set(body);
+      await state.db.doc(`watch_feedback/${key}`).set(body);
+      status.textContent = `Saved ${utc(now)} UTC`;
+    } catch (err) { status.textContent = `Not saved (${err.code || "error"}). Your text is still here; try again.`; }
+    btn.disabled = false;
+  });
 }
 function renderPendingPanel(el) {
   const p = state.pending && state.pending.move; if (!p) { el.innerHTML = `<p class="empty">Drag on a chart to measure a move.</p>`; return; }
@@ -784,12 +829,16 @@ function renderLists() {
   }).join("") : `<p class="empty">No trades under the ${ARM_LABEL[state.arm]} exit rule on either timeframe.</p>`;
   const fb = [...state.feedback.values()].map(f => ({t: f.saved_at, html: `<button type="button" class="item" data-trade="${esc(f.trade_id)}"><span class="tfbadge">${f.timeframe}</span><span>${f.decision} graded <strong>${esc(f.grade)}</strong>${(f.reasons || []).length ? " · " + esc(f.reasons.join(", ")) : ""}</span><span>${state.explanations.has(`${f.trade_id}--${f.decision}`) ? "answered" : ""}</span><span class="sub">${esc(ARM_LABEL[f.arm] || f.arm)} · ${utc(f.saved_at)} UTC${f.text ? " · " + esc(f.text) : ""}</span></button>`}));
   const mk = [...state.marks.values()].filter(m => m.status !== "withdrawn").map(m => ({t: m.saved_at, html: `<button type="button" class="item" data-mark="${esc(m.id)}"><span class="tfbadge">${m.tf}</span><span>${MARK_KINDS[m.kind]}${m.direction ? " " + m.direction : ""}</span><span>${state.explanations.has(m.id) ? "answered" : ""}</span><span class="sub">${m.kind === "missed_move" ? `${utcShort(m.from_time)} → ${utcShort(m.to_time)} · ${m.points} pts` : utcShort(m.bar_time)}${m.text ? " · " + esc(m.text) : ""}</span></button>`}));
-  const all = fb.concat(mk).sort((a, b) => b.t.localeCompare(a.t));
+  const wn = [...state.watchNotes.entries()].map(([k, n]) => ({t: n.saved_at, html: `<button type="button" class="item" data-watch="${esc(k)}"><span class="tfbadge">${n.tf}</span><span>◆ Rebound ${n.side} · ${utcShort(n.bar_time)}</span><span>${state.explanations.has(k) ? "answered" : ""}</span><span class="sub">${esc(n.text)}</span></button>`}));
+  const all = fb.concat(mk, wn).sort((a, b) => b.t.localeCompare(a.t));
   document.getElementById("feedback").innerHTML = all.length ? all.map(x => x.html).join("") : `<p class="empty">Nothing saved for this day yet.</p>`;
 }
 document.querySelector(".lower").addEventListener("click", e => {
-  const tr = e.target.closest("[data-trade]"), mk = e.target.closest("[data-mark]");
-  if (tr) {
+  const tr = e.target.closest("[data-trade]"), mk = e.target.closest("[data-mark]"), wa = e.target.closest("[data-watch]");
+  if (wa) {
+    const n = state.watchNotes.get(wa.dataset.watch), i = n ? watchBarIndex(n) : -1;
+    if (i >= 0) { state.selected = {type: "bar", tf: n.tf, i}; const ms = Date.parse(n.bar_time); focusOn(ms, ms); renderAll(); }
+  } else if (tr) {
     const id = tr.dataset.trade; let [tf, t] = findTrade(id);
     if (!t) {                                   // graded under another exit rule: switch to it
       const arm = Object.keys(D.strategy.arms).find(a => TFS.some(x => T(x).arms[a].trades.some(y => y.id === id)));
@@ -879,7 +928,8 @@ renderAll();
     db.collection("feedback").where("session", "==", D.session.date).onSnapshot(into(state.feedback, d => d.id), fail("grades")),
     db.collection("marks").where("session", "==", D.session.date).onSnapshot(into(state.marks, d => d.id), fail("marks")),
     db.collection("explanations").where("session", "==", D.session.date).onSnapshot(into(state.explanations, d => d.id), fail("answers")),
-    db.collection("requests").where("session", "==", D.session.date).onSnapshot(into(state.requests, d => d.id), fail("requests")));
+    db.collection("requests").where("session", "==", D.session.date).onSnapshot(into(state.requests, d => d.id), fail("requests")),
+    db.collection("watch_feedback").where("session", "==", D.session.date).onSnapshot(into(state.watchNotes, d => d.id), fail("rebound notes")));
 })();
 }
 }
