@@ -113,6 +113,7 @@ textarea{font:inherit;font-size:.86rem;width:100%;min-height:48px;padding:7px 8p
 .knob input{font:inherit;font-family:"IBM Plex Mono",ui-monospace,monospace;width:4.2em;padding:3px 5px;border:1px solid var(--rule);border-radius:4px;background:var(--surface);color:var(--ink)}
 .watchbox{border-left:3px solid var(--warn);background:var(--warn-soft);padding:9px 12px;border-radius:0 4px 4px 0;display:grid;gap:4px;font-size:.86rem}
 .watchbox p{margin:0}
+.popup{position:fixed;z-index:20;width:min(360px,calc(100vw - 16px));background:var(--surface);border:1px solid var(--rule);border-left:3px solid var(--warn);border-radius:6px;padding:12px 14px;display:grid;gap:10px;box-shadow:0 8px 28px rgba(0,0,0,.18);font-size:.88rem}
 .foot{font-size:.78rem;color:var(--muted);display:grid;gap:4px}
 .foot code{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.74rem;word-break:break-all}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -166,7 +167,7 @@ textarea{font:inherit;font-size:.86rem;width:100%;min-height:48px;padding:7px 8p
       <div class="pane-head"><h3>15-minute</h3><span class="readout mono" id="readout-15min"></span></div>
       <canvas id="chart-15min" height="280"></canvas>
     </section>
-    <div class="hint" id="hint">Click a candle to see why the strategy did or did not act there. Click an entry ▲▼ or exit ● marker to grade it, or a ◆ to leave a note; the cursor turns into a hand over anything clickable. Drag to pan; ⌘/Ctrl + scroll or the buttons to zoom. The strip under each chart shows the vote count per bar: green up = bullish pillars, red down = bearish; solid = reached the threshold.</div>
+    <div class="hint" id="hint">Click a candle to see why the strategy did or did not act there. Click an entry ▲▼ or exit ● marker to grade it, click a ◆ to judge the entry or drag from it to your ideal exit; the cursor turns into a hand over anything clickable. Drag to pan; ⌘/Ctrl + scroll or the buttons to zoom. The strip under each chart shows the vote count per bar: green up = bullish pillars, red down = bearish; solid = reached the threshold.</div>
   </div>
 
   <div class="lower">
@@ -191,6 +192,8 @@ function loadDay(date) {
   try { localStorage.setItem("dayreview.day", date); } catch (e) {}
   RUNTIME.unsubs.forEach(u => { try { u(); } catch (e) {} }); RUNTIME.unsubs = [];
   if (RUNTIME.onResize) window.removeEventListener("resize", RUNTIME.onResize);
+  if (RUNTIME.onDocDown) document.removeEventListener("pointerdown", RUNTIME.onDocDown);
+  const pp = document.getElementById("wpop"); if (pp) pp.remove();
   WRAP.innerHTML = TEMPLATE;
   const go = () => boot(window.DAYS[date], date);
   if (window.DAYS && window.DAYS[date]) return go();
@@ -284,7 +287,7 @@ function setMode(m) {
   document.getElementById("mode-move").setAttribute("aria-pressed", String(m === "move"));
   document.getElementById("hint").textContent = m === "move"
     ? "Drag on either chart from where the move started to where it ran out. Release to measure it, then describe and save it below."
-    : "Click a candle to see why the strategy did or did not act there. Click an entry ▲▼ or exit ● marker to grade it, or a ◆ to leave a note; the cursor turns into a hand over anything clickable. Drag to pan; ⌘/Ctrl + scroll or the buttons to zoom. The strip under each chart shows the vote count per bar: green up = bullish pillars, red down = bearish; solid = reached the threshold.";
+    : "Click a candle to see why the strategy did or did not act there. Click an entry ▲▼ or exit ● marker to grade it, click a ◆ to judge the entry or drag from it to your ideal exit; the cursor turns into a hand over anything clickable. Drag to pan; ⌘/Ctrl + scroll or the buttons to zoom. The strip under each chart shows the vote count per bar: green up = bullish pillars, red down = bearish; solid = reached the threshold.";
   drawAll();
 }
 document.getElementById("mode-inspect").onclick = () => setMode("inspect");
@@ -435,31 +438,45 @@ function drawChart(tf) {
   if (sel && sel.type === "bar" && sel.tf === tf) {
     const x = X(barSlot(tf, sel.i)); ctx.fillStyle = css("--sel"); ctx.fillRect(x, 0, pxw, h);
   }
-  // rebound watch: ◆ under the candle for LONG, over it for SHORT; ringed once you've left a note;
-  // hollow ◇ where you left a note but your current settings no longer fire; for the selected one, the fall it followed
+  // rebound watch: ◆ under the candle for LONG, over it for SHORT. Ring = you've given feedback (green good entry,
+  // red bad entry, amber otherwise); hollow ◇ = feedback on a marker your current settings no longer fire;
+  // a saved ideal exit is a dashed line from the signal close to your exit point.
   ch.hits = [];
   if (state.watchCfg.on) {
-    const ws = state.watch[tf] || new Map(), vis = new Set(visible);
-    ctx.fillStyle = ctx.strokeStyle = css("--warn");
-    const diamond = (i, side, filled, noted) => {
+    const ws = state.watch[tf] || new Map(), vis = new Set(visible), warn = css("--warn");
+    const ringCol = n => n.verdict === "good" ? css("--long") : n.verdict === "bad" ? css("--short") : warn;
+    const diamond = (i, side, filled, note) => {
       const cx = X(barSlot(tf, i)) + pxw / 2, cy = side === "LONG" ? Y(bars[i][3]) + 11 : Y(bars[i][2]) - 11;
+      ctx.fillStyle = ctx.strokeStyle = warn;
       ctx.beginPath(); ctx.moveTo(cx, cy - 5); ctx.lineTo(cx + 5, cy); ctx.lineTo(cx, cy + 5); ctx.lineTo(cx - 5, cy); ctx.closePath();
       if (filled) ctx.fill(); else { ctx.lineWidth = 1.5; ctx.stroke(); ctx.lineWidth = 1; }
-      if (noted) { ctx.beginPath(); ctx.arc(cx, cy, 8.5, 0, Math.PI * 2); ctx.stroke(); }
-      ch.hits.push({x: cx, y: cy, kind: "watch", i});
+      if (note) { ctx.strokeStyle = ringCol(note); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, 8.5, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1; }
+      ch.hits.push({x: cx, y: cy, kind: "watch", i, side});
     };
-    ws.forEach(x => { if (vis.has(x.i)) diamond(x.i, x.side, true, state.watchNotes.has(watchKey(tf, x.i, x.side))); });
+    const exitLine = (i, ex, col, live) => {
+      const x0 = X(barSlot(tf, i)) + pxw / 2, y0 = Y(bars[i][4]), x1 = live ? ex.x : X(slotOf(Date.parse(ex.time))) + pxw / 2, y1 = Y(ex.price);
+      ctx.strokeStyle = ctx.fillStyle = col; ctx.lineWidth = 2; ctx.setLineDash([6, 3]);
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(x1, y1, 4.5, 0, Math.PI * 2); ctx.fill();
+    };
+    state.watchNotes.forEach(n => {
+      if (n.tf !== tf || !n.exit) return; const i = watchBarIndex(n); if (i >= 0) exitLine(i, n.exit, ringCol(n));
+    });
+    ws.forEach(x => { if (vis.has(x.i)) diamond(x.i, x.side, true, state.watchNotes.get(watchKey(tf, x.i, x.side))); });
     state.watchNotes.forEach(n => {
       if (n.tf !== tf) return; const i = watchBarIndex(n);
-      if (i >= 0 && vis.has(i) && !(ws.get(i) && ws.get(i).side === n.side)) diamond(i, n.side, false, true);
+      if (i >= 0 && vis.has(i) && !(ws.get(i) && ws.get(i).side === n.side)) diamond(i, n.side, false, n);
     });
     const sx = sel && sel.type === "bar" && sel.tf === tf ? ws.get(sel.i) : null;
-    if (sx) {
-      const xa = X(barSlot(tf, sx.from)) + pxw / 2, xb = X(barSlot(tf, sx.s)) + pxw / 2;
-      ctx.lineWidth = 2; ctx.setLineDash([5, 3]); ctx.beginPath(); ctx.moveTo(xa, Y(bars[sx.from][4])); ctx.lineTo(xb, Y(bars[sx.s][4])); ctx.stroke();
-      ctx.setLineDash([]); ctx.lineWidth = 1;
+    if (sx) {   // the move the rule measured, labelled, and the streak that followed it
+      const xa = X(barSlot(tf, sx.from)) + pxw / 2, xb = X(barSlot(tf, sx.s)) + pxw / 2, ya = Y(bars[sx.from][4]), yb = Y(bars[sx.s][4]);
+      ctx.strokeStyle = ctx.fillStyle = warn; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(xa, ya); ctx.lineTo(xb, yb); ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1;
+      ctx.font = "600 10px 'IBM Plex Sans', sans-serif"; ctx.textAlign = "center";
+      ctx.fillText(`${sx.fallPts < 0 ? "fell" : "rose"} ${Math.abs(sx.fallAtr).toFixed(1)} ATR`, (xa + xb) / 2, (ya + yb) / 2 + (sx.side === "LONG" ? -8 : 14));
       ctx.globalAlpha = 0.12; ctx.fillRect(X(barSlot(tf, sx.s + 1)), 0, X(barSlot(tf, sx.i)) + pxw - X(barSlot(tf, sx.s + 1)), priceH); ctx.globalAlpha = 1;
     }
+    if (state.exitDrag && state.exitDrag.tf === tf) exitLine(state.exitDrag.i, state.exitDrag, css("--accent"), true);
   }
   // vote tape
   const mid = tapeTop + ch.tape / 2, unit = (ch.tape / 2 - 2) / 4, thr = D.pillars.threshold;
@@ -573,6 +590,7 @@ function wirePointer(tf) {
   c.addEventListener("pointerdown", e => {
     const r = c.getBoundingClientRect(); c.setPointerCapture(e.pointerId);
     const x = e.clientX - r.left, y = e.clientY - r.top;
+    closeWatchPopup();
     down = {x, y, view: state.view.slice(), moved: false, hit: hitAt(tf, x, y)};
     if (state.mode === "move" && !down.hit) {
       const L = charts[tf].layout, s = L.v0 + x / (L.w - L.axisW) * (L.v1 - L.v0);
@@ -586,6 +604,12 @@ function wirePointer(tf) {
     if (!down) { setHover(hitAt(tf, x, y)); return; }
     if (Math.abs(x - down.x) + Math.abs(y - down.y) > DRAG_PX[state.mode]) down.moved = true;
     if (!down.moved) return;
+    if (down.hit && down.hit.kind === "watch") {       // dragging from a marker = placing an ideal exit
+      const ix = down.hit.i, t = slotToTime(L.v0 + x / (L.w - L.axisW) * (L.v1 - L.v0));
+      const p = L.hi - (y - 6) / (L.priceH - 12) * (L.hi - L.lo);
+      state.exitDrag = {tf, i: ix, side: down.hit.side, x, price: p, time: t, ok: t > T(tf).bars[ix][0] * 1000};
+      c.style.cursor = state.exitDrag.ok ? "crosshair" : "not-allowed"; drawAll(); return;
+    }
     if (state.mode === "move" && state.pending && state.pending.drag) {
       const d = state.pending.drag; d.s1 = L.v0 + x / (L.w - L.axisW) * (L.v1 - L.v0);
       d.p1 = L.hi - (y - 6) / (L.priceH - 12) * (L.hi - L.lo); drawAll();
@@ -598,6 +622,13 @@ function wirePointer(tf) {
   c.addEventListener("pointerup", e => {
     const r = c.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
     if (!down) return; const {moved, hit} = down; down = null; setHover(hitAt(tf, x, y));
+    if (hit && hit.kind === "watch") {
+      state.selected = {type: "bar", tf, i: hit.i}; const d = state.exitDrag; state.exitDrag = null; renderAll();
+      if (moved && !(d && d.ok)) return;             // dragged backwards in time: nothing to record
+      openWatchPopup(tf, hit.i, hit.side, moved ? exitFacts(tf, hit.i, hit.side, d.time, d.price) : null, e.clientX, e.clientY);
+      if (moved) { state.exitDrag = d; drawAll(); } // keep the line visible while the popup is open
+      return;
+    }
     if (state.mode === "move" && state.pending && state.pending.drag) {
       if (moved) { finishMove(tf); return; }
       state.pending = null;
@@ -707,9 +738,31 @@ function renderBarPanel(el, tf, i) {
   refresh();
   wireWatchNotes(el, tf, i);
 }
-// one note per marker (day, timeframe, bar, side); every save also goes to watch_feedback_revisions
+// One feedback document per marker (day, timeframe, bar, side): verdict on the entry, an optional ideal exit, a note.
+// Every save also goes to watch_feedback_revisions, and carries the settings and signal numbers at that moment.
+const VERDICTS = {good: "Good entry", bad: "Bad entry", unsure: "Not sure"};
 function watchKey(tf, i, side) { return `${D.session.date}--${tf}--${T(tf).bars[i][0]}--${side}`; }
 function watchBarIndex(n) { const ts = Date.parse(n.bar_time) / 1000; return T(n.tf).bars.findIndex(b => b[0] === ts); }
+// ideal exit measured from the signal candle's close (the fill would be the next minute; this is a reference point)
+function exitFacts(tf, i, side, time, price) {
+  const c0 = T(tf).bars[i][4], atr = reading(tf, i, "atr"), pts = (side === "LONG" ? 1 : -1) * (price - c0);
+  return {time: new Date(time).toISOString(), price: +price.toFixed(2), points: +pts.toFixed(2),
+    atr_multiple: atr ? +(pts / atr).toFixed(2) : null, minutes: Math.round((time - T(tf).bars[i][0] * 1000) / 60000) + TF_MIN[tf]};
+}
+const exitText = e => `exit ${fmtNum(e.price)} at ${utc(e.time).slice(11)} UTC · ${e.points >= 0 ? "+" : ""}${e.points} pts${e.atr_multiple !== null ? ` · ${e.atr_multiple} ATR` : ""} · ${e.minutes} min`;
+async function saveWatch(tf, i, side, patch) {
+  const key = watchKey(tf, i, side), prev = state.watchNotes.get(key), x = state.watch[tf] && state.watch[tf].get(i);
+  const now = new Date().toISOString(), c = state.watchCfg;
+  const body = {...(prev || {}), ...patch, session: D.session.date, tf, side, bar_time: new Date(T(tf).bars[i][0] * 1000).toISOString(),
+    saved_at: now, revision_of: prev ? prev.saved_at : null,
+    settings: x ? {drop_atr: c.drop, look_bars: c.look, run_candles: c.run} : prev && prev.settings,
+    signal: x ? {close: T(tf).bars[i][4], fall_pts: +x.fallPts.toFixed(2), fall_atr: +x.fallAtr.toFixed(2), atr: +x.atr.toFixed(3),
+      from_time: new Date(T(tf).bars[x.from][0] * 1000).toISOString(), streak_start: new Date(T(tf).bars[x.s + 1][0] * 1000).toISOString()} : prev && prev.signal};
+  Object.keys(body).forEach(k => body[k] === undefined && delete body[k]);
+  await state.db.doc(`watch_feedback_revisions/${key}--${now.replace(/[^0-9]/g, "")}`).set(body);
+  await state.db.doc(`watch_feedback/${key}`).set(body);
+  return now;
+}
 function watchBlock(tf, i) {
   const live = state.watchCfg.on && state.watch[tf] && state.watch[tf].get(i);
   const notes = ["LONG", "SHORT"].map(side => state.watchNotes.get(watchKey(tf, i, side))).filter(Boolean);
@@ -720,35 +773,59 @@ function watchBlock(tf, i) {
     const x = live && live.side === side ? live : null, n = state.watchNotes.get(watchKey(tf, i, side));
     const what = x
       ? `<p>Over the ${state.watchCfg.look} bars ${t(x.from)} → ${t(x.s)} UTC the close ${x.fallPts < 0 ? "fell" : "rose"} ${Math.abs(x.fallPts).toFixed(2)} pts,
-          which is ${Math.abs(x.fallAtr).toFixed(1)} ATR (ATR ${x.atr.toFixed(2)}). Then ${state.watchCfg.run} ${side === "LONG" ? "green" : "red"} candles in a row, ending with this one.</p>`
-      : `<p>Your current settings no longer fire here. When you wrote the note it fired with: fell ≥ ${n.settings.drop_atr} ATR over ${n.settings.look_bars} bars, then ${n.settings.run_candles} candles (${Math.abs(n.signal.fall_atr).toFixed(1)} ATR fall).</p>`;
+          which is ${Math.abs(x.fallAtr).toFixed(1)} ATR (ATR ${x.atr.toFixed(2)}): the labelled dotted line on the chart. Then ${state.watchCfg.run} ${side === "LONG" ? "green" : "red"} candles in a row (the shaded band), ending with this one.</p>`
+      : `<p>Your current settings no longer fire here. When you gave feedback it fired with: fell ≥ ${n.settings.drop_atr} ATR over ${n.settings.look_bars} bars, then ${n.settings.run_candles} candles.</p>`;
+    const fb = n ? `<dl class="facts"><dt>Entry</dt><dd>${n.verdict ? VERDICTS[n.verdict] : "–"}</dd><dt>Ideal exit</dt><dd class="mono">${n.exit ? exitText(n.exit) : "–"}</dd>${n.text ? `<dt>Note</dt><dd>${esc(n.text)}</dd>` : ""}</dl>` : "";
     return `<div class="watchbox"><div class="eyebrow" style="color:var(--warn)">${x ? "◆" : "◇"} Rebound watch · <span class="${side === "LONG" ? "side-long" : "side-short"}">${side}</span></div>
-      ${what}
+      ${what}${fb}
+      <div class="row"><button class="save" type="button" data-wopen="${side}" ${state.db ? "" : "disabled"}>${n ? "Edit feedback" : "Give feedback"}</button>
+        <span class="hint">or on the chart: click the ◆, or drag from it to where you'd have exited</span></div>
       <p class="hint">Computed in this page from the candles, with your settings above. It is a marker to look at: the strategy does not trade it.</p>
-      ${x || n ? `<textarea data-wnote="${side}" placeholder="What do you see here? Good rebound, false alarm, too early or late, what else should it have checked…">${esc(n ? n.text : "")}</textarea>
-      <div class="row"><button class="save" type="button" data-wsave="${side}" ${state.db ? "" : "disabled"}>${n ? "Update note" : "Save note"}</button>
-        <span class="saved" data-wstatus="${side}">${n ? `Saved ${utc(n.saved_at)} UTC` : ""}</span></div>${replyBlock(watchKey(tf, i, side))}` : ""}</div>`;
+      ${replyBlock(watchKey(tf, i, side))}</div>`;
   }).join("");
 }
 function wireWatchNotes(el, tf, i) {
-  el.querySelectorAll("[data-wsave]").forEach(btn => btn.onclick = async () => {
-    const side = btn.dataset.wsave, key = watchKey(tf, i, side), prev = state.watchNotes.get(key);
-    const text = el.querySelector(`[data-wnote="${side}"]`).value.trim(), status = el.querySelector(`[data-wstatus="${side}"]`);
-    if (!text) { status.textContent = "Write something first."; return; }
-    const x = state.watch[tf] && state.watch[tf].get(i), now = new Date().toISOString(), c = state.watchCfg;
-    const body = {session: D.session.date, tf, side, bar_time: new Date(T(tf).bars[i][0] * 1000).toISOString(), text, saved_at: now,
-      revision_of: prev ? prev.saved_at : null,
-      settings: x ? {drop_atr: c.drop, look_bars: c.look, run_candles: c.run} : prev.settings,
-      signal: x ? {fall_pts: +x.fallPts.toFixed(2), fall_atr: +x.fallAtr.toFixed(2), atr: +x.atr.toFixed(3),
-        from_time: new Date(T(tf).bars[x.from][0] * 1000).toISOString(), streak_start: new Date(T(tf).bars[x.s + 1][0] * 1000).toISOString()} : prev.signal};
-    btn.disabled = true;
-    try {
-      await state.db.doc(`watch_feedback_revisions/${key}--${now.replace(/[^0-9]/g, "")}`).set(body);
-      await state.db.doc(`watch_feedback/${key}`).set(body);
-      status.textContent = `Saved ${utc(now)} UTC`;
-    } catch (err) { status.textContent = `Not saved (${err.code || "error"}). Your text is still here; try again.`; }
-    btn.disabled = false;
+  el.querySelectorAll("[data-wopen]").forEach(btn => btn.onclick = () => {
+    const r = btn.getBoundingClientRect(); openWatchPopup(tf, i, btn.dataset.wopen, null, r.left, r.bottom + 6);
   });
+}
+// ---------- feedback popup: opens where you clicked or finished the drag ----------
+function closeWatchPopup() { const p = document.getElementById("wpop"); if (p) p.remove(); state.exitDrag = null; document.removeEventListener("keydown", popKey); }
+function popKey(e) { if (e.key === "Escape") { closeWatchPopup(); drawAll(); } }
+function openWatchPopup(tf, i, side, exit, clientX, clientY) {
+  closeWatchPopup();
+  const n = state.watchNotes.get(watchKey(tf, i, side)) || {};
+  let verdict = n.verdict || null; const ex = exit || n.exit || null;
+  const pop = document.createElement("div"); pop.id = "wpop"; pop.className = "popup"; pop.setAttribute("role", "dialog"); pop.setAttribute("aria-label", "Rebound feedback");
+  pop.innerHTML = `<div class="row" style="justify-content:space-between"><strong>◆ <span class="${side === "LONG" ? "side-long" : "side-short"}">${side}</span> rebound · ${utc(T(tf).bars[i][0] * 1000).slice(11)} UTC <span class="tfbadge">${tf}</span></strong>
+      <button type="button" class="ghost" data-pclose aria-label="Close">✕</button></div>
+    ${ex ? `<div class="mono" style="font-size:.84rem">Ideal ${exitText(ex)}<br><span class="hint">measured from the signal close ${fmtNum(T(tf).bars[i][4])}${exit ? "" : " · drag from the ◆ again to change it"}</span></div>`
+         : `<div class="hint">Drag from the ◆ to where you'd have exited to add an ideal exit.</div>`}
+    <div class="scale" data-pverdict>${Object.entries(VERDICTS).map(([k, v]) => `<button type="button" data-v="${k}" aria-pressed="${verdict === k}">${v}</button>`).join("")}</div>
+    <textarea data-ptext placeholder="${ex ? "What made this a run worth taking? Where would you have got out and why?" : "Why? What should it have seen?"}">${esc(n.text || "")}</textarea>
+    <div class="row"><button class="save" type="button" data-psave ${state.db ? "" : "disabled"}>Save</button>
+      ${exit && n.exit ? `<span class="hint">replaces your earlier exit</span>` : ""}
+      ${!exit && n.exit ? `<button type="button" class="ghost" data-pclear>Remove exit</button>` : ""}
+      <span class="saved" data-pstatus>${state.db ? "" : "Storage unavailable"}</span></div>`;
+  document.body.appendChild(pop);
+  const w = pop.offsetWidth, h = pop.offsetHeight;
+  pop.style.left = Math.max(8, Math.min(clientX + 12, window.innerWidth - w - 8)) + "px";
+  pop.style.top = Math.max(8, Math.min(clientY + 12, window.innerHeight - h - 8)) + "px";
+  pop.querySelector("[data-ptext]").focus();
+  pop.querySelector("[data-pverdict]").onclick = e => { const b = e.target.closest("button"); if (!b) return; verdict = b.dataset.v;
+    pop.querySelectorAll("[data-pverdict] button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); };
+  pop.querySelector("[data-pclose]").onclick = () => { closeWatchPopup(); drawAll(); };
+  let clearExit = false; const clr = pop.querySelector("[data-pclear]");
+  if (clr) clr.onclick = () => { clearExit = true; clr.textContent = "Exit will be removed"; clr.disabled = true; };
+  pop.querySelector("[data-psave]").onclick = async e => {
+    const btn = e.currentTarget, status = pop.querySelector("[data-pstatus]"), text = pop.querySelector("[data-ptext]").value.trim();
+    const patch = {verdict, text}; if (exit) patch.exit = exit; if (clearExit) patch.exit = null;
+    if (!verdict && !text && !patch.exit && !n.exit) { status.textContent = "Pick a verdict, add an exit or write a note."; return; }
+    btn.disabled = true;
+    try { await saveWatch(tf, i, side, patch); closeWatchPopup(); state.selected = {type: "bar", tf, i}; renderAll(); }
+    catch (err) { status.textContent = `Not saved (${err.code || "error"}). Try again.`; btn.disabled = false; }
+  };
+  document.addEventListener("keydown", popKey);
 }
 function renderPendingPanel(el) {
   const p = state.pending && state.pending.move; if (!p) { el.innerHTML = `<p class="empty">Drag on a chart to measure a move.</p>`; return; }
@@ -854,7 +931,7 @@ function renderLists() {
   }).join("") : `<p class="empty">No trades under the ${ARM_LABEL[state.arm]} exit rule on either timeframe.</p>`;
   const fb = [...state.feedback.values()].map(f => ({t: f.saved_at, html: `<button type="button" class="item" data-trade="${esc(f.trade_id)}"><span class="tfbadge">${f.timeframe}</span><span>${f.decision} graded <strong>${esc(f.grade)}</strong>${(f.reasons || []).length ? " · " + esc(f.reasons.join(", ")) : ""}</span><span>${state.explanations.has(`${f.trade_id}--${f.decision}`) ? "answered" : ""}</span><span class="sub">${esc(ARM_LABEL[f.arm] || f.arm)} · ${utc(f.saved_at)} UTC${f.text ? " · " + esc(f.text) : ""}</span></button>`}));
   const mk = [...state.marks.values()].filter(m => m.status !== "withdrawn").map(m => ({t: m.saved_at, html: `<button type="button" class="item" data-mark="${esc(m.id)}"><span class="tfbadge">${m.tf}</span><span>${MARK_KINDS[m.kind]}${m.direction ? " " + m.direction : ""}</span><span>${state.explanations.has(m.id) ? "answered" : ""}</span><span class="sub">${m.kind === "missed_move" ? `${utcShort(m.from_time)} → ${utcShort(m.to_time)} · ${m.points} pts` : utcShort(m.bar_time)}${m.text ? " · " + esc(m.text) : ""}</span></button>`}));
-  const wn = [...state.watchNotes.entries()].map(([k, n]) => ({t: n.saved_at, html: `<button type="button" class="item" data-watch="${esc(k)}"><span class="tfbadge">${n.tf}</span><span>◆ Rebound ${n.side} · ${utcShort(n.bar_time)}</span><span>${state.explanations.has(k) ? "answered" : ""}</span><span class="sub">${esc(n.text)}</span></button>`}));
+  const wn = [...state.watchNotes.entries()].map(([k, n]) => ({t: n.saved_at, html: `<button type="button" class="item" data-watch="${esc(k)}"><span class="tfbadge">${n.tf}</span><span>◆ Rebound ${n.side} · ${utcShort(n.bar_time)}${n.verdict ? " · " + VERDICTS[n.verdict] : ""}</span><span>${state.explanations.has(k) ? "answered" : ""}</span><span class="sub">${n.exit ? exitText(n.exit) + (n.text ? " · " : "") : ""}${esc(n.text || "")}</span></button>`}));
   const all = fb.concat(mk, wn).sort((a, b) => b.t.localeCompare(a.t));
   document.getElementById("feedback").innerHTML = all.length ? all.map(x => x.html).join("") : `<p class="empty">Nothing saved for this day yet.</p>`;
 }
@@ -937,6 +1014,11 @@ panelEl.addEventListener("input", () => { state.editing = true; });
 panelEl.addEventListener("click", e => { if (e.target.closest(".scale button,.tags button")) state.editing = true;
   if (e.target.closest(".save,.ghost")) state.editing = false; });
 RUNTIME.onResize = drawAll; window.addEventListener("resize", drawAll);
+RUNTIME.onDocDown = e => {
+  const pop = document.getElementById("wpop");
+  if (pop && !pop.contains(e.target) && !e.target.closest("canvas,[data-wopen]")) { closeWatchPopup(); drawAll(); }
+};
+document.addEventListener("pointerdown", RUNTIME.onDocDown);
 wireWatch();
 renderAll();
 

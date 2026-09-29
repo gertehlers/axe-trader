@@ -30,7 +30,12 @@ left), but ~5–11 times per review day on 5m (01-11: 5, 01-12: 11) — mostly u
 ringed; a note whose marker no longer fires under current settings shows as a hollow ◇. Free text on
 purpose: read the first notes, then design structured feedback from what the owner actually says.
 
-**Next:** owner writes notes on a few markers → read `watch_feedback` → propose the structured UX.
+**Rebound feedback v2 (owner asked):** click a ◆ → popup at the cursor: Good entry / Bad entry / Not sure + note.
+Press on a ◆ and drag right → ideal exit (points, ATR, minutes from the signal close) → same popup on release.
+Stored on the same `watch_feedback` doc: `verdict`, `exit {time, price, points, atr_multiple, minutes}`, `text`.
+Rings: green good / red bad / amber other; saved exits drawn as dashed lines. The measured fall line is labelled.
+
+**Next:** owner gives feedback on a few markers → read `watch_feedback` → propose the structured UX.
 Then: owner reduces the noise with the knobs (and may name extra filters) → read
 `watch_settings/rebound` → step 2: port the rule to `research/engine` with tests and measure it over
 dev history only (< 2026-02-01): how often price actually rebounds, by how much, after costs →
