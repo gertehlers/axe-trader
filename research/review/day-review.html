@@ -50,7 +50,7 @@ button:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px so
 .charts{display:grid;gap:10px}
 .pane{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:8px 10px 6px}
 .pane-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;font-size:.84rem}
-.pane canvas{display:block;width:100%;touch-action:none;cursor:crosshair}
+.pane canvas{display:block;width:100%;touch-action:none;cursor:default}
 .readout{font-size:.78rem;color:var(--muted);min-height:1.2em}
 .hint{font-size:.8rem;color:var(--muted)}
 .lower{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:14px;align-items:start}
@@ -166,7 +166,7 @@ textarea{font:inherit;font-size:.86rem;width:100%;min-height:48px;padding:7px 8p
       <div class="pane-head"><h3>15-minute</h3><span class="readout mono" id="readout-15min"></span></div>
       <canvas id="chart-15min" height="280"></canvas>
     </section>
-    <div class="hint" id="hint">Click a candle to see why the strategy did or did not act there. Click an entry ▲▼ or exit ● marker to grade it. Drag to pan; ⌘/Ctrl + scroll or the buttons to zoom. The strip under each chart shows the vote count per bar: green up = bullish pillars, red down = bearish; solid = reached the threshold.</div>
+    <div class="hint" id="hint">Click a candle to see why the strategy did or did not act there. Click an entry ▲▼ or exit ● marker to grade it, or a ◆ to leave a note; the cursor turns into a hand over anything clickable. Drag to pan; ⌘/Ctrl + scroll or the buttons to zoom. The strip under each chart shows the vote count per bar: green up = bullish pillars, red down = bearish; solid = reached the threshold.</div>
   </div>
 
   <div class="lower">
@@ -230,7 +230,7 @@ const fmtNum = (v, d = 2) => v === null || v === undefined ? "–" : (typeof v =
 // ---------- state ----------
 const state = {
   arm: "confluence", mode: "inspect", view: null, selected: null, pending: null, editing: false, ghost: true,
-  feedback: new Map(), marks: new Map(), explanations: new Map(), requests: new Map(), watchNotes: new Map(), db: null,
+  feedback: new Map(), marks: new Map(), explanations: new Map(), requests: new Map(), watchNotes: new Map(), db: null, hover: null,
 };
 try { const a = localStorage.getItem("dayreview.arm"); if (a && D.strategy.arms[a]) state.arm = a; } catch (e) {}
 
@@ -284,7 +284,7 @@ function setMode(m) {
   document.getElementById("mode-move").setAttribute("aria-pressed", String(m === "move"));
   document.getElementById("hint").textContent = m === "move"
     ? "Drag on either chart from where the move started to where it ran out. Release to measure it, then describe and save it below."
-    : "Click a candle to see why the strategy did or did not act there. Click an entry ▲▼ or exit ● marker to grade it. Drag to pan; ⌘/Ctrl + scroll or the buttons to zoom. The strip under each chart shows the vote count per bar: green up = bullish pillars, red down = bearish; solid = reached the threshold.";
+    : "Click a candle to see why the strategy did or did not act there. Click an entry ▲▼ or exit ● marker to grade it, or a ◆ to leave a note; the cursor turns into a hand over anything clickable. Drag to pan; ⌘/Ctrl + scroll or the buttons to zoom. The strip under each chart shows the vote count per bar: green up = bullish pillars, red down = bearish; solid = reached the threshold.";
   drawAll();
 }
 document.getElementById("mode-inspect").onclick = () => setMode("inspect");
@@ -519,6 +519,8 @@ function drawChart(tf) {
       ch.hits.push({x, y: y - 12, kind: "mark", mark: m});
     }
   });
+  const hov = state.hover && state.hover.startsWith(tf + "|") ? ch.hits.find(h => `${tf}|${hitKey(h)}` === state.hover) : null;
+  if (hov) { ctx.strokeStyle = css("--accent"); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(hov.x, hov.y, 11, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1; }
   if (state.pending && state.pending.tf === tf && state.pending.drag) {
     const p = state.pending.drag; ctx.strokeStyle = css("--mark"); ctx.setLineDash([4, 3]);
     arrow(ctx, X(p.s0), Y(p.p0), X(p.s1), Y(p.p1)); ctx.setLineDash([]);
@@ -547,43 +549,66 @@ function barAt(tf, px) {
   for (let i = 0; i < bars.length; i++) { const b = barSlot(tf, i); if (s >= b && s < b + bw) { best = i; break; } }
   return best;
 }
+// Clickable things (markers, trades, marks) get a pointer cursor and a highlight ring on hover; a press that
+// starts on one always selects it, in either mode. The nearest target within HIT_PX wins.
+const HIT_PX = 14, DRAG_PX = {inspect: 4, move: 12};
+const hitKey = h => h.kind === "watch" ? `w:${h.i}` : h.kind === "mark" ? `m:${h.mark.id}` : `${h.kind}:${h.trade.id}`;
+function hitAt(tf, x, y) {
+  let best = null, bd = HIT_PX;
+  (charts[tf].hits || []).forEach(h => { const d = Math.hypot(h.x - x, h.y - y); if (d < bd) { bd = d; best = h; } });
+  return best;
+}
+function selectHit(tf, hit) {
+  if (hit.kind === "mark") state.selected = {type: "mark", id: hit.mark.id};
+  else if (hit.kind === "watch") state.selected = {type: "bar", tf, i: hit.i};
+  else state.selected = {type: "trade", id: hit.trade.id, focus: hit.kind};
+}
 function wirePointer(tf) {
   const c = charts[tf].canvas; let down = null;
+  const setHover = hit => {
+    const key = hit ? `${tf}|${hitKey(hit)}` : null;
+    c.style.cursor = hit ? "pointer" : state.mode === "move" ? "crosshair" : "default";
+    if (key !== state.hover) { state.hover = key; drawAll(); }
+  };
   c.addEventListener("pointerdown", e => {
     const r = c.getBoundingClientRect(); c.setPointerCapture(e.pointerId);
-    down = {x: e.clientX - r.left, y: e.clientY - r.top, view: state.view.slice(), moved: false};
-    if (state.mode === "move") {
-      const L = charts[tf].layout, s = L.v0 + down.x / (L.w - L.axisW) * (L.v1 - L.v0);
-      const p = L.hi - (down.y - 6) / (L.priceH - 12) * (L.hi - L.lo);
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    down = {x, y, view: state.view.slice(), moved: false, hit: hitAt(tf, x, y)};
+    if (state.mode === "move" && !down.hit) {
+      const L = charts[tf].layout, s = L.v0 + x / (L.w - L.axisW) * (L.v1 - L.v0);
+      const p = L.hi - (y - 6) / (L.priceH - 12) * (L.hi - L.lo);
       state.pending = {tf, drag: {s0: s, p0: p, s1: s, p1: p}};
     }
   });
   c.addEventListener("pointermove", e => {
     const r = c.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, L = charts[tf].layout;
     readout(tf, barAt(tf, x));
-    if (!down) return;
-    if (Math.abs(x - down.x) + Math.abs(y - down.y) > 4) down.moved = true;
+    if (!down) { setHover(hitAt(tf, x, y)); return; }
+    if (Math.abs(x - down.x) + Math.abs(y - down.y) > DRAG_PX[state.mode]) down.moved = true;
+    if (!down.moved) return;
     if (state.mode === "move" && state.pending && state.pending.drag) {
       const d = state.pending.drag; d.s1 = L.v0 + x / (L.w - L.axisW) * (L.v1 - L.v0);
       d.p1 = L.hi - (y - 6) / (L.priceH - 12) * (L.hi - L.lo); drawAll();
-    } else if (state.mode === "inspect" && down.moved) {
+    } else if (state.mode === "inspect") {
+      c.style.cursor = "grabbing";
       const ds = (x - down.x) / (L.w - L.axisW) * (down.view[1] - down.view[0]);
       state.view = [down.view[0] - ds, down.view[1] - ds]; drawAll();
     }
   });
   c.addEventListener("pointerup", e => {
     const r = c.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-    if (!down) return; const wasMoved = down.moved; down = null;
-    if (state.mode === "move") { if (wasMoved) finishMove(tf); else { state.pending = null; drawAll(); } return; }
-    if (wasMoved) return;
-    const hit = (charts[tf].hits || []).find(h => Math.hypot(h.x - x, h.y - y) < 11);
-    if (hit && hit.kind === "mark") state.selected = {type: "mark", id: hit.mark.id};
-    else if (hit && hit.kind === "watch") state.selected = {type: "bar", tf, i: hit.i};
-    else if (hit) state.selected = {type: "trade", id: hit.trade.id, focus: hit.kind};
-    else { const i = barAt(tf, x); if (i >= 0) state.selected = {type: "bar", tf, i}; }
+    if (!down) return; const {moved, hit} = down; down = null; setHover(hitAt(tf, x, y));
+    if (state.mode === "move" && state.pending && state.pending.drag) {
+      if (moved) { finishMove(tf); return; }
+      state.pending = null;
+    }
+    if (moved) return;
+    if (hit) selectHit(tf, hit);
+    else if (state.mode === "inspect") { const i = barAt(tf, x); if (i >= 0) state.selected = {type: "bar", tf, i}; }
+    else { drawAll(); return; }
     renderAll();
   });
-  c.addEventListener("pointerleave", () => readout(tf, -1));
+  c.addEventListener("pointerleave", () => { readout(tf, -1); if (!down) setHover(null); });
   c.addEventListener("wheel", e => {
     if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault();
     const r = c.getBoundingClientRect(), L = charts[tf].layout, s = L.v0 + (e.clientX - r.left) / (L.w - L.axisW) * (L.v1 - L.v0);
