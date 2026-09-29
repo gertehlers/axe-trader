@@ -242,6 +242,7 @@ The first milestone is accepted when I can review a complete day, save feedback,
 
 ### Decisions (owner)
 
+- **No trade-count target for now (2026-09-29).** "It could have 1000 trades, I don't care as long as it makes money." Net expectancy after costs is the bar; prefer more candidates reduced by logic over rules that miss everything. Supersedes the ~5 trades/day cadence.
 - **Baseline exits: all four existing arms plus a fifth, the confluence exit.** It shares the frozen entry and exits when the **opposite side's** confluence score reaches the threshold (holding LONG, 3 bearish pillars agree; mirrored for SHORT). The 10 ATR brake stays as the protective stop.
   - It's a new arm class next to the others in `research/engine/engine/strategies/confluence.py`, registered in `ARMS` / `ARM_PARAMETERS` in `engine/run.py`, with tests.
   - It's part of baseline v1, not a strategy change: the owner asked for it before any review.

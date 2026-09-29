@@ -22,8 +22,10 @@ Read this before touching strategy code — it's the bar every change is judged 
 - **Win rate target: 80%+** (stretch: >85%). This is the whole game — a strategy that trades often but
   wins less than this does not make money once spread/slippage are accounted for. Do not ship a
   "more trades" change that costs win rate without an explicit ask.
-- **Cadence: ~5 quality trades/day per instrument, not scalping.** If a config change increases trade
-  count, that is a signal the filters got looser, not a win — check win rate moved the right way too.
+- **Cadence: no trade-count target for now (owner, 2026-09-29).** "It could have 1000 trades, I don't
+  care as long as it makes money." The bar is net expectancy after costs. Prefer finding more candidate
+  trades and filtering them down with logic over rules that miss everything. The old ~5 trades/day
+  target is suspended until the strategy makes money.
   Current best (2026-07-04, US500 5m, `application.yaml`): **80% win rate holds in- and out-of-sample**,
   ~1 trade/day, LONG-only — but the **2026-07-04 pnl audit falsified its expectancy**: under honest
   intrabar fills it is net **negative** (IS −0.14, OOS −0.29 pts/trade), not the +0.12 the close-based

@@ -109,6 +109,10 @@ textarea{font:inherit;font-size:.86rem;width:100%;min-height:48px;padding:7px 8p
 .item.cmp{grid-template-columns:1fr}
 .cmp{display:grid;gap:2px;padding:8px 4px;border-bottom:1px solid var(--grid);font-size:.84rem}
 .cmp .line{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline}
+.knob{font-size:.8rem;color:var(--muted);display:inline-flex;align-items:center;gap:4px;margin-right:8px}
+.knob input{font:inherit;font-family:"IBM Plex Mono",ui-monospace,monospace;width:4.2em;padding:3px 5px;border:1px solid var(--rule);border-radius:4px;background:var(--surface);color:var(--ink)}
+.watchbox{border-left:3px solid var(--warn);background:var(--warn-soft);padding:9px 12px;border-radius:0 4px 4px 0;display:grid;gap:4px;font-size:.86rem}
+.watchbox p{margin:0}
 .foot{font-size:.78rem;color:var(--muted);display:grid;gap:4px}
 .foot code{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.74rem;word-break:break-all}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -139,6 +143,18 @@ textarea{font:inherit;font-size:.86rem;width:100%;min-height:48px;padding:7px 8p
       <button type="button" id="zoom-all">All</button></span></div>
     <div id="cmp-toggle-wrap" hidden><span class="label">Compare</span><span class="seg">
       <button type="button" id="cmp-toggle" aria-pressed="true">Show parent</button></span></div>
+    <div><span class="label">Show</span><span class="seg">
+      <button type="button" id="trades-toggle" aria-pressed="true">Strategy trades</button>
+      <button type="button" id="watch-toggle" aria-pressed="true">Rebound watch</button></span></div>
+  </div>
+  <div class="toolbar" id="watch-bar" role="group" aria-label="Rebound watch settings" style="position:static;border-bottom:0;padding-block:0">
+    <span class="label">Rebound watch ◆</span>
+    <label class="knob">price fell at least <input type="number" id="w-drop" min="0" step="0.5"> ATR</label>
+    <label class="knob">over <input type="number" id="w-look" min="2" max="60" step="1"> bars,</label>
+    <label class="knob">then <input type="number" id="w-run" min="1" max="8" step="1"> candles in a row the other way</label>
+    <button type="button" class="ghost" id="w-reset">Reset</button>
+    <button type="button" class="ghost" id="w-send" disabled>Send these settings to Claude</button>
+    <span class="readout mono" id="w-count"></span>
   </div>
 
   <div class="charts">
@@ -283,6 +299,62 @@ document.getElementById("zoom-day").onclick = () => { state.view = dayView.slice
 document.getElementById("zoom-cash").onclick = () => { state.view = cashView.slice(); drawAll(); };
 document.getElementById("zoom-all").onclick = () => { state.view = fullView.slice(); drawAll(); };
 
+// ---------- rebound watch (computed in this page from the chart's candles; a marker to look at, never a trade) ----------
+const WATCH_DEFAULT = {on: true, trades: true, drop: 2, look: 12, run: 3};
+state.watchCfg = {...WATCH_DEFAULT};
+try { Object.assign(state.watchCfg, JSON.parse(localStorage.getItem("dayreview.watch") || "{}")); } catch (e) {}
+state.watch = {};
+// LONG at bar i: the `run` candles ending at i are all green, the candle before them is not, and over the
+// `look` bars before the streak the close fell by at least `drop` × ATR(14) (ATR read at the bar before the streak).
+// SHORT is the mirror image. Fires once per streak, on the close of its `run`-th candle.
+function reboundSignals(tf) {
+  const {drop, look, run} = state.watchCfg, bars = T(tf).bars, out = new Map();
+  const dir = i => bars[i][4] > bars[i][1] ? 1 : bars[i][4] < bars[i][1] ? -1 : 0;
+  for (let i = run + look; i < bars.length; i++) {
+    const s = i - run, d = dir(i);
+    if (!d || dir(s) === d) continue;
+    let ok = true; for (let k = s + 1; k < i; k++) if (dir(k) !== d) { ok = false; break; }
+    const atr = reading(tf, s, "atr"); if (!ok || !atr) continue;
+    const fallPts = bars[s][4] - bars[s - look][4], fallAtr = fallPts / atr;
+    if (d * fallAtr <= -drop) out.set(i, {i, side: d > 0 ? "LONG" : "SHORT", s, from: s - look, fallPts, fallAtr, atr});
+  }
+  return out;
+}
+function recomputeWatch() {
+  TFS.forEach(tf => { state.watch[tf] = reboundSignals(tf); });
+  const inDay = tf => [...state.watch[tf].values()].filter(x => { const t = T(tf).bars[x.i][0] * 1000; return t >= winStart && t < winEnd; });
+  document.getElementById("w-count").textContent = state.watchCfg.on ? "on the review day: " + TFS.map(tf => {
+    const xs = inDay(tf); return `${tf} ${xs.filter(x => x.side === "LONG").length} long · ${xs.filter(x => x.side === "SHORT").length} short`;
+  }).join("  |  ") : "";
+}
+function wireWatch() {
+  const c = state.watchCfg, ids = {drop: "w-drop", look: "w-look", run: "w-run"};
+  const save = () => { try { localStorage.setItem("dayreview.watch", JSON.stringify(c)); } catch (e) {} };
+  const sync = () => {
+    Object.entries(ids).forEach(([k, id]) => { document.getElementById(id).value = c[k]; });
+    document.getElementById("watch-toggle").setAttribute("aria-pressed", String(c.on));
+    document.getElementById("trades-toggle").setAttribute("aria-pressed", String(c.trades));
+  };
+  Object.entries(ids).forEach(([k, id]) => document.getElementById(id).addEventListener("input", e => {
+    const v = parseFloat(e.target.value); if (!isFinite(v) || v < +e.target.min) return;
+    c[k] = k === "drop" ? v : Math.round(v); save(); recomputeWatch(); drawAll(); if (state.selected && state.selected.type === "bar") renderPanel();
+  }));
+  document.getElementById("watch-toggle").onclick = () => { c.on = !c.on; save(); sync(); recomputeWatch(); drawAll(); renderPanel(); };
+  document.getElementById("trades-toggle").onclick = () => { c.trades = !c.trades; save(); sync(); drawAll(); };
+  document.getElementById("w-reset").onclick = () => { Object.assign(c, {drop: WATCH_DEFAULT.drop, look: WATCH_DEFAULT.look, run: WATCH_DEFAULT.run}); save(); sync(); recomputeWatch(); drawAll(); renderPanel(); };
+  document.getElementById("w-send").onclick = async e => {
+    const b = e.currentTarget, now = new Date().toISOString(); b.disabled = true;
+    const body = {drop_atr: c.drop, look_bars: c.look, run_candles: c.run, session: D.session.date, saved_at: now};
+    try {
+      await state.db.doc(`watch_settings_revisions/rebound--${now.replace(/[^0-9]/g, "")}`).set(body);
+      await state.db.doc("watch_settings/rebound").set(body);
+      document.getElementById("w-count").textContent = `Sent ${utc(now)} UTC: fell ≥ ${c.drop} ATR over ${c.look} bars, then ${c.run} candles`;
+    } catch (err) { document.getElementById("w-count").textContent = `Not sent (${err.code || "error"}). Try again.`; }
+    b.disabled = false;
+  };
+  sync(); recomputeWatch();
+}
+
 // ---------- data helpers ----------
 const T = tf => D.timeframes[tf];
 const armData = tf => T(tf).arms[state.arm];
@@ -363,6 +435,23 @@ function drawChart(tf) {
   if (sel && sel.type === "bar" && sel.tf === tf) {
     const x = X(barSlot(tf, sel.i)); ctx.fillStyle = css("--sel"); ctx.fillRect(x, 0, pxw, h);
   }
+  // rebound watch: ◆ under the candle for LONG, over it for SHORT; for the selected one, the fall it followed
+  if (state.watchCfg.on) {
+    const ws = state.watch[tf] || new Map(), vis = new Set(visible);
+    ctx.fillStyle = ctx.strokeStyle = css("--warn");
+    ws.forEach(x => {
+      if (!vis.has(x.i)) return;
+      const cx = X(barSlot(tf, x.i)) + pxw / 2, cy = x.side === "LONG" ? Y(bars[x.i][3]) + 11 : Y(bars[x.i][2]) - 11;
+      ctx.beginPath(); ctx.moveTo(cx, cy - 5); ctx.lineTo(cx + 5, cy); ctx.lineTo(cx, cy + 5); ctx.lineTo(cx - 5, cy); ctx.closePath(); ctx.fill();
+    });
+    const sx = sel && sel.type === "bar" && sel.tf === tf ? ws.get(sel.i) : null;
+    if (sx) {
+      const xa = X(barSlot(tf, sx.from)) + pxw / 2, xb = X(barSlot(tf, sx.s)) + pxw / 2;
+      ctx.lineWidth = 2; ctx.setLineDash([5, 3]); ctx.beginPath(); ctx.moveTo(xa, Y(bars[sx.from][4])); ctx.lineTo(xb, Y(bars[sx.s][4])); ctx.stroke();
+      ctx.setLineDash([]); ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.12; ctx.fillRect(X(barSlot(tf, sx.s + 1)), 0, X(barSlot(tf, sx.i)) + pxw - X(barSlot(tf, sx.s + 1)), priceH); ctx.globalAlpha = 1;
+    }
+  }
   // vote tape
   const mid = tapeTop + ch.tape / 2, unit = (ch.tape / 2 - 2) / 4, thr = D.pillars.threshold;
   ctx.strokeStyle = css("--grid"); ctx.beginPath(); ctx.moveTo(0, mid); ctx.lineTo(w - axisW, mid); ctx.stroke();
@@ -376,7 +465,7 @@ function drawChart(tf) {
   [mid - thr * unit, mid + thr * unit].forEach(y => { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w - axisW, y); ctx.stroke(); });
   ctx.setLineDash([]);
   // parent version's trades, faded, underneath
-  if (CMP && state.ghost) {
+  if (CMP && state.ghost && state.watchCfg.trades) {
     const pa = (CMP.timeframes[tf] || {})[state.arm];
     (pa ? pa.parent_trades : []).forEach(t => {
       const xe = X(slotOf(Date.parse(t.entry_time))), xx = X(slotOf(Date.parse(t.exit_time)));
@@ -389,7 +478,7 @@ function drawChart(tf) {
   }
   // trades
   ch.hits = [];
-  armData(tf).trades.forEach(t => {
+  (state.watchCfg.trades ? armData(tf).trades : []).forEach(t => {
     const xe = X(barSlot(tf, t.entry_bar)) + pxw, xx = X(slotOf(Date.parse(t.exit_time)));
     const ye = Y(t.entry_price), yx = Y(t.exit_price), isSel = sel && sel.type === "trade" && sel.id === t.id;
     const col = t.r >= 0 ? css("--up") : css("--down");
@@ -564,6 +653,7 @@ function renderBarPanel(el, tf, i) {
   const [t, o, h, l, c] = T(tf).bars[i], ms = t * 1000;
   el.innerHTML = `<div class="row" style="justify-content:space-between"><h2>${utc(ms)} UTC <span class="muted" style="font-weight:500">· ${ny(ms)} New York</span></h2><span class="tfbadge">${tf}</span></div>
     <dl class="facts mono"><dt>OHLC</dt><dd>${o} / ${h} / ${l} / ${c}</dd></dl>
+    ${watchBlock(tf, i)}
     <div class="votes">${voteRows(tf, i)}</div>
     ${decisionBlock(tf, i)}
     ${readingsTable(tf, i)}
@@ -581,6 +671,14 @@ function renderBarPanel(el, tf, i) {
   saveBtn.onclick = () => saveMark({kind, direction: dir, tf, bar_time: new Date(ms).toISOString(), price: c,
     text: el.querySelector("#mk-text").value.trim()}, el.querySelector("#mk-status"), saveBtn);
   refresh();
+}
+function watchBlock(tf, i) {
+  const x = state.watchCfg.on && state.watch[tf] && state.watch[tf].get(i); if (!x) return "";
+  const bars = T(tf).bars, t = k => utc(bars[k][0] * 1000).slice(11), colour = x.side === "LONG" ? "green" : "red";
+  return `<div class="watchbox"><div class="eyebrow" style="color:var(--warn)">◆ Rebound watch · <span class="${x.side === "LONG" ? "side-long" : "side-short"}">${x.side}</span></div>
+    <p>Over the ${state.watchCfg.look} bars ${t(x.from)} → ${t(x.s)} UTC the close ${x.fallPts < 0 ? "fell" : "rose"} ${Math.abs(x.fallPts).toFixed(2)} pts,
+      which is ${Math.abs(x.fallAtr).toFixed(1)} ATR (ATR ${x.atr.toFixed(2)}). Then ${state.watchCfg.run} ${colour} candles in a row, ending with this one.</p>
+    <p class="hint">Computed in this page from the candles, with your settings above. It is a marker to look at: the strategy does not trade it.</p></div>`;
 }
 function renderPendingPanel(el) {
   const p = state.pending && state.pending.move; if (!p) { el.innerHTML = `<p class="empty">Drag on a chart to measure a move.</p>`; return; }
@@ -765,6 +863,7 @@ panelEl.addEventListener("input", () => { state.editing = true; });
 panelEl.addEventListener("click", e => { if (e.target.closest(".scale button,.tags button")) state.editing = true;
   if (e.target.closest(".save,.ghost")) state.editing = false; });
 RUNTIME.onResize = drawAll; window.addEventListener("resize", drawAll);
+wireWatch();
 renderAll();
 
 // ---------- storage ----------
@@ -773,6 +872,7 @@ renderAll();
   const db = window.claude ? await window.claude.use("db") : null;
   if (!db) { status.textContent = "Storage unavailable: feedback cannot be saved in this view"; status.classList.add("bad"); return; }
   state.db = db; status.textContent = "Storage connected"; renderPanel();
+  document.getElementById("w-send").disabled = false;
   const fail = what => err => { status.textContent = `Could not load ${what} (${err.code})`; status.classList.add("bad"); };
   const into = (map, keyOf) => snap => { map.clear(); snap.docs.forEach(d => map.set(keyOf(d), d.data())); refreshFromStore(); };
   RUNTIME.unsubs.push(

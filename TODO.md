@@ -3,9 +3,32 @@
 ## Status
 Phase 4 complete. Pre-MVP: priority is a stable monitor pipeline, then strategy accuracy.
 
-North star (see `CLAUDE.md` → Trading Goals): 80%+ win rate, ~5 quality trades/day per instrument
-(not scalping), reproducible via 5-pillar confluence, with each instrument tuned as its own
+North star (see `CLAUDE.md` → Trading Goals): net expectancy after costs; **no trade-count target**
+(owner, 2026-09-29: more candidates filtered by logic beats rules that miss everything), reproducible via 5-pillar confluence, with each instrument tuned as its own
 "personality" rather than one shared config.
+
+## ⭐ SESSION STATE — 2026-09-29: rebound watch on the review page
+
+**Owner decision:** no trade-count target for now ("1000 trades is fine as long as it makes money");
+more candidates, then reduce with logic. Recorded in `CLAUDE.md` and plan §13.
+
+**Owner's pattern:** 6 of 7 marked missed moves (01-11, 01-12) are rebounds after a run the other way.
+The EMA(200) trend gate is what refuses them (iteration-001 FINDINGS). Owner proposed: after a
+bearish run, N candles in a row the other way = "check for a rebound".
+
+**Step 1 done: rebound watch markers (◆) on the day-review page**, computed in the page from the
+candles, never traded. Rule: the `run` candles ending at bar i are all one colour, the candle before
+them is not, and over the `look` bars before the streak the close moved ≥ `drop` × ATR(14) the other
+way. Defaults drop 2 · look 12 · run 3; the owner tunes them on the page (localStorage) and can press
+"Send these settings to Claude" → db `watch_settings/rebound` (+ `watch_settings_revisions/`).
+Toggle "Strategy trades" hides trades so the markers can be judged alone.
+Defaults fire on 5 of the 6 distinct marked moves, early (e.g. LONG 01-12 12:00 with 31 of 32 pts
+left), but ~5–11 times per review day on 5m (01-11: 5, 01-12: 11) — mostly unjudged.
+
+**Next:** owner reduces the noise with the knobs (and may name extra filters) → read
+`watch_settings/rebound` → step 2: port the rule to `research/engine` with tests and measure it over
+dev history only (< 2026-02-01): how often price actually rebounds, by how much, after costs →
+only then a candidate pillar / trend-gate exception as v003, rerun 01-11 and 01-12.
 
 ## ⭐ SESSION STATE — 2026-09-25: US500 day-by-day review loop (oil dropped)
 
