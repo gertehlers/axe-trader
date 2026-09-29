@@ -9,6 +9,10 @@ North star (see `CLAUDE.md` → Trading Goals): net expectancy after costs; **no
 
 ## ⭐ SESSION STATE — 2026-09-29: rebound watch on the review page
 
+**Handover:** `docs/handoffs/2026-09-29-rebound-watch-and-indicator-matrix.md` holds the owner's end-of-session
+notes verbatim (3 ATR "too early to say it failed"; redo the days with 3 ATR; indicator-knob matrix:
+Supertrend, RSI 7/14, SMA 200/50/20, … to find slow trends; "maybe 3atr with a wide stop makes money").
+
 **Owner decision:** no trade-count target for now ("1000 trades is fine as long as it makes money");
 more candidates, then reduce with logic. Recorded in `CLAUDE.md` and plan §13.
 
