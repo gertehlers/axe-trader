@@ -1,0 +1,36 @@
+[
+  {
+    "entry_time": "2024-01-16T01:40:00+00:00",
+    "entry_price": 4769.3,
+    "exit_time": "2024-01-16T02:13:00+00:00",
+    "exit_price": 4771.518706774705,
+    "side": "SHORT",
+    "size": 8.52,
+    "stop": 4771.518706774705,
+    "target": 4768.081293225294,
+    "exit_reason": "STOP",
+    "gross_usd": -18.903381720482464,
+    "spread_cost_usd": 13.63199999999535,
+    "financing_usd": 0.0,
+    "slippage_usd": 0.0,
+    "net_usd": -18.903381720482464,
+    "r": -0.9992143152372561
+  },
+  {
+    "entry_time": "2024-01-16T12:00:00+00:00",
+    "entry_price": 4764.0,
+    "exit_time": "2024-01-16T12:22:00+00:00",
+    "exit_price": 4761.831877813309,
+    "side": "SHORT",
+    "size": 7.9,
+    "stop": 4766.368122186692,
+    "target": 4761.831877813309,
+    "exit_reason": "TARGET",
+    "gross_usd": 17.12816527485975,
+    "spread_cost_usd": 12.640000000002875,
+    "financing_usd": 0.0,
+    "slippage_usd": 0.0,
+    "net_usd": 17.12816527485975,
+    "r": 0.914516081458465
+  }
+]
