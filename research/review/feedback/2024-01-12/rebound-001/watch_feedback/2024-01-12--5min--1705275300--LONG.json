@@ -1,0 +1,23 @@
+{
+  "bar_time": "2024-01-14T23:35:00.000Z",
+  "revision_of": null,
+  "saved_at": "2026-09-29T15:42:22.072Z",
+  "session": "2024-01-12",
+  "settings": {
+    "drop_atr": 2,
+    "look_bars": 12,
+    "run_candles": 3
+  },
+  "side": "LONG",
+  "signal": {
+    "atr": 2.182,
+    "close": 4776.8,
+    "fall_atr": -2.15,
+    "fall_pts": -4.7,
+    "from_time": "2024-01-12T21:20:00.000Z",
+    "streak_start": "2024-01-14T23:25:00.000Z"
+  },
+  "text": "could have been good but went choppy, still went up though",
+  "tf": "5min",
+  "verdict": "unsure"
+}

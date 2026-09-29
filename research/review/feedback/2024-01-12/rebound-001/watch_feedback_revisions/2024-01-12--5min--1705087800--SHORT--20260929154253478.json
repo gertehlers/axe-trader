@@ -1,0 +1,30 @@
+{
+  "bar_time": "2024-01-12T19:30:00.000Z",
+  "exit": {
+    "atr_multiple": 2.44,
+    "minutes": 3130,
+    "points": 8.56,
+    "price": 4772.99,
+    "time": "2024-01-14T23:35:00.000Z"
+  },
+  "revision_of": null,
+  "saved_at": "2026-09-29T15:42:53.478Z",
+  "session": "2024-01-12",
+  "settings": {
+    "drop_atr": 2,
+    "look_bars": 12,
+    "run_candles": 3
+  },
+  "side": "SHORT",
+  "signal": {
+    "atr": 3.133,
+    "close": 4781.55,
+    "fall_atr": 2.07,
+    "fall_pts": 6.5,
+    "from_time": "2024-01-12T18:15:00.000Z",
+    "streak_start": "2024-01-12T19:20:00.000Z"
+  },
+  "text": "good be good, did not deep low enough but still went down trend",
+  "tf": "5min",
+  "verdict": "unsure"
+}

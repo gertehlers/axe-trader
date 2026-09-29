@@ -1,0 +1,30 @@
+{
+  "bar_time": "2024-01-12T14:55:00.000Z",
+  "exit": {
+    "atr_multiple": 4,
+    "minutes": 70,
+    "points": 18.88,
+    "price": 4769.37,
+    "time": "2024-01-12T16:00:00.000Z"
+  },
+  "revision_of": null,
+  "saved_at": "2026-09-29T15:41:39.477Z",
+  "session": "2024-01-12",
+  "settings": {
+    "drop_atr": 2,
+    "look_bars": 12,
+    "run_candles": 3
+  },
+  "side": "SHORT",
+  "signal": {
+    "atr": 4.248,
+    "close": 4788.25,
+    "fall_atr": 5.12,
+    "fall_pts": 21.75,
+    "from_time": "2024-01-12T13:40:00.000Z",
+    "streak_start": "2024-01-12T14:45:00.000Z"
+  },
+  "text": "",
+  "tf": "5min",
+  "verdict": "good"
+}
