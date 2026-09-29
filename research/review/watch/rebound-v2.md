@@ -41,3 +41,21 @@ The owner judges 2024-01-17..19 as before. Scoring counts good / unsure / bad am
 rule keeps against the markers it drops. The cleanest test judges every v1 marker (settings 2 / 12 / 3,
 agreement off), so the dropped ones get verdicts too. Code: `research/review/day-review.html`,
 `reboundSignals` + `markAgreement`, at the commit that adds this file.
+
+## Result on 2024-01-17..19 (scored 2026-09-29; the rules above were not changed)
+
+Owner judged with Reset on (v1 markers). 5m: 21 judged (9 good / 4 unsure / 8 bad), 4 not judged.
+
+| 5m markers | kept: good / unsure / bad | dropped: good / unsure / bad |
+|---|---|---|
+| A: drop ≥ 3 ATR | 5 / 2 / 5 | 4 / 2 / 3 |
+| B: v2 | 1 / 0 / 0 (01-19 13:25 S, +20 pts) | 8 / 4 / 8 |
+| 5m + 15m agree (v1 settings) | 3 / 0 / 1 | 6 / 4 / 7 |
+
+15m: 9 judged (3 / 3 / 3); A kept 0 / 2 / 2; agreement kept 1 / 1 / 2.
+
+- **A failed.** In-sample it kept 11 of 14 good; on new days kept and dropped markers are equally good.
+- **B is untestable at this size**: one marker in three days (it was good).
+- **5m + 15m agreement held on 5m**: 3 of 4 kept were good vs 6 of 17 dropped. Across all five judged
+  days it is 7 good / 1 unsure / 1 bad (9 markers) against 16 / 9 / 10 without it. Still small.
+- It did not hold on 15m markers.

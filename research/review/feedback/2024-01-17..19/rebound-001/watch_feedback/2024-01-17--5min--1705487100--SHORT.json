@@ -1,0 +1,30 @@
+{
+  "bar_time": "2024-01-17T10:25:00.000Z",
+  "exit": {
+    "atr_multiple": 7.48,
+    "minutes": 270,
+    "points": 17.58,
+    "price": 4726.22,
+    "time": "2024-01-17T14:50:00.000Z"
+  },
+  "revision_of": null,
+  "saved_at": "2026-09-29T20:23:47.389Z",
+  "session": "2024-01-17",
+  "settings": {
+    "drop_atr": 2,
+    "look_bars": 12,
+    "run_candles": 3
+  },
+  "side": "SHORT",
+  "signal": {
+    "atr": 2.4,
+    "close": 4743.8,
+    "fall_atr": 4.08,
+    "fall_pts": 9.8,
+    "from_time": "2024-01-17T09:10:00.000Z",
+    "streak_start": "2024-01-17T10:15:00.000Z"
+  },
+  "text": "letting it run would be a win but looks slightly choppy. For this the overall trend is bearish, so that could have informed this entry",
+  "tf": "5min",
+  "verdict": "unsure"
+}

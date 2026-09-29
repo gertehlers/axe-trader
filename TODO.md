@@ -48,7 +48,10 @@ export `feedback/2024-01-16/rebound-001/`) and saw: 5m + 15m agreeing looks like
 **Rebound v2 frozen before 01-17..19 were reviewed:** `research/review/watch/rebound-v2.md` (rule A: drop ≥ 3 ATR;
 rule B: ≥ 3 ATR on both timeframes + same-side marker on the other within ±45 min). Page: teal ◆ = agree,
 "Only 5m + 15m agree" toggle, "Rebound v2" preset. B keeps 0 / 0 / 2 markers on 01-17 / 18 / 19: very strict.
-**Next:** owner judges 01-17..19 (ideally every v1 marker) → score A and B against the verdicts.
+**Scored 2026-09-29** (`watch/rebound-v2.md` result, `feedback/2024-01-17..19/rebound-001/FINDINGS.md`):
+≥ 3 ATR failed on new days; v2 fired once (good); 5m + 15m agreement held on 5m (3/0/1 kept vs 6/4/7 dropped;
+7/1/1 over five days). Trend gate and streak size don't separate. Slow-trend missed moves: pillars never
+reach 3 votes, RSI+BB never votes; the pillars can't see slow grinds.
 
 **Next (older):** owner gives feedback on a few markers → read `watch_feedback` → propose the structured UX.
 Then: owner reduces the noise with the knobs (and may name extra filters) → read
