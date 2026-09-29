@@ -43,6 +43,13 @@ drop's extreme → the 3 overnight longs (01:45, 04:45, 08:10) are stopped in th
 cash-session ones survive, the "bad" 01:15 short is stopped within an hour. Defence layers proposed:
 stop at the invalidation point + size to 1% risk, breakeven/trail after 1R, daily loss cap, one position.
 
+**2024-01-16..19 built** (first passes `2622002`). Owner reviewed 01-16 (16 markers, 3 missed moves;
+export `feedback/2024-01-16/rebound-001/`) and saw: 5m + 15m agreeing looks like a good run; 3 ATR looks nice.
+**Rebound v2 frozen before 01-17..19 were reviewed:** `research/review/watch/rebound-v2.md` (rule A: drop ≥ 3 ATR;
+rule B: ≥ 3 ATR on both timeframes + same-side marker on the other within ±45 min). Page: teal ◆ = agree,
+"Only 5m + 15m agree" toggle, "Rebound v2" preset. B keeps 0 / 0 / 2 markers on 01-17 / 18 / 19: very strict.
+**Next:** owner judges 01-17..19 (ideally every v1 marker) → score A and B against the verdicts.
+
 **Next (older):** owner gives feedback on a few markers → read `watch_feedback` → propose the structured UX.
 Then: owner reduces the noise with the knobs (and may name extra filters) → read
 `watch_settings/rebound` → step 2: port the rule to `research/engine` with tests and measure it over

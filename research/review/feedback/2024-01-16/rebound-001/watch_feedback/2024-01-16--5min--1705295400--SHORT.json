@@ -1,0 +1,23 @@
+{
+  "bar_time": "2024-01-15T05:10:00.000Z",
+  "revision_of": null,
+  "saved_at": "2026-09-29T20:08:00.542Z",
+  "session": "2024-01-16",
+  "settings": {
+    "drop_atr": 2,
+    "look_bars": 12,
+    "run_candles": 3
+  },
+  "side": "SHORT",
+  "signal": {
+    "atr": 0.722,
+    "close": 4782.8,
+    "fall_atr": 2.08,
+    "fall_pts": 1.5,
+    "from_time": "2024-01-15T03:55:00.000Z",
+    "streak_start": "2024-01-15T05:00:00.000Z"
+  },
+  "text": "it looks like it followed the rules but then things went choppy, so if we lost this one i would be ok with it",
+  "tf": "5min",
+  "verdict": "unsure"
+}

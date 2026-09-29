@@ -1,0 +1,23 @@
+{
+  "bar_time": "2024-01-16T12:20:00.000Z",
+  "revision_of": null,
+  "saved_at": "2026-09-29T20:10:07.615Z",
+  "session": "2024-01-16",
+  "settings": {
+    "drop_atr": 2,
+    "look_bars": 12,
+    "run_candles": 3
+  },
+  "side": "SHORT",
+  "signal": {
+    "atr": 2.163,
+    "close": 4761.9,
+    "fall_atr": 4.07,
+    "fall_pts": 8.8,
+    "from_time": "2024-01-16T11:05:00.000Z",
+    "streak_start": "2024-01-16T12:10:00.000Z"
+  },
+  "text": "super choppy, the candles barely moved here",
+  "tf": "5min",
+  "verdict": "bad"
+}

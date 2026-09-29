@@ -1,0 +1,23 @@
+{
+  "bar_time": "2024-01-16T18:10:00.000Z",
+  "revision_of": null,
+  "saved_at": "2026-09-29T20:09:25.303Z",
+  "session": "2024-01-16",
+  "settings": {
+    "drop_atr": 2,
+    "look_bars": 12,
+    "run_candles": 3
+  },
+  "side": "LONG",
+  "signal": {
+    "atr": 5.029,
+    "close": 4761.05,
+    "fall_atr": -2.66,
+    "fall_pts": -13.4,
+    "from_time": "2024-01-16T16:55:00.000Z",
+    "streak_start": "2024-01-16T18:00:00.000Z"
+  },
+  "text": "",
+  "tf": "5min",
+  "verdict": "good"
+}

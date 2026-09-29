@@ -153,7 +153,9 @@ textarea{font:inherit;font-size:.86rem;width:100%;min-height:48px;padding:7px 8p
     <label class="knob">price fell at least <input type="number" id="w-drop" min="0" step="0.5"> ATR</label>
     <label class="knob">over <input type="number" id="w-look" min="2" max="60" step="1"> bars,</label>
     <label class="knob">then <input type="number" id="w-run" min="1" max="8" step="1"> candles in a row the other way</label>
+    <span class="seg"><button type="button" id="w-agree" aria-pressed="false" title="Only markers where a same-side marker on the other timeframe closed within 45 minutes">Only 5m + 15m agree</button></span>
     <button type="button" class="ghost" id="w-reset">Reset</button>
+    <button type="button" class="ghost" id="w-v2" title="The rule frozen on 2026-09-29 from your 01-12 and 01-16 feedback, before 01-17..19 were reviewed">Rebound v2: ≥ 3 ATR + agree</button>
     <button type="button" class="ghost" id="w-send" disabled>Send these settings to Claude</button>
     <span class="readout mono" id="w-count"></span>
   </div>
@@ -303,7 +305,8 @@ document.getElementById("zoom-cash").onclick = () => { state.view = cashView.sli
 document.getElementById("zoom-all").onclick = () => { state.view = fullView.slice(); drawAll(); };
 
 // ---------- rebound watch (computed in this page from the chart's candles; a marker to look at, never a trade) ----------
-const WATCH_DEFAULT = {on: true, trades: true, drop: 2, look: 12, run: 3};
+const WATCH_DEFAULT = {on: true, trades: true, drop: 2, look: 12, run: 3, agree: false};
+const AGREE_MIN = 45;   // a same-side marker on the other timeframe whose bar closed within ±45 min
 state.watchCfg = {...WATCH_DEFAULT};
 try { Object.assign(state.watchCfg, JSON.parse(localStorage.getItem("dayreview.watch") || "{}")); } catch (e) {}
 state.watch = {};
@@ -323,12 +326,29 @@ function reboundSignals(tf) {
   }
   return out;
 }
+// 5m and 15m agree: a same-side marker on the other timeframe whose bar closed within ±AGREE_MIN minutes.
+// Without hindsight you only know both fired once the later of the two bars has closed: `at`.
+function markAgreement() {
+  const closeOf = (tf, i) => (T(tf).bars[i][0] + TF_MIN[tf] * 60) * 1000;
+  const a = [...state.watch["5min"].values()], b = [...state.watch["15min"].values()];
+  a.concat(b).forEach(x => { x.agree = null; });
+  a.forEach(x => b.forEach(y => {
+    if (x.side !== y.side) return;
+    const cx = closeOf("5min", x.i), cy = closeOf("15min", y.i);
+    if (Math.abs(cx - cy) > AGREE_MIN * 60000) return;
+    const at = Math.max(cx, cy);
+    if (!x.agree || at < x.agree.at) x.agree = {tf: "15min", i: y.i, close: cy, at};
+    if (!y.agree || at < y.agree.at) y.agree = {tf: "5min", i: x.i, close: cx, at};
+  }));
+  if (state.watchCfg.agree) TFS.forEach(tf => state.watch[tf].forEach((x, k) => { if (!x.agree) state.watch[tf].delete(k); }));
+}
 function recomputeWatch() {
   TFS.forEach(tf => { state.watch[tf] = reboundSignals(tf); });
+  markAgreement();
   const inDay = tf => [...state.watch[tf].values()].filter(x => { const t = T(tf).bars[x.i][0] * 1000; return t >= winStart && t < winEnd; });
   document.getElementById("w-count").textContent = state.watchCfg.on ? "on the review day: " + TFS.map(tf => {
-    const xs = inDay(tf); return `${tf} ${xs.filter(x => x.side === "LONG").length} long · ${xs.filter(x => x.side === "SHORT").length} short`;
-  }).join("  |  ") : "";
+    const xs = inDay(tf); return `${tf} ${xs.filter(x => x.side === "LONG").length} long · ${xs.filter(x => x.side === "SHORT").length} short (${xs.filter(x => x.agree).length} agree)`;
+  }).join("  |  ") + "  ·  teal ◆ = 5m and 15m agree" : "";
 }
 function wireWatch() {
   const c = state.watchCfg, ids = {drop: "w-drop", look: "w-look", run: "w-run"};
@@ -337,6 +357,7 @@ function wireWatch() {
     Object.entries(ids).forEach(([k, id]) => { document.getElementById(id).value = c[k]; });
     document.getElementById("watch-toggle").setAttribute("aria-pressed", String(c.on));
     document.getElementById("trades-toggle").setAttribute("aria-pressed", String(c.trades));
+    document.getElementById("w-agree").setAttribute("aria-pressed", String(!!c.agree));
   };
   Object.entries(ids).forEach(([k, id]) => document.getElementById(id).addEventListener("input", e => {
     const v = parseFloat(e.target.value); if (!isFinite(v) || v < +e.target.min) return;
@@ -344,7 +365,10 @@ function wireWatch() {
   }));
   document.getElementById("watch-toggle").onclick = () => { c.on = !c.on; save(); sync(); recomputeWatch(); drawAll(); renderPanel(); };
   document.getElementById("trades-toggle").onclick = () => { c.trades = !c.trades; save(); sync(); drawAll(); };
-  document.getElementById("w-reset").onclick = () => { Object.assign(c, {drop: WATCH_DEFAULT.drop, look: WATCH_DEFAULT.look, run: WATCH_DEFAULT.run}); save(); sync(); recomputeWatch(); drawAll(); renderPanel(); };
+  const apply = v => { Object.assign(c, v); save(); sync(); recomputeWatch(); drawAll(); renderPanel(); };
+  document.getElementById("w-reset").onclick = () => apply({drop: WATCH_DEFAULT.drop, look: WATCH_DEFAULT.look, run: WATCH_DEFAULT.run, agree: false});
+  document.getElementById("w-v2").onclick = () => apply({drop: 3, look: 12, run: 3, agree: true});
+  document.getElementById("w-agree").onclick = () => apply({agree: !c.agree});
   document.getElementById("w-send").onclick = async e => {
     const b = e.currentTarget, now = new Date().toISOString(); b.disabled = true;
     const body = {drop_atr: c.drop, look_bars: c.look, run_candles: c.run, session: D.session.date, saved_at: now};
@@ -445,9 +469,9 @@ function drawChart(tf) {
   if (state.watchCfg.on) {
     const ws = state.watch[tf] || new Map(), vis = new Set(visible), warn = css("--warn");
     const ringCol = n => n.verdict === "good" ? css("--long") : n.verdict === "bad" ? css("--short") : warn;
-    const diamond = (i, side, filled, note) => {
+    const diamond = (i, side, filled, note, agree) => {
       const cx = X(barSlot(tf, i)) + pxw / 2, cy = side === "LONG" ? Y(bars[i][3]) + 11 : Y(bars[i][2]) - 11;
-      ctx.fillStyle = ctx.strokeStyle = warn;
+      ctx.fillStyle = ctx.strokeStyle = agree ? css("--accent") : warn;
       ctx.beginPath(); ctx.moveTo(cx, cy - 5); ctx.lineTo(cx + 5, cy); ctx.lineTo(cx, cy + 5); ctx.lineTo(cx - 5, cy); ctx.closePath();
       if (filled) ctx.fill(); else { ctx.lineWidth = 1.5; ctx.stroke(); ctx.lineWidth = 1; }
       if (note) { ctx.strokeStyle = ringCol(note); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(cx, cy, 8.5, 0, Math.PI * 2); ctx.stroke(); ctx.lineWidth = 1; }
@@ -462,7 +486,7 @@ function drawChart(tf) {
     state.watchNotes.forEach(n => {
       if (n.tf !== tf || !n.exit) return; const i = watchBarIndex(n); if (i >= 0) exitLine(i, n.exit, ringCol(n));
     });
-    ws.forEach(x => { if (vis.has(x.i)) diamond(x.i, x.side, true, state.watchNotes.get(watchKey(tf, x.i, x.side))); });
+    ws.forEach(x => { if (vis.has(x.i)) diamond(x.i, x.side, true, state.watchNotes.get(watchKey(tf, x.i, x.side)), !!x.agree); });
     state.watchNotes.forEach(n => {
       if (n.tf !== tf) return; const i = watchBarIndex(n);
       if (i >= 0 && vis.has(i) && !(ws.get(i) && ws.get(i).side === n.side)) diamond(i, n.side, false, n);
@@ -774,6 +798,7 @@ function watchBlock(tf, i) {
     const what = x
       ? `<p>Over the ${state.watchCfg.look} bars ${t(x.from)} → ${t(x.s)} UTC the close ${x.fallPts < 0 ? "fell" : "rose"} ${Math.abs(x.fallPts).toFixed(2)} pts,
           which is ${Math.abs(x.fallAtr).toFixed(1)} ATR (ATR ${x.atr.toFixed(2)}): the labelled dotted line on the chart. Then ${state.watchCfg.run} ${side === "LONG" ? "green" : "red"} candles in a row (the shaded band), ending with this one.</p>`
+      + (x.agree ? `<p><strong>5m and 15m agree:</strong> the ${x.agree.tf} ◆ at ${utc(T(x.agree.tf).bars[x.agree.i][0] * 1000).slice(11)} UTC (bar closed ${utc(x.agree.close).slice(11)}) points the same way. Without hindsight you'd know both at ${utc(x.agree.at).slice(11)} UTC${x.agree.at > (T(tf).bars[i][0] + TF_MIN[tf] * 60) * 1000 ? `, ${Math.round((x.agree.at - (T(tf).bars[i][0] + TF_MIN[tf] * 60) * 1000) / 60000)} min after this ◆ closed; the entry would wait until then` : ""}.</p>` : "")
       : `<p>Your current settings no longer fire here. When you gave feedback it fired with: fell ≥ ${n.settings.drop_atr} ATR over ${n.settings.look_bars} bars, then ${n.settings.run_candles} candles.</p>`;
     const fb = n ? `<dl class="facts"><dt>Entry</dt><dd>${n.verdict ? VERDICTS[n.verdict] : "–"}</dd><dt>Ideal exit</dt><dd class="mono">${n.exit ? exitText(n.exit) : "–"}</dd>${n.text ? `<dt>Note</dt><dd>${esc(n.text)}</dd>` : ""}</dl>` : "";
     return `<div class="watchbox"><div class="eyebrow" style="color:var(--warn)">${x ? "◆" : "◇"} Rebound watch · <span class="${side === "LONG" ? "side-long" : "side-short"}">${side}</span></div>
