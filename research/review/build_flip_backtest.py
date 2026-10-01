@@ -47,6 +47,8 @@ def main() -> None:
     parser.add_argument("--timeframe", required=True)
     parser.add_argument("--length", type=int, required=True)
     parser.add_argument("--factor", type=float, required=True)
+    parser.add_argument("--exit-factor", type=float, default=None,
+                        help="exit on a close through a tighter Supertrend(length, this); flat until the next flip")
     parser.add_argument("--db", type=Path, default=REVIEW.parents[1] / "data" / "axe-trader.sqlite")
     args = parser.parse_args()
 
@@ -56,11 +58,16 @@ def main() -> None:
     bars = resample(minutes, args.timeframe)
     line, direction = supertrend(bars.high_bid, bars.low_bid, bars.close_bid, args.length, args.factor)
     width = atr(bars.high_bid.to_numpy(), bars.low_bid.to_numpy(), bars.close_bid.to_numpy(), args.length)
-    trades = flip_trades(bars, direction, spec, start=START)
+    exit_line = exit_dir = None
+    if args.exit_factor is not None:
+        exit_line, exit_dir = supertrend(bars.high_bid, bars.low_bid, bars.close_bid, args.length, args.exit_factor)
+    trades = flip_trades(bars, direction, spec, start=START, exit_direction=exit_dir)
     summary = summarise(trades)
 
     digits = 3 if bars.close_bid.iloc[-1] < 1000 else 1
     key = f"{args.epic}-{args.timeframe}-{args.length}-{args.factor:g}"
+    if args.exit_factor is not None:
+        key += f"-exit{args.exit_factor:g}"
     out = REVIEW / "supertrend" / "bt" / key
     out.mkdir(parents=True, exist_ok=True)
     for stale in out.glob("*.js"):
@@ -68,10 +75,13 @@ def main() -> None:
 
     shown = bars.index >= START.normalize().replace(day=1)
     frame = bars[shown].assign(st=line[shown], dir=direction[shown], atr=width[shown])
+    if exit_line is not None:
+        frame = frame.assign(st2=exit_line[shown], dir2=exit_dir[shown])
     months = []
     for month, chunk in frame.groupby(frame.index.strftime("%Y-%m")):
         rows = [[int(ts.timestamp()), _r(b.open_bid, digits), _r(b.high_bid, digits), _r(b.low_bid, digits),
                  _r(b.close_bid, digits), _r(b.st, digits), int(b.dir), _r(b.atr, digits + 1)]
+                + ([_r(b.st2, digits), int(b.dir2)] if exit_line is not None else [])
                 for ts, b in chunk.iterrows()]
         _js(out / f"{month}.js", f"{key}/{month}", {"bars": rows})
         months.append(month)
@@ -91,7 +101,7 @@ def main() -> None:
     })
     _js(out / "summary.js", key, {
         "key": key, "epic": args.epic, "timeframe": args.timeframe, "length": args.length,
-        "factor": args.factor, "digits": digits, "period": ["2024-01-11", "2026-01-31"],
+        "factor": args.factor, "exit_factor": args.exit_factor, "digits": digits, "period": ["2024-01-11", "2026-01-31"],
         "summary": {k: (None if isinstance(v, float) and math.isinf(v) else v) for k, v in summary.items()},
         "months": months,
         "month_table": [[m, int(r.trades), int(r.wins), round(float(r.net), digits + 1)] for m, r in by_month.iterrows()],

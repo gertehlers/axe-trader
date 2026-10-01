@@ -5,6 +5,10 @@ at the open after the next flip, where the reverse trade begins. Fills cross the
 long buys the Ask and sells the Bid, a short sells the Bid and buys the Ask. Overnight funding is
 charged per cut-off inside the hold at the instrument's current Capital.com rate, applied to past
 holds as an approximation. A trade still open at the end of the data is not counted.
+
+With `exit_direction` (a second, usually tighter trend line), a trade also closes at the open after
+the first bar whose close turns that line against it, and then stays flat until the next flip of
+the main line. The main flip remains the backstop exit.
 """
 
 from __future__ import annotations
@@ -19,7 +23,7 @@ COLUMNS = ["side", "signal_time", "entry_time", "entry_price", "exit_time", "exi
 
 
 def flip_trades(bars: pd.DataFrame, direction: np.ndarray, spec: dict,
-                start: pd.Timestamp | None = None) -> pd.DataFrame:
+                start: pd.Timestamp | None = None, exit_direction: np.ndarray | None = None) -> pd.DataFrame:
     direction = np.asarray(direction)
     idx = bars.index
     flips = [i for i in range(1, len(bars) - 1)
@@ -31,6 +35,10 @@ def flip_trades(bars: pd.DataFrame, direction: np.ndarray, spec: dict,
     rows = []
     for signal, next_signal in zip(flips, flips[1:]):
         e, x = signal + 1, next_signal + 1
+        if exit_direction is not None:
+            against = np.nonzero(exit_direction[e:next_signal] != direction[signal])[0]
+            if len(against):
+                x = e + int(against[0]) + 1
         long = direction[signal] == 1
         side = "LONG" if long else "SHORT"
         entry, exit_ = (oa[e], ob[x]) if long else (ob[e], oa[x])

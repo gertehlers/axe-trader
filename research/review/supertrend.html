@@ -5,21 +5,21 @@
 :root{
   --ground:#F4F6F5; --surface:#FFFFFF; --ink:#18211E; --muted:#5A6863; --rule:#D9E0DD;
   --accent:#0E6B60; --accent-soft:#DCEFEB; --grid:#E6EBE9;
-  --up:#1C7F46; --down:#B83C27; --cross:rgba(24,33,30,.35); --day:rgba(14,107,96,.18);
+  --up:#1C7F46; --down:#B83C27; --cross:rgba(24,33,30,.35); --day:rgba(14,107,96,.18); --exit:#6A3FB5;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
     color-scheme:dark;
     --ground:#101614; --surface:#18201E; --ink:#E2EAE7; --muted:#93A39D; --rule:#2B3633;
     --accent:#56C2B0; --accent-soft:#17332E; --grid:#222C29;
-    --up:#4FC07F; --down:#EE7B63; --cross:rgba(226,234,231,.35); --day:rgba(86,194,176,.2);
+    --up:#4FC07F; --down:#EE7B63; --cross:rgba(226,234,231,.35); --day:rgba(86,194,176,.2); --exit:#B79BF0;
   }
 }
 :root[data-theme="dark"]{
   color-scheme:dark;
   --ground:#101614; --surface:#18201E; --ink:#E2EAE7; --muted:#93A39D; --rule:#2B3633;
   --accent:#56C2B0; --accent-soft:#17332E; --grid:#222C29;
-  --up:#4FC07F; --down:#EE7B63; --cross:rgba(226,234,231,.35); --day:rgba(86,194,176,.2);
+  --up:#4FC07F; --down:#EE7B63; --cross:rgba(226,234,231,.35); --day:rgba(86,194,176,.2); --exit:#B79BF0;
 }
 *{box-sizing:border-box}
 body{background:var(--ground);color:var(--ink);font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif;padding-inline:16px;padding-block:18px 48px;margin:0}
@@ -78,7 +78,7 @@ canvas{display:block;width:100%;height:clamp(340px,62vh,640px);touch-action:none
   <section class="pane">
     <div class="pane-head">
       <span id="title" class="mono"></span>
-      <span><span class="key"><span class="swatch" style="background:var(--up)"></span>uptrend line (under price)</span><span class="key"><span class="swatch" style="background:var(--down)"></span>downtrend line (above price)</span></span>
+      <span><span class="key"><span class="swatch" style="background:var(--up)"></span>uptrend line (under price)</span><span class="key"><span class="swatch" style="background:var(--down)"></span>downtrend line (above price)</span><span class="key" id="exit-key" hidden><span class="swatch" style="background:var(--exit)"></span>tighter exit line</span></span>
     </div>
     <canvas id="chart" aria-label="Candlestick chart with Supertrend line"></canvas>
     <div class="readout mono" id="readout">Hover a candle for its numbers.</div>
@@ -109,7 +109,7 @@ function label(key) {
   return `${NAMES[d.epic] || d.epic} ${TF[d.timeframe] || d.timeframe} · ${d.length}/${d.factor}`;
 }
 
-const toBars = rows => rows.map(b => ({t: b[0], o: b[1], h: b[2], l: b[3], c: b[4], st: b[5], dir: b[6], atr: b[7]}));
+const toBars = rows => rows.map(b => ({t: b[0], o: b[1], h: b[2], l: b[3], c: b[4], st: b[5], dir: b[6], atr: b[7], st2: b[8], dir2: b[9]}));
 let bt = null; // backtest mode: {key, meta, trades, month, cur}
 
 function pressed(key) {
@@ -129,7 +129,7 @@ function setMode(isBt) {
 function choose(key) {
   if (key.startsWith("bt:")) return chooseBT(key.slice(3));
   const d = window.ST[key];
-  bt = null; setMode(false);
+  bt = null; setMode(false); document.getElementById("exit-key").hidden = true;
   set = {...d, bars: toBars(d.bars)};
   pressed(key);
   const n = set.bars.length, span = set.timeframe === "1h" ? 360 : 250;
@@ -147,8 +147,9 @@ function chooseBT(key) {
   let cum = 0; for (const t of trades) { cum += t.net; t.cum = cum; }
   bt = {key, meta, trades, month: null, cur: 0, eqHover: -1};
   setMode(true); pressed("bt:" + key);
+  if (meta.exit_factor) document.getElementById("hint").textContent = `Drag to pan, scroll or use − / + to zoom. ▲ long entry, ▼ short entry, × exit. Entries are the ${meta.length}/${meta.factor} flips. A trade exits at the next open after a close through the purple dashed ${meta.length}/${meta.exit_factor} line, or at the next flip if that comes first, then waits flat for the next flip. The dotted line runs from entry price to exit price: green made money after costs, red lost.`;
   const s = meta.summary, d = meta.digits;
-  document.getElementById("bt-title").textContent = `Backtest · ${NAMES[meta.epic] || meta.epic} ${TF[meta.timeframe] || meta.timeframe} · Supertrend(${meta.length}, ${meta.factor}) flip to flip · practice ${meta.period[0]} → ${meta.period[1]}`;
+  document.getElementById("bt-title").textContent = `Backtest · ${NAMES[meta.epic] || meta.epic} ${TF[meta.timeframe] || meta.timeframe} · Supertrend(${meta.length}, ${meta.factor}) ${meta.exit_factor ? `entry, exit on Supertrend(${meta.length}, ${meta.exit_factor})` : "flip to flip"} · practice ${meta.period[0]} → ${meta.period[1]}`;
   document.getElementById("facts").innerHTML =
     `<span><b>${s.trades.toLocaleString()}</b> trades</span><span>win rate <b>${(s.win_rate * 100).toFixed(1)}%</b></span>` +
     `<span>net <b style="color:var(${s.net_pts >= 0 ? "--up" : "--down"})">${s.net_pts.toFixed(1)} pts</b></span><span>per trade <b>${s.avg_pts.toFixed(d)}</b></span>` +
@@ -176,6 +177,7 @@ async function openMonth(m) {
   const meta = bt.meta;
   set = {epic: meta.epic, timeframe: meta.timeframe, length: meta.length, factor: meta.factor, digits: meta.digits, key: bt.key, bars: toBars(window.BT[id].bars)};
   for (const b of document.querySelectorAll("#days button")) b.setAttribute("aria-pressed", String(b.dataset.month === m));
+  document.getElementById("exit-key").hidden = !meta.exit_factor;
   document.getElementById("title").textContent = `${m} · Brent bid candles · Supertrend(${meta.length}, ${meta.factor})`;
 }
 
@@ -368,6 +370,15 @@ function draw() {
     ctx.lineTo(x(j) + bw / 2, y(b[j].st)); ctx.stroke();
     i = j + 1;
   }
+  // tighter exit line, thin, broken at its own flips
+  if (b[view.from].st2 != null) {
+    ctx.lineWidth = 1.2; ctx.setLineDash([5, 3]); ctx.strokeStyle = css("--exit");
+    for (let k = view.from + 1; k < view.to; k++) {
+      if (b[k].dir2 !== b[k - 1].dir2) continue;
+      ctx.beginPath(); ctx.moveTo(x(k - 1), y(b[k - 1].st2)); ctx.lineTo(x(k), y(b[k].st2)); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
   // flip marks (in backtest mode the entries mark the flips instead)
   if (bt) drawTrades(L, y);
   else for (let k = Math.max(1, view.from); k < view.to; k++) {
@@ -401,6 +412,7 @@ function readout() {
   el.innerHTML = `<b>${fmtTime(k.t)}</b> ${tz} &nbsp; O <b>${k.o.toFixed(d)}</b> H <b>${k.h.toFixed(d)}</b> L <b>${k.l.toFixed(d)}</b> C <b>${k.c.toFixed(d)}</b>` +
     ` &nbsp; Supertrend <b style="color:var(${k.dir === 1 ? "--up" : "--down"})">${k.st.toFixed(d)} ${k.dir === 1 ? "up" : "down"}</b>${flipped ? " (flip)" : ""}` +
     ` &nbsp; ATR(${set.length}) <b>${k.atr.toFixed(d + 1)}</b> &nbsp; close is <b>${Math.abs(gap).toFixed(1)} ATR</b> ${gap >= 0 ? "above" : "below"} the line`;
+  if (k.st2 != null) el.innerHTML += ` &nbsp; exit line <b>${k.st2.toFixed(d)} ${k.dir2 === 1 ? "up" : "down"}</b>`;
   const ti = bt ? tradeAt(k.t) : -1;
   if (ti >= 0) {
     const t = bt.trades[ti];
@@ -451,11 +463,11 @@ new MutationObserver(() => { draw(); drawEq(); }).observe(document.documentEleme
   try { await loadScript("supertrend/bt/index.js"); btKeys = window.BT_INDEX || []; await Promise.all(btKeys.map(k => loadScript(`supertrend/bt/${k}/summary.js`))); } catch (e) { btKeys = []; }
   const button = (k, text) => { const b = document.createElement("button"); b.type = "button"; b.dataset.key = k; b.textContent = text; b.onclick = () => choose(k); return b; };
   document.getElementById("sets").replaceChildren(
-    ...btKeys.map(k => { const m = window.BT[k]; return button("bt:" + k, `Backtest · ${NAMES[m.epic] || m.epic} ${TF[m.timeframe] || m.timeframe} · ${m.length}/${m.factor} · ${m.period[0].slice(0, 4)} → ${m.period[1].slice(0, 7)}`); }),
+    ...btKeys.map(k => { const m = window.BT[k]; return button("bt:" + k, `Backtest · ${NAMES[m.epic] || m.epic} ${TF[m.timeframe] || m.timeframe} · ${m.length}/${m.factor} ${m.exit_factor ? `· exit ${m.length}/${m.exit_factor}` : "· flip to flip"}`); }),
     ...keys.map(k => button(k, label(k))));
   let saved = null; try { saved = localStorage.getItem("st-set"); } catch (e) {}
   const all = [...btKeys, ...keys];
-  if (all.length) choose(btKeys.length ? "bt:" + btKeys[0] : all.includes(saved) ? saved : all[0]);
+  if (all.length) choose(btKeys.length ? "bt:" + btKeys[btKeys.length - 1] : all.includes(saved) ? saved : all[0]);
   else document.getElementById("readout").textContent = "No chart data was published with this page.";
 })();
 </script>

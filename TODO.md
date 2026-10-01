@@ -44,7 +44,15 @@ which the owner has still to explain.
     entry→exit line coloured by the result.
   - Build it with `build_flip_backtest.py --epic OIL_BRENT --timeframe 5min --length 7 --factor 3`. That
     writes the gitignored `supertrend/bt/`. Republish every `supertrend/bt/**` file.
-- **Next:** the owner reviews the Brent trades on the page. Nothing is wired into the strategy until they ask.
+- **Tighter exit on Brent 5m** (owner: "try a tighter exit on brent, keep the flip as entry"):
+  - The 7/3 flip is the entry. The trade exits on a close through a tighter Supertrend(7, k), with the
+    main flip as backstop, then stays flat.
+  - Net results: flip −205.3, k=2 −171.1, k=1.5 −165.2, k=1 −143.5.
+  - Before spread and funding, k=1 is +10.7 over 4,078 trades, i.e. zero. The spread (~0.04 a trade)
+    decides it. Exits can't create an edge the entries don't have on Brent 5m.
+  - Source: `research/experiments/2026-10-01-brent-supertrend-tight-exit.*`.
+  - The 7/1 version is on the page with its purple exit line (`build_flip_backtest.py … --exit-factor 1`).
+- **Next:** the owner reviews it on the page. Nothing is wired into the strategy until they ask.
 
 ## ⭐ SESSION STATE — 2026-09-29: rebound watch on the review page
 

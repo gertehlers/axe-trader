@@ -78,3 +78,24 @@ def test_summary_counts_streaks_and_drawdown():
     assert s["longest_losing_streak"] == 3
     assert s["max_drawdown_pts"] == pytest.approx(6.0)  # peak 5 -> trough -1
     assert s["profit_factor"] == pytest.approx(15 / 10)
+
+
+def test_a_tighter_exit_line_closes_the_trade_before_the_next_flip_and_stays_flat():
+    bars = _bars([100, 101, 110, 120, 125, 118, 112, 105, 100, 95])
+    direction = np.array([-1, 1, 1, 1, 1, 1, 1, -1, -1, -1])
+    exit_dir = np.array([-1, 1, 1, 1, 1, -1, -1, -1, -1, -1])
+    trades = flip_trades(bars, direction, SPEC, exit_direction=exit_dir)
+    # Long from bar 2's ask (111). The tight line turns down on bar 5's close -> out at bar 6's bid (112),
+    # before the main flip on bar 7. Flat until then; the short from bar 8 never closes, so not counted.
+    assert len(trades) == 1
+    t = trades.iloc[0]
+    assert t.exit_time == bars.index[6] and t.exit_price == 112
+    assert t.gross_pts == pytest.approx(1)
+    assert t.bars == 4
+
+
+def test_the_main_flip_still_exits_when_the_tight_line_never_turns():
+    bars = _bars([100, 101, 110, 120, 115, 100, 90])
+    direction = np.array([-1, 1, 1, 1, -1, -1, -1])
+    t = flip_trades(bars, direction, SPEC, exit_direction=np.ones(7, dtype=int)).iloc[0]
+    assert t.exit_time == bars.index[5]
