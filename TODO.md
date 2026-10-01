@@ -29,7 +29,22 @@ which the owner has still to explain.
   - US500 5m 7/3: 79 flips in 14 days.
 - **Refresh:** all four charts end at 2026-10-01 ~11:35Z. Rebuild with `build_supertrend.py`, then
   republish every `supertrend/*.js`.
-- **Next:** the owner judges the page against Capital.com. Nothing is wired into the strategy until they ask.
+- **Flip-to-flip backtest:** practice period only (to 2026-01-31; the owner chose that). `engine/flips.py`
+  goes always in, reversing at the open after each flip, paying the real spread and funding. Results are in
+  `research/experiments/2026-10-01-supertrend-flip-to-flip.txt`:
+  - US500 5m: −8 pts.
+  - US500 1h: −1,381.
+  - US100 1h: −2,962.
+  - Brent 5m: −205.
+  - Win rates are 31–35%.
+  - Trades reach good profits, but the late flip gives them back (US500 1h: average best point +57,
+    average result −4).
+- **Brent 5m 7/3 backtest on the page** (owner: "focus on 5m brent again"):
+  - It shows the running total, a month picker, and per trade an entry ▲/▼, an exit ×, and a dotted
+    entry→exit line coloured by the result.
+  - Build it with `build_flip_backtest.py --epic OIL_BRENT --timeframe 5min --length 7 --factor 3`. That
+    writes the gitignored `supertrend/bt/`. Republish every `supertrend/bt/**` file.
+- **Next:** the owner reviews the Brent trades on the page. Nothing is wired into the strategy until they ask.
 
 ## ⭐ SESSION STATE — 2026-09-29: rebound watch on the review page
 

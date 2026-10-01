@@ -42,6 +42,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .key{display:inline-flex;align-items:center;gap:6px;margin-right:12px}
 .swatch{width:18px;height:3px;border-radius:2px;display:inline-block}
 canvas{display:block;width:100%;height:clamp(340px,62vh,640px);touch-action:none;cursor:crosshair}
+#eq{height:150px;cursor:pointer}
 .readout{font-size:.8rem;color:var(--muted);min-height:1.3em}
 .readout b{color:var(--ink);font-weight:500}
 .facts{display:flex;flex-wrap:wrap;gap:4px 20px;font-size:.84rem;color:var(--muted)}
@@ -60,9 +61,19 @@ canvas{display:block;width:100%;height:clamp(340px,62vh,640px);touch-action:none
 
   <div class="toolbar">
     <div><span class="label">Chart</span><span class="seg" id="sets"></span></div>
-    <div><span class="label">Day</span><span class="seg" id="days"></span></div>
+    <div><span class="label" id="days-label">Day</span><span class="seg" id="days"></span></div>
+    <div id="tradenav" hidden><span class="label">Trade</span><span class="seg"><button type="button" id="tprev">◀ Previous</button><button type="button" id="tnext">Next ▶</button></span></div>
     <div><span class="label">Zoom</span><span class="seg zoom"><button type="button" id="zout" aria-label="Zoom out">−</button><button type="button" id="zin" aria-label="Zoom in">+</button><button type="button" id="zlast">Latest</button></span></div>
   </div>
+
+  <section class="pane" id="bt" hidden>
+    <div class="pane-head">
+      <span class="mono" id="bt-title"></span>
+      <span class="hint">Running total in points after spread and funding, one step per trade. Click it to open that trade.</span>
+    </div>
+    <canvas id="eq" aria-label="Running total of the backtest, trade by trade"></canvas>
+    <div class="readout mono" id="eq-readout"></div>
+  </section>
 
   <section class="pane">
     <div class="pane-head">
@@ -72,7 +83,7 @@ canvas{display:block;width:100%;height:clamp(340px,62vh,640px);touch-action:none
     <canvas id="chart" aria-label="Candlestick chart with Supertrend line"></canvas>
     <div class="readout mono" id="readout">Hover a candle for its numbers.</div>
   </section>
-  <p class="hint">Drag to pan, scroll or use − / + to zoom. ▲ marks a flip to up, ▼ a flip to down: the candle whose close crossed the line.</p>
+  <p class="hint" id="hint">Drag to pan, scroll or use − / + to zoom. ▲ marks a flip to up, ▼ a flip to down: the candle whose close crossed the line.</p>
 </div>
 
 <script src="supertrend/index.js"></script>
@@ -98,16 +109,174 @@ function label(key) {
   return `${NAMES[d.epic] || d.epic} ${TF[d.timeframe] || d.timeframe} · ${d.length}/${d.factor}`;
 }
 
-function choose(key) {
-  const d = window.ST[key];
-  set = {...d, bars: d.bars.map(b => ({t: b[0], o: b[1], h: b[2], l: b[3], c: b[4], st: b[5], dir: b[6], atr: b[7]}))};
+const toBars = rows => rows.map(b => ({t: b[0], o: b[1], h: b[2], l: b[3], c: b[4], st: b[5], dir: b[6], atr: b[7]}));
+let bt = null; // backtest mode: {key, meta, trades, month, cur}
+
+function pressed(key) {
   for (const b of document.querySelectorAll("#sets button")) b.setAttribute("aria-pressed", String(b.dataset.key === key));
   try { localStorage.setItem("st-set", key); } catch (e) {}
+}
+
+function setMode(isBt) {
+  document.getElementById("bt").hidden = !isBt;
+  document.getElementById("tradenav").hidden = !isBt;
+  document.getElementById("days-label").textContent = isBt ? "Month" : "Day";
+  document.getElementById("hint").textContent = isBt
+    ? "Drag to pan, scroll or use − / + to zoom. ▲ long entry, ▼ short entry, × exit. The dotted line runs from entry price to exit price: green made money after costs, red lost. Every exit is also the next trade's entry."
+    : "Drag to pan, scroll or use − / + to zoom. ▲ marks a flip to up, ▼ a flip to down: the candle whose close crossed the line.";
+}
+
+function choose(key) {
+  if (key.startsWith("bt:")) return chooseBT(key.slice(3));
+  const d = window.ST[key];
+  bt = null; setMode(false);
+  set = {...d, bars: toBars(d.bars)};
+  pressed(key);
   const n = set.bars.length, span = set.timeframe === "1h" ? 360 : 250;
   view = {from: Math.max(0, n - span), to: n};
   hover = -1;
   buildDays(); summarise(); draw();
 }
+
+// ---- backtest mode ----
+const utcMonth = t => new Date(t * 1000).toISOString().slice(0, 7);
+
+function chooseBT(key) {
+  const meta = window.BT[key];
+  const trades = meta.trades.map(r => ({side: r[0], signal: r[1], et: r[2], ep: r[3], xt: r[4], xp: r[5], net: r[6], mfe: r[7], mae: r[8], fund: r[9], spread: r[10], bars: r[11]}));
+  let cum = 0; for (const t of trades) { cum += t.net; t.cum = cum; }
+  bt = {key, meta, trades, month: null, cur: 0, eqHover: -1};
+  setMode(true); pressed("bt:" + key);
+  const s = meta.summary, d = meta.digits;
+  document.getElementById("bt-title").textContent = `Backtest · ${NAMES[meta.epic] || meta.epic} ${TF[meta.timeframe] || meta.timeframe} · Supertrend(${meta.length}, ${meta.factor}) flip to flip · practice ${meta.period[0]} → ${meta.period[1]}`;
+  document.getElementById("facts").innerHTML =
+    `<span><b>${s.trades.toLocaleString()}</b> trades</span><span>win rate <b>${(s.win_rate * 100).toFixed(1)}%</b></span>` +
+    `<span>net <b style="color:var(${s.net_pts >= 0 ? "--up" : "--down"})">${s.net_pts.toFixed(1)} pts</b></span><span>per trade <b>${s.avg_pts.toFixed(d)}</b></span>` +
+    `<span>avg win <b>${s.avg_win_pts.toFixed(d)}</b> · avg loss <b>${s.avg_loss_pts.toFixed(d)}</b></span>` +
+    `<span>avg best point <b>${s.avg_mfe_pts.toFixed(d)}</b></span>` +
+    `<span>spread paid <b>${s.spread_pts.toFixed(1)}</b> · funding <b>${s.financing_pts.toFixed(1)}</b></span>` +
+    `<span>worst drawdown <b>${s.max_drawdown_pts.toFixed(1)}</b></span><span>longest losing run <b>${s.longest_losing_streak}</b></span>`;
+  const host = document.getElementById("days");
+  host.replaceChildren(...meta.months.map(m => {
+    const b = document.createElement("button"); b.type = "button"; b.className = "mono"; b.dataset.month = m;
+    const row = meta.month_table.find(r => r[0] === m);
+    b.textContent = m.slice(2).replace("-", "/");
+    b.title = row ? `${m}: ${row[1]} trades, ${row[2]} wins, net ${row[3]} pts` : m;
+    b.onclick = () => { const i = trades.findIndex(t => utcMonth(t.et) === m); focusTrade(i < 0 ? 0 : i); };
+    return b;
+  }));
+  focusTrade(0);
+}
+
+async function openMonth(m) {
+  const id = `${bt.key}/${m}`;
+  if (!window.BT[id]) await loadScript(`supertrend/bt/${bt.key}/${m}.js`);
+  if (bt.month === m) return;
+  bt.month = m;
+  const meta = bt.meta;
+  set = {epic: meta.epic, timeframe: meta.timeframe, length: meta.length, factor: meta.factor, digits: meta.digits, key: bt.key, bars: toBars(window.BT[id].bars)};
+  for (const b of document.querySelectorAll("#days button")) b.setAttribute("aria-pressed", String(b.dataset.month === m));
+  document.getElementById("title").textContent = `${m} · Brent bid candles · Supertrend(${meta.length}, ${meta.factor})`;
+}
+
+function barIndex(t) { // first bar at or after t
+  const b = set.bars; let lo = 0, hi = b.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (b[mid].t < t) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+
+async function focusTrade(i) {
+  if (!bt) return;
+  i = Math.max(0, Math.min(bt.trades.length - 1, i));
+  bt.cur = i;
+  const t = bt.trades[i];
+  await openMonth(utcMonth(t.et));
+  const a = barIndex(t.signal), z = Math.min(set.bars.length - 1, barIndex(t.xt));
+  const span = Math.max(120, Math.round((z - a + 1) * 2.2)), n = set.bars.length;
+  let from = Math.round((a + z) / 2 - span / 2); from = Math.max(0, Math.min(n - Math.min(span, n), from));
+  view = {from, to: Math.min(n, from + span)};
+  hover = -1; draw(); drawEq();
+}
+
+function tradeAt(t) { // trade whose hold contains time t
+  const tr = bt.trades; let lo = 0, hi = tr.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (tr[mid].et <= t) lo = mid + 1; else hi = mid; }
+  const k = tr[lo - 1];
+  return k && t < k.xt ? lo - 1 : -1;
+}
+
+function drawTrades(L, y) {
+  const b = set.bars, d = set.digits, x0 = b[view.from].t, x1 = b[view.to - 1].t;
+  const xOf = t => { const i = barIndex(t); return i >= b.length ? L.x(b.length - 1) + L.bw : L.x(i) - L.bw / 2; };
+  ctx.font = '11px "IBM Plex Mono", ui-monospace, monospace'; ctx.textBaseline = "middle";
+  const shown = bt.trades.map((t, k) => [t, k]).filter(([t]) => !(t.xt < x0 || t.et > x1 + 1));
+  for (const [t, k] of shown) { // dotted entry -> exit
+    ctx.strokeStyle = css(t.net > 0 ? "--up" : "--down"); ctx.lineWidth = k === bt.cur ? 2.2 : 1.5; ctx.setLineDash([2, 4]);
+    ctx.beginPath(); ctx.moveTo(xOf(t.et), y(t.ep)); ctx.lineTo(xOf(t.xt), y(t.xp)); ctx.stroke(); ctx.setLineDash([]);
+  }
+  for (const [t] of shown) { // exit cross and result
+    const xb = xOf(t.xt), yx = y(t.xp);
+    ctx.strokeStyle = css("--ink"); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(xb - 4, yx - 4); ctx.lineTo(xb + 4, yx + 4); ctx.moveTo(xb + 4, yx - 4); ctx.lineTo(xb - 4, yx + 4); ctx.stroke();
+    if (L.bw * Math.max(1, t.bars) > 34) {
+      ctx.fillStyle = css(t.net > 0 ? "--up" : "--down"); ctx.textAlign = "right";
+      ctx.fillText(`${t.net > 0 ? "+" : ""}${t.net.toFixed(d - 1)}`, xb - 7, yx + (t.side === 1 ? -11 : 11));
+      ctx.textAlign = "left";
+    }
+  }
+  for (const [t] of shown) { // entry triangle on top, pointing the trade's way, just off the price
+    const xa = xOf(t.et), ya = y(t.ep);
+    ctx.fillStyle = css(t.side === 1 ? "--up" : "--down"); ctx.strokeStyle = css("--surface"); ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (t.side === 1) { ctx.moveTo(xa, ya + 5); ctx.lineTo(xa - 6, ya + 15); ctx.lineTo(xa + 6, ya + 15); }
+    else { ctx.moveTo(xa, ya - 5); ctx.lineTo(xa - 6, ya - 15); ctx.lineTo(xa + 6, ya - 15); }
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+}
+
+function drawEq() {
+  if (!bt) return;
+  const E = document.getElementById("eq"), g = E.getContext("2d"), dpr = window.devicePixelRatio || 1;
+  const w = E.clientWidth, h = E.clientHeight;
+  if (E.width !== Math.round(w * dpr) || E.height !== Math.round(h * dpr)) { E.width = Math.round(w * dpr); E.height = Math.round(h * dpr); }
+  g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const tr = bt.trades, left = 6, right = w - 60, top = 8, bottom = h - 18;
+  let lo = 0, hi = 0; for (const t of tr) { lo = Math.min(lo, t.cum); hi = Math.max(hi, t.cum); }
+  const pad = (hi - lo) * .08 || 1; lo -= pad; hi += pad;
+  const X = i => left + i / (tr.length - 1) * (right - left), Y = v => top + (hi - v) / (hi - lo) * (bottom - top);
+  bt.eqX = i => X(i); bt.eqLayout = {left, right};
+  g.font = '11px "IBM Plex Mono", ui-monospace, monospace'; g.textBaseline = "middle"; g.fillStyle = css("--muted");
+  g.strokeStyle = css("--grid"); g.lineWidth = 1;
+  g.beginPath(); g.moveTo(left, Y(0)); g.lineTo(right, Y(0)); g.stroke(); g.fillText("0", right + 6, Y(0));
+  if (Math.abs(Y(0) - (top + 6)) > 14) g.fillText(hi.toFixed(0), right + 6, top + 6);
+  if (Math.abs(Y(0) - (bottom - 6)) > 14) g.fillText(lo.toFixed(0), right + 6, bottom - 6);
+  // year ticks
+  g.textAlign = "center"; let year = null;
+  tr.forEach((t, i) => { const yr = new Date(t.xt * 1000).getUTCFullYear(); if (yr !== year) { year = yr; g.strokeStyle = css("--grid"); g.beginPath(); g.moveTo(X(i), top); g.lineTo(X(i), bottom); g.stroke(); g.fillStyle = css("--muted"); g.fillText(String(yr), X(i) + 18, h - 7); } });
+  g.textAlign = "left";
+  // area + line
+  g.beginPath(); g.moveTo(X(0), Y(0)); tr.forEach((t, i) => g.lineTo(X(i), Y(t.cum))); g.lineTo(X(tr.length - 1), Y(0)); g.closePath();
+  g.fillStyle = css("--day"); g.fill();
+  g.beginPath(); tr.forEach((t, i) => i ? g.lineTo(X(i), Y(t.cum)) : g.moveTo(X(i), Y(t.cum)));
+  g.strokeStyle = css("--accent"); g.lineWidth = 1.5; g.stroke();
+  // end point + current trade
+  const last = tr[tr.length - 1];
+  g.fillStyle = css(last.cum >= 0 ? "--up" : "--down"); g.beginPath(); g.arc(X(tr.length - 1), Y(last.cum), 3.5, 0, 7); g.fill();
+  const c = tr[bt.cur]; g.strokeStyle = css("--ink"); g.lineWidth = 1; g.setLineDash([3, 3]);
+  g.beginPath(); g.moveTo(X(bt.cur), top); g.lineTo(X(bt.cur), bottom); g.stroke(); g.setLineDash([]);
+  const r = document.getElementById("eq-readout"), k = bt.eqHover >= 0 ? bt.eqHover : bt.cur, t = tr[k];
+  r.innerHTML = `trade <b>${(k + 1).toLocaleString()}</b> of ${tr.length.toLocaleString()} · ${fmtTime(t.et)} · ${t.side === 1 ? "long" : "short"} <b style="color:var(${t.net > 0 ? "--up" : "--down"})">${t.net > 0 ? "+" : ""}${t.net.toFixed(set ? set.digits : 2)}</b> · running total <b>${t.cum.toFixed(1)} pts</b>`;
+}
+
+(() => {
+  const E = document.getElementById("eq");
+  const at = e => { const r = E.getBoundingClientRect(), L = bt.eqLayout; return Math.round((e.clientX - r.left - L.left) / (L.right - L.left) * (bt.trades.length - 1)); };
+  E.addEventListener("pointermove", e => { if (!bt) return; bt.eqHover = Math.max(0, Math.min(bt.trades.length - 1, at(e))); drawEq(); });
+  E.addEventListener("pointerleave", () => { if (!bt) return; bt.eqHover = -1; drawEq(); });
+  E.addEventListener("click", e => { if (bt) focusTrade(at(e)); });
+  document.getElementById("tprev").onclick = () => bt && focusTrade(bt.cur - 1);
+  document.getElementById("tnext").onclick = () => bt && focusTrade(bt.cur + 1);
+})();
 
 function buildDays() {
   const host = document.getElementById("days"), seen = new Map();
@@ -199,8 +368,9 @@ function draw() {
     ctx.lineTo(x(j) + bw / 2, y(b[j].st)); ctx.stroke();
     i = j + 1;
   }
-  // flip marks
-  for (let k = Math.max(1, view.from); k < view.to; k++) {
+  // flip marks (in backtest mode the entries mark the flips instead)
+  if (bt) drawTrades(L, y);
+  else for (let k = Math.max(1, view.from); k < view.to; k++) {
     if (b[k].dir === b[k - 1].dir) continue;
     const up = b[k].dir === 1, px = x(k), py = up ? y(b[k].l) + 12 : y(b[k].h) - 12;
     ctx.fillStyle = up ? css("--up") : css("--down");
@@ -231,6 +401,13 @@ function readout() {
   el.innerHTML = `<b>${fmtTime(k.t)}</b> ${tz} &nbsp; O <b>${k.o.toFixed(d)}</b> H <b>${k.h.toFixed(d)}</b> L <b>${k.l.toFixed(d)}</b> C <b>${k.c.toFixed(d)}</b>` +
     ` &nbsp; Supertrend <b style="color:var(${k.dir === 1 ? "--up" : "--down"})">${k.st.toFixed(d)} ${k.dir === 1 ? "up" : "down"}</b>${flipped ? " (flip)" : ""}` +
     ` &nbsp; ATR(${set.length}) <b>${k.atr.toFixed(d + 1)}</b> &nbsp; close is <b>${Math.abs(gap).toFixed(1)} ATR</b> ${gap >= 0 ? "above" : "below"} the line`;
+  const ti = bt ? tradeAt(k.t) : -1;
+  if (ti >= 0) {
+    const t = bt.trades[ti];
+    el.innerHTML += `<br>In trade <b>${ti + 1}</b>: <b style="color:var(${t.side === 1 ? "--up" : "--down"})">${t.side === 1 ? "long" : "short"}</b> ${fmtTime(t.et).slice(5)} @ <b>${t.ep.toFixed(d)}</b> → ${fmtTime(t.xt).slice(5)} @ <b>${t.xp.toFixed(d)}</b>` +
+      ` &nbsp; best <b>+${t.mfe.toFixed(d)}</b> worst <b>−${t.mae.toFixed(d)}</b> &nbsp; spread ${t.spread.toFixed(d)} funding ${t.fund.toFixed(d)}` +
+      ` &nbsp; result <b style="color:var(${t.net > 0 ? "--up" : "--down"})">${t.net > 0 ? "+" : ""}${t.net.toFixed(d)}</b> after ${t.bars} candles`;
+  }
 }
 
 function indexAt(px) {
@@ -263,18 +440,22 @@ C.addEventListener("wheel", e => { e.preventDefault(); const r = C.getBoundingCl
 document.getElementById("zin").onclick = () => zoom(1 / 1.4);
 document.getElementById("zout").onclick = () => zoom(1.4);
 document.getElementById("zlast").onclick = () => { const span = view.to - view.from, n = set.bars.length; view = {from: Math.max(0, n - span), to: n}; draw(); };
-window.addEventListener("resize", draw);
-matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
-new MutationObserver(draw).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+window.addEventListener("resize", () => { draw(); drawEq(); });
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { draw(); drawEq(); });
+new MutationObserver(() => { draw(); drawEq(); }).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
 
 (async () => {
   const keys = window.ST_INDEX || [];
   await Promise.all(keys.map(k => loadScript(`supertrend/${k}.js`)));
-  document.getElementById("sets").replaceChildren(...keys.map(k => {
-    const b = document.createElement("button"); b.type = "button"; b.dataset.key = k; b.textContent = label(k); b.onclick = () => choose(k); return b;
-  }));
+  let btKeys = [];
+  try { await loadScript("supertrend/bt/index.js"); btKeys = window.BT_INDEX || []; await Promise.all(btKeys.map(k => loadScript(`supertrend/bt/${k}/summary.js`))); } catch (e) { btKeys = []; }
+  const button = (k, text) => { const b = document.createElement("button"); b.type = "button"; b.dataset.key = k; b.textContent = text; b.onclick = () => choose(k); return b; };
+  document.getElementById("sets").replaceChildren(
+    ...btKeys.map(k => { const m = window.BT[k]; return button("bt:" + k, `Backtest · ${NAMES[m.epic] || m.epic} ${TF[m.timeframe] || m.timeframe} · ${m.length}/${m.factor} · ${m.period[0].slice(0, 4)} → ${m.period[1].slice(0, 7)}`); }),
+    ...keys.map(k => button(k, label(k))));
   let saved = null; try { saved = localStorage.getItem("st-set"); } catch (e) {}
-  if (keys.length) choose(keys.includes(saved) ? saved : keys[0]);
+  const all = [...btKeys, ...keys];
+  if (all.length) choose(btKeys.length ? "bt:" + btKeys[0] : all.includes(saved) ? saved : all[0]);
   else document.getElementById("readout").textContent = "No chart data was published with this page.";
 })();
 </script>
