@@ -101,6 +101,40 @@ def atr(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int) -> np
     return wilder_mma(true_range(high, low, close), period)
 
 
+def supertrend(high, low, close, length: int, factor: float) -> tuple[np.ndarray, np.ndarray]:
+    """TradingView's `ta.supertrend`: the trailing line and its direction (+1 up, -1 down).
+
+    Bands sit `factor` x ATR(`length`) either side of hl2. The lower band only rises while the
+    previous close was above it, and the upper band only falls while the previous close was below
+    it. The trend flips only when a close is strictly beyond the active band, and the series
+    starts in a downtrend. ATR is Wilder's, seeded on the first bar as in `atr`, so the first few
+    dozen bars differ from TradingView's SMA seeding and want warm-up.
+    """
+    high = np.asarray(high, dtype=float)
+    low = np.asarray(low, dtype=float)
+    close = np.asarray(close, dtype=float)
+    mid = (high + low) / 2.0
+    width = factor * atr(high, low, close, length)
+    upper = mid + width
+    lower = mid - width
+    line = np.full(len(close), np.nan)
+    direction = np.zeros(len(close), dtype=int)
+    for i in range(len(close)):
+        if i == 0:
+            direction[i] = -1
+        else:
+            if not (lower[i] > lower[i - 1] or close[i - 1] < lower[i - 1]):
+                lower[i] = lower[i - 1]
+            if not (upper[i] < upper[i - 1] or close[i - 1] > upper[i - 1]):
+                upper[i] = upper[i - 1]
+            if direction[i - 1] == -1:
+                direction[i] = 1 if close[i] > upper[i] else -1
+            else:
+                direction[i] = -1 if close[i] < lower[i] else 1
+        line[i] = lower[i] if direction[i] == 1 else upper[i]
+    return line, direction
+
+
 def _rolling(values: np.ndarray, period: int, reducer) -> np.ndarray:
     values = np.asarray(values, dtype=float)
     out = np.full(len(values), np.nan)

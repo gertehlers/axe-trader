@@ -1,0 +1,280 @@
+<title>Supertrend Watch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#F4F6F5; --surface:#FFFFFF; --ink:#18211E; --muted:#5A6863; --rule:#D9E0DD;
+  --accent:#0E6B60; --accent-soft:#DCEFEB; --grid:#E6EBE9;
+  --up:#1C7F46; --down:#B83C27; --cross:rgba(24,33,30,.35); --day:rgba(14,107,96,.18);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#101614; --surface:#18201E; --ink:#E2EAE7; --muted:#93A39D; --rule:#2B3633;
+    --accent:#56C2B0; --accent-soft:#17332E; --grid:#222C29;
+    --up:#4FC07F; --down:#EE7B63; --cross:rgba(226,234,231,.35); --day:rgba(86,194,176,.2);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#101614; --surface:#18201E; --ink:#E2EAE7; --muted:#93A39D; --rule:#2B3633;
+  --accent:#56C2B0; --accent-soft:#17332E; --grid:#222C29;
+  --up:#4FC07F; --down:#EE7B63; --cross:rgba(226,234,231,.35); --day:rgba(86,194,176,.2);
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif;padding-inline:16px;padding-block:18px 48px;margin:0}
+.wrap{max-width:1400px;margin:0 auto;display:grid;gap:12px}
+h1{font-family:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;font-weight:600;font-size:1.6rem;letter-spacing:-.01em;margin:0;text-wrap:balance}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:end;gap:8px 24px}
+.lede{margin:2px 0 0;font-size:.9rem;color:var(--muted);max-width:70ch}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--ground);padding-block:8px;border-bottom:1px solid var(--rule)}
+.label{font-size:.75rem;color:var(--muted);margin-right:6px;letter-spacing:.04em;text-transform:uppercase}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--rule);border-radius:5px;overflow:hidden;background:var(--surface)}
+.seg button{font:inherit;font-size:.84rem;padding:5px 11px;border:0;background:transparent;color:var(--ink);cursor:pointer;border-right:1px solid var(--rule)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--surface)}
+.zoom button{min-width:34px}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pane{background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:8px 10px 6px;display:grid;gap:4px}
+.pane-head{display:flex;justify-content:space-between;align-items:baseline;gap:6px 14px;flex-wrap:wrap;font-size:.84rem}
+.key{display:inline-flex;align-items:center;gap:6px;margin-right:12px}
+.swatch{width:18px;height:3px;border-radius:2px;display:inline-block}
+canvas{display:block;width:100%;height:clamp(340px,62vh,640px);touch-action:none;cursor:crosshair}
+.readout{font-size:.8rem;color:var(--muted);min-height:1.3em}
+.readout b{color:var(--ink);font-weight:500}
+.facts{display:flex;flex-wrap:wrap;gap:4px 20px;font-size:.84rem;color:var(--muted)}
+.facts b{color:var(--ink);font-weight:500}
+.hint{font-size:.8rem;color:var(--muted)}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Supertrend Watch</h1>
+      <p class="lede">Candles and Supertrend only. No strategy rules, no pillars. Bid prices like the Capital.com chart; times in your local time zone.</p>
+    </div>
+    <div class="facts mono" id="facts"></div>
+  </header>
+
+  <div class="toolbar">
+    <div><span class="label">Chart</span><span class="seg" id="sets"></span></div>
+    <div><span class="label">Day</span><span class="seg" id="days"></span></div>
+    <div><span class="label">Zoom</span><span class="seg zoom"><button type="button" id="zout" aria-label="Zoom out">−</button><button type="button" id="zin" aria-label="Zoom in">+</button><button type="button" id="zlast">Latest</button></span></div>
+  </div>
+
+  <section class="pane">
+    <div class="pane-head">
+      <span id="title" class="mono"></span>
+      <span><span class="key"><span class="swatch" style="background:var(--up)"></span>uptrend line (under price)</span><span class="key"><span class="swatch" style="background:var(--down)"></span>downtrend line (above price)</span></span>
+    </div>
+    <canvas id="chart" aria-label="Candlestick chart with Supertrend line"></canvas>
+    <div class="readout mono" id="readout">Hover a candle for its numbers.</div>
+  </section>
+  <p class="hint">Drag to pan, scroll or use − / + to zoom. ▲ marks a flip to up, ▼ a flip to down: the candle whose close crossed the line.</p>
+</div>
+
+<script src="supertrend/index.js"></script>
+<script>
+const C = document.getElementById("chart"), ctx = C.getContext("2d");
+const NAMES = {OIL_BRENT: "Brent Oil", US100: "US Tech 100", US500: "US 500"};
+const TF = {"5min": "5m", "15min": "15m", "1h": "1h"};
+let set = null, view = {from: 0, to: 0}, hover = -1, drag = null;
+
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const pad = n => String(n).padStart(2, "0");
+const local = t => new Date(t * 1000);
+const fmtTime = t => { const d = local(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const dayKey = t => { const d = local(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+const tz = (() => { const m = -new Date().getTimezoneOffset(); return `UTC${m >= 0 ? "+" : "−"}${Math.abs(m / 60)}`; })();
+
+function loadScript(src) {
+  return new Promise((ok, fail) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = fail; document.head.append(s); });
+}
+
+function label(key) {
+  const d = window.ST[key];
+  return `${NAMES[d.epic] || d.epic} ${TF[d.timeframe] || d.timeframe} · ${d.length}/${d.factor}`;
+}
+
+function choose(key) {
+  const d = window.ST[key];
+  set = {...d, bars: d.bars.map(b => ({t: b[0], o: b[1], h: b[2], l: b[3], c: b[4], st: b[5], dir: b[6], atr: b[7]}))};
+  for (const b of document.querySelectorAll("#sets button")) b.setAttribute("aria-pressed", String(b.dataset.key === key));
+  try { localStorage.setItem("st-set", key); } catch (e) {}
+  const n = set.bars.length, span = set.timeframe === "1h" ? 360 : 250;
+  view = {from: Math.max(0, n - span), to: n};
+  hover = -1;
+  buildDays(); summarise(); draw();
+}
+
+function buildDays() {
+  const host = document.getElementById("days"), seen = new Map();
+  set.bars.forEach((b, i) => { const k = dayKey(b.t); if (!seen.has(k)) seen.set(k, i); });
+  const keys = [...seen.keys()], step = keys.length > 16 ? Math.ceil(keys.length / 16) : 1;
+  host.replaceChildren(...keys.filter((_, i) => i % step === 0 || i === keys.length - 1).map(k => {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = k.slice(5); b.className = "mono"; b.title = k;
+    b.onclick = () => {
+      const start = seen.get(k), perDay = set.timeframe === "1h" ? 24 * 7 : 288;
+      view = {from: start, to: Math.min(set.bars.length, start + perDay)};
+      draw();
+    };
+    return b;
+  }));
+}
+
+function summarise() {
+  const b = set.bars, days = (b[b.length - 1].t - b[0].t) / 86400;
+  let flips = 0, runs = [], run = 1;
+  for (let i = 1; i < b.length; i++) { if (b[i].dir !== b[i - 1].dir) { flips++; runs.push(run); run = 1; } else run++; }
+  runs.sort((a, z) => a - z);
+  const med = runs.length ? runs[Math.floor(runs.length / 2)] : b.length;
+  document.getElementById("facts").innerHTML =
+    `<span><b>${b.length.toLocaleString()}</b> candles</span><span><b>${flips}</b> flips</span>` +
+    `<span><b>${(flips / days).toFixed(1)}</b> flips / day</span><span>median trend <b>${med}</b> candles</span>` +
+    `<span>${fmtTime(b[0].t).slice(0, 10)} → ${fmtTime(b[b.length - 1].t)} ${tz}</span>`;
+  document.getElementById("title").textContent = `${label(set.key)} · Supertrend(${set.length}, ${set.factor}) · ATR(${set.length}) Wilder · bid`;
+}
+
+function layout() {
+  const dpr = window.devicePixelRatio || 1, w = C.clientWidth, h = C.clientHeight;
+  if (C.width !== Math.round(w * dpr) || C.height !== Math.round(h * dpr)) { C.width = Math.round(w * dpr); C.height = Math.round(h * dpr); }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return {w, h, left: 6, right: w - 70, top: 10, bottom: h - 24};
+}
+
+function draw() {
+  if (!set) return;
+  const L = layout(), b = set.bars, n = view.to - view.from, digits = set.digits;
+  ctx.clearRect(0, 0, L.w, L.h);
+  let lo = Infinity, hi = -Infinity;
+  for (let i = view.from; i < view.to; i++) { lo = Math.min(lo, b[i].l, b[i].st); hi = Math.max(hi, b[i].h, b[i].st); }
+  const m = (hi - lo) * .06; lo -= m; hi += m;
+  const bw = (L.right - L.left) / n;
+  const x = i => L.left + (i - view.from + .5) * bw;
+  const y = v => L.top + (hi - v) / (hi - lo) * (L.bottom - L.top);
+  L.x = x; L.bw = bw; draw.L = L;
+
+  // price grid on round steps
+  const raw = (hi - lo) / 6, mag = 10 ** Math.floor(Math.log10(raw)), step = [1, 2, 2.5, 5, 10].map(k => k * mag).find(s => s >= raw);
+  ctx.font = '11px "IBM Plex Mono", ui-monospace, monospace'; ctx.textBaseline = "middle";
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+    ctx.strokeStyle = css("--grid"); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(L.left, y(v)); ctx.lineTo(L.right, y(v)); ctx.stroke();
+    ctx.fillStyle = css("--muted"); ctx.fillText(v.toFixed(step < 1 ? Math.min(digits, 2) : 0), L.right + 6, y(v));
+  }
+  // day boundaries and time labels
+  ctx.textBaseline = "alphabetic"; ctx.textAlign = "center";
+  const every = Math.max(1, Math.ceil(70 / bw)), dayStarts = [];
+  for (let i = Math.max(1, view.from); i < view.to; i++) if (dayKey(b[i].t) !== dayKey(b[i - 1].t)) dayStarts.push(i);
+  for (let i = view.from; i < view.to; i++) {
+    const newDay = dayStarts.includes(i), crowded = !newDay && dayStarts.some(d => Math.abs(d - i) < every);
+    if (newDay) { ctx.strokeStyle = css("--day"); ctx.beginPath(); ctx.moveTo(x(i) - bw / 2, L.top); ctx.lineTo(x(i) - bw / 2, L.bottom); ctx.stroke(); }
+    if (((i - view.from) % every === 0 && !crowded) || newDay) {
+      const d = local(b[i].t);
+      ctx.fillStyle = newDay ? css("--ink") : css("--muted");
+      ctx.fillText(newDay ? `${pad(d.getDate())}/${pad(d.getMonth() + 1)}` : `${pad(d.getHours())}:${pad(d.getMinutes())}`, x(i), L.h - 6);
+    }
+  }
+  ctx.textAlign = "left";
+  // candles
+  const body = Math.max(1, bw * .62);
+  for (let i = view.from; i < view.to; i++) {
+    const k = b[i], col = k.c >= k.o ? css("--up") : css("--down");
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(Math.round(x(i)) + .5, y(k.h)); ctx.lineTo(Math.round(x(i)) + .5, y(k.l)); ctx.stroke();
+    const top = y(Math.max(k.o, k.c)), hgt = Math.max(1, Math.abs(y(k.o) - y(k.c)));
+    ctx.globalAlpha = .85; ctx.fillRect(x(i) - body / 2, top, body, hgt); ctx.globalAlpha = 1;
+  }
+  // supertrend: one stroke per run, broken at each flip
+  ctx.lineWidth = 2.2; ctx.lineJoin = "round";
+  let i = view.from;
+  while (i < view.to) {
+    const dir = b[i].dir; let j = i;
+    while (j + 1 < view.to && b[j + 1].dir === dir) j++;
+    ctx.strokeStyle = dir === 1 ? css("--up") : css("--down");
+    ctx.beginPath(); ctx.moveTo(x(i) - bw / 2, y(b[i].st));
+    for (let k = i; k <= j; k++) { ctx.lineTo(x(k), y(b[k].st)); }
+    ctx.lineTo(x(j) + bw / 2, y(b[j].st)); ctx.stroke();
+    i = j + 1;
+  }
+  // flip marks
+  for (let k = Math.max(1, view.from); k < view.to; k++) {
+    if (b[k].dir === b[k - 1].dir) continue;
+    const up = b[k].dir === 1, px = x(k), py = up ? y(b[k].l) + 12 : y(b[k].h) - 12;
+    ctx.fillStyle = up ? css("--up") : css("--down");
+    ctx.beginPath();
+    if (up) { ctx.moveTo(px, py - 5); ctx.lineTo(px - 5, py + 4); ctx.lineTo(px + 5, py + 4); }
+    else { ctx.moveTo(px, py + 5); ctx.lineTo(px - 5, py - 4); ctx.lineTo(px + 5, py - 4); }
+    ctx.fill();
+  }
+  // last price tag
+  const last = b[view.to - 1];
+  ctx.fillStyle = last.dir === 1 ? css("--up") : css("--down");
+  ctx.fillRect(L.right + 2, y(last.st) - 8, 66, 16);
+  ctx.fillStyle = css("--surface"); ctx.textBaseline = "middle";
+  ctx.fillText(last.st.toFixed(digits), L.right + 6, y(last.st));
+  // crosshair
+  if (hover >= view.from && hover < view.to) {
+    ctx.strokeStyle = css("--cross"); ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(x(hover), L.top); ctx.lineTo(x(hover), L.bottom); ctx.stroke(); ctx.setLineDash([]);
+  }
+  readout();
+}
+
+function readout() {
+  const el = document.getElementById("readout");
+  if (hover < 0 || !set) { el.textContent = "Hover a candle for its numbers."; return; }
+  const k = set.bars[hover], d = set.digits, gap = (k.c - k.st) / k.atr;
+  const flipped = hover > 0 && set.bars[hover - 1].dir !== k.dir;
+  el.innerHTML = `<b>${fmtTime(k.t)}</b> ${tz} &nbsp; O <b>${k.o.toFixed(d)}</b> H <b>${k.h.toFixed(d)}</b> L <b>${k.l.toFixed(d)}</b> C <b>${k.c.toFixed(d)}</b>` +
+    ` &nbsp; Supertrend <b style="color:var(${k.dir === 1 ? "--up" : "--down"})">${k.st.toFixed(d)} ${k.dir === 1 ? "up" : "down"}</b>${flipped ? " (flip)" : ""}` +
+    ` &nbsp; ATR(${set.length}) <b>${k.atr.toFixed(d + 1)}</b> &nbsp; close is <b>${Math.abs(gap).toFixed(1)} ATR</b> ${gap >= 0 ? "above" : "below"} the line`;
+}
+
+function indexAt(px) {
+  const L = draw.L; if (!L) return -1;
+  const i = view.from + Math.floor((px - L.left) / L.bw);
+  return i >= view.from && i < view.to ? i : -1;
+}
+
+function zoom(factor, anchor) {
+  const n = set.bars.length, span = view.to - view.from;
+  const next = Math.max(30, Math.min(n, Math.round(span * factor)));
+  const a = anchor ?? view.to - 1, share = (a - view.from) / span;
+  let from = Math.round(a - share * next); from = Math.max(0, Math.min(n - next, from));
+  view = {from, to: from + next}; draw();
+}
+
+C.addEventListener("pointermove", e => {
+  const r = C.getBoundingClientRect();
+  if (drag) {
+    const shift = Math.round((drag.x - (e.clientX - r.left)) / draw.L.bw), span = view.to - view.from, n = set.bars.length;
+    const from = Math.max(0, Math.min(n - span, drag.from + shift));
+    view = {from, to: from + span};
+  }
+  hover = indexAt(e.clientX - r.left); draw();
+});
+C.addEventListener("pointerdown", e => { C.setPointerCapture(e.pointerId); drag = {x: e.clientX - C.getBoundingClientRect().left, from: view.from}; });
+C.addEventListener("pointerup", () => { drag = null; });
+C.addEventListener("pointerleave", () => { if (!drag) { hover = -1; draw(); } });
+C.addEventListener("wheel", e => { e.preventDefault(); const r = C.getBoundingClientRect(); zoom(e.deltaY > 0 ? 1.15 : 1 / 1.15, indexAt(e.clientX - r.left)); }, {passive: false});
+document.getElementById("zin").onclick = () => zoom(1 / 1.4);
+document.getElementById("zout").onclick = () => zoom(1.4);
+document.getElementById("zlast").onclick = () => { const span = view.to - view.from, n = set.bars.length; view = {from: Math.max(0, n - span), to: n}; draw(); };
+window.addEventListener("resize", draw);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+new MutationObserver(draw).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+
+(async () => {
+  const keys = window.ST_INDEX || [];
+  await Promise.all(keys.map(k => loadScript(`supertrend/${k}.js`)));
+  document.getElementById("sets").replaceChildren(...keys.map(k => {
+    const b = document.createElement("button"); b.type = "button"; b.dataset.key = k; b.textContent = label(k); b.onclick = () => choose(k); return b;
+  }));
+  let saved = null; try { saved = localStorage.getItem("st-set"); } catch (e) {}
+  if (keys.length) choose(keys.includes(saved) ? saved : keys[0]);
+  else document.getElementById("readout").textContent = "No chart data was published with this page.";
+})();
+</script>

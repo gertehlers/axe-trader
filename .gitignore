@@ -84,3 +84,4 @@ research/review/days/
 # stray minute-bar cache written by a path bug; the real one is research/engine/.cache
 /engine/
 research/experiments/__pycache__/
+research/review/supertrend/
