@@ -1,0 +1,156 @@
+FAILURE ANATOMY (all practice trades)
+                                            trades      net    avg  avg_bars  avg_mfe_atr  share
+kind                                                                                            
+gave it back (got >= 1 ATR, ended a loser)    1387 -233.202 -0.168    28.413        2.623  0.340
+reversal (flipped back within 30 min)          291  -93.588 -0.322     4.426       -0.032  0.071
+sideways (never got 1 ATR)                    1151 -364.690 -0.317    19.469        0.209  0.282
+winner                                        1249  486.139  0.389    61.320        8.248  0.306 
+
+PILLARS: average net per trade (pts) and win rate by bucket. Baseline: 2024 -0.053 / 30.7%, 2025 -0.044 / 30.6%
+
+-- flip candle body (ATR)  (2024 = discovery, 2025 = check with the same bucket edges)
+        bucket  n24  win%24  avg24  n25  win%25  avg25
+ (-inf, 0.543]  395    32.2 -0.064  382    31.7 -0.037
+(0.543, 0.815]  395    30.4 -0.054  356    31.7 -0.056
+(0.815, 1.109]  395    32.2 -0.045  345    29.9 -0.043
+(1.109, 1.481]  395    29.9 -0.066  392    30.6 -0.024
+  (1.481, inf]  395    29.1 -0.037  461    29.3 -0.059 
+
+-- close beyond old line (ATR)  (2024 = discovery, 2025 = check with the same bucket edges)
+        bucket  n24  win%24  avg24  n25  win%25  avg25
+ (-inf, 0.106]  395    29.4 -0.077  364    30.2 -0.049
+(0.106, 0.235]  395    29.6 -0.071  371    32.1 -0.042
+(0.235, 0.441]  395    31.9 -0.069  424    30.2 -0.032
+(0.441, 0.754]  395    32.4 -0.011  359    32.0 -0.021
+  (0.754, inf]  395    30.4 -0.037  418    28.7 -0.074 
+
+-- flips in prior 4h  (2024 = discovery, 2025 = check with the same bucket edges)
+     bucket  n24  win%24  avg24  n25  win%25  avg25
+(-inf, 1.0] 1243    28.2 -0.079 1246    29.0 -0.053
+ (1.0, 2.0]  545    35.2 -0.006  504    33.1 -0.038
+ (2.0, inf]  187    34.2 -0.018  186    34.4 -0.003 
+
+-- ATR7 / ATR100 (volatility)  (2024 = discovery, 2025 = check with the same bucket edges)
+        bucket  n24  win%24  avg24  n25  win%25  avg25
+ (-inf, 0.639]  395    24.6 -0.045  331    22.7 -0.047
+  (0.639, 0.9]  395    27.1 -0.065  403    27.3 -0.063
+  (0.9, 1.158]  395    34.2 -0.040  389    33.7 -0.034
+(1.158, 1.469]  395    31.4 -0.089  504    32.1 -0.043
+  (1.469, inf]  395    36.5 -0.027  309    36.9 -0.032 
+
+-- ADX14  (2024 = discovery, 2025 = check with the same bucket edges)
+          bucket  n24  win%24  avg24  n25  win%25  avg25
+  (-inf, 15.977]  395    30.4 -0.064  407    30.2 -0.048
+(15.977, 18.555]  395    29.9 -0.045  338    27.2 -0.060
+(18.555, 21.727]  395    26.6 -0.067  383    29.0 -0.047
+(21.727, 27.109]  395    32.2 -0.048  433    33.7 -0.007
+   (27.109, inf]  395    34.7 -0.042  375    32.0 -0.066 
+
+-- RSI7 in trade direction  (2024 = discovery, 2025 = check with the same bucket edges)
+          bucket  n24  win%24  avg24  n25  win%25  avg25
+  (-inf, 67.187]  395    31.4 -0.068  418    29.4 -0.045
+(67.187, 70.202]  395    27.3 -0.052  333    27.6 -0.053
+(70.202, 73.066]  395    34.9 -0.032  415    33.3 -0.033
+(73.066, 76.306]  395    30.4 -0.068  363    33.6 -0.010
+   (76.306, inf]  395    29.6 -0.045  407    28.7 -0.079 
+
+-- EMA50 slope 1h, trade dir (ATR)  (2024 = discovery, 2025 = check with the same bucket edges)
+          bucket  n24  win%24  avg24  n25  win%25  avg25
+  (-inf, -0.882]  395    31.1 -0.058  389    29.6 -0.049
+(-0.882, -0.481]  395    27.1 -0.059  417    33.8 -0.048
+(-0.481, -0.187]  395    32.2 -0.037  322    28.3 -0.045
+ (-0.187, 0.154]  395    32.4 -0.056  422    32.0 -0.045
+    (0.154, inf]  395    30.9 -0.055  386    28.5 -0.034 
+
+-- close vs EMA200, trade dir (ATR)  (2024 = discovery, 2025 = check with the same bucket edges)
+         bucket  n24  win%24  avg24  n25  win%25  avg25
+ (-inf, -3.106]  395    28.1 -0.063  345    33.3 -0.033
+(-3.106, -0.48]  395    30.1 -0.053  420    31.2 -0.097
+ (-0.48, 1.497]  395    31.9 -0.063  426    31.5 -0.009
+ (1.497, 3.857]  395    34.2 -0.028  387    30.2 -0.035
+   (3.857, inf]  395    29.4 -0.057  358    26.5 -0.045 
+
+-- tick volume / 20-bar avg  (2024 = discovery, 2025 = check with the same bucket edges)
+        bucket  n24  win%24  avg24  n25  win%25  avg25
+ (-inf, 0.862]  395    30.6 -0.050  357    34.5 -0.010
+(0.862, 1.137]  395    31.9 -0.054  370    31.9 -0.043
+(1.137, 1.421]  395    29.4 -0.066  361    31.0 -0.043
+(1.421, 1.923]  395    31.4 -0.051  392    27.0 -0.064
+  (1.923, inf]  395    30.4 -0.044  456    29.2 -0.056 
+
+-- hour UTC  (2024 = discovery, 2025 = check with the same bucket edges)
+      bucket  n24  win%24  avg24  n25  win%25  avg25
+ (-inf, 4.0]  429    25.6 -0.051  398    28.9 -0.056
+  (4.0, 8.0]  452    29.2 -0.050  545    27.3 -0.057
+ (8.0, 12.0]  375    28.3 -0.068  314    32.5 -0.031
+(12.0, 16.0]  377    36.9 -0.048  358    37.4 -0.000
+ (16.0, inf]  342    35.1 -0.049  321    28.7 -0.070 
+
+-- 15m ST(7,3) agrees  (2024 = discovery, 2025 = check with the same bucket edges)
+bucket  n24  win%24  avg24  n25  win%25  avg25
+     0 1280    29.3  -0.06 1274    31.3 -0.051
+     1  695    33.4  -0.04  662    29.2 -0.031 
+
+-- 1h ST(10,3) agrees  (2024 = discovery, 2025 = check with the same bucket edges)
+bucket  n24  win%24  avg24  n25  win%25  avg25
+     0 1070    31.8 -0.043 1043    32.7 -0.043
+     1  905    29.5 -0.065  893    28.1 -0.046 
+
+-- P&L after 3 candles (ATR)  (2024 = discovery, 2025 = check with the same bucket edges)
+          bucket  n24  win%24  avg24  n25  win%25  avg25
+  (-inf, -1.118]  389    18.5 -0.179  428    19.2 -0.164
+(-1.118, -0.481]  388    21.4 -0.137  349    27.2 -0.087
+(-0.481, 0.0912]  388    28.9 -0.079  417    28.5 -0.062
+ (0.0912, 0.773]  388    37.4  0.013  363    36.1  0.018
+    (0.773, inf]  389    50.1  0.143  334    49.1  0.145 
+
+-- best after 3 candles (ATR)  (2024 = discovery, 2025 = check with the same bucket edges)
+        bucket  n24  win%24  avg24  n25  win%25  avg25
+(-inf, 0.0231]  389    24.7 -0.103  395    20.5 -0.126
+(0.0231, 0.33]  388    19.1 -0.174  369    23.0 -0.118
+ (0.33, 0.729]  388    27.6 -0.101  399    30.6 -0.052
+(0.729, 1.332]  388    39.7  0.027  363    37.7 -0.004
+  (1.332, inf]  389    45.2  0.111  365    45.5  0.120 
+
+-- cushion to line after 3 (ATR)  (2024 = discovery, 2025 = check with the same bucket edges)
+        bucket  n24  win%24  avg24  n25  win%25  avg25
+ (-inf, 2.047]  389    19.0 -0.177  395    19.7 -0.164
+(2.047, 2.629]  388    21.6 -0.117  416    31.2 -0.076
+(2.629, 2.927]  388    33.2 -0.022  380    32.4  0.018
+(2.927, 3.199]  388    36.1  0.001  373    34.3  0.006
+  (3.199, inf]  389    46.3  0.075  327    40.4  0.047 
+
+-- P&L after 6 candles (ATR)  (2024 = discovery, 2025 = check with the same bucket edges)
+          bucket  n24  win%24  avg24  n25  win%25  avg25
+  (-inf, -1.334]  371    12.7 -0.211  375    15.5 -0.203
+(-1.334, -0.455]  370    22.4 -0.141  354    23.4 -0.120
+ (-0.455, 0.292]  371    26.7 -0.088  365    34.5  0.003
+  (0.292, 1.212]  370    40.0  0.034  350    35.1  0.015
+    (1.212, inf]  371    62.0  0.230  339    59.3  0.222 
+
+-- best after 6 candles (ATR)  (2024 = discovery, 2025 = check with the same bucket edges)
+        bucket  n24  win%24  avg24  n25  win%25  avg25
+ (-inf, 0.171]  371    22.1 -0.138  381    19.9 -0.149
+ (0.171, 0.62]  370    19.2 -0.172  360    25.0 -0.102
+ (0.62, 1.194]  371    29.6 -0.074  363    32.2 -0.035
+(1.194, 2.006]  370    37.8  0.036  306    35.6 -0.007
+  (2.006, inf]  371    55.0  0.173  373    53.4  0.190 
+
+-- cushion to line after 6 (ATR)  (2024 = discovery, 2025 = check with the same bucket edges)
+        bucket  n24  win%24  avg24  n25  win%25  avg25
+ (-inf, 1.571]  371    13.2 -0.199  333    15.9 -0.192
+(1.571, 2.348]  370    23.0 -0.127  404    27.7 -0.075
+(2.348, 2.803]  371    34.5 -0.023  364    36.8  0.034
+(2.803, 3.119]  370    42.2  0.037  330    35.8  0.001
+  (3.119, inf]  371    50.9  0.137  352    49.4  0.125 
+
+KILL RULES: exit at the open after candle k if P&L (close vs entry, ATR) < threshold; else keep 7/3
+k=3  thr=-0.5  killed 39.4%  2024: net    -89.3 (flip  -104.8) win 22.9%  2025: net    -87.7 (flip   -85.8) win 21.5%
+k=3  thr=+0.0  killed 56.6%  2024: net    -74.9 (flip  -104.8) win 19.2%  2025: net    -70.6 (flip   -85.8) win 17.4%
+k=3  thr=+0.5  killed 72.9%  2024: net    -68.4 (flip  -104.8) win 21.7%  2025: net    -79.5 (flip   -85.8) win 19.9%
+k=6  thr=-0.5  killed 36.5%  2024: net    -93.5 (flip  -104.8) win 24.4%  2025: net    -75.8 (flip   -85.8) win 23.5%
+k=6  thr=+0.0  killed 48.7%  2024: net    -82.0 (flip  -104.8) win 21.7%  2025: net    -78.6 (flip   -85.8) win 20.0%
+k=6  thr=+0.5  killed 61.1%  2024: net    -68.7 (flip  -104.8) win 25.5%  2025: net    -83.9 (flip   -85.8) win 22.4%
+k=12 thr=-0.5  killed 25.1%  2024: net   -103.2 (flip  -104.8) win 26.0%  2025: net    -80.7 (flip   -85.8) win 26.5%
+k=12 thr=+0.0  killed 33.1%  2024: net    -89.3 (flip  -104.8) win 24.8%  2025: net    -81.8 (flip   -85.8) win 24.4%
+k=12 thr=+0.5  killed 41.7%  2024: net    -82.6 (flip  -104.8) win 27.4%  2025: net    -80.2 (flip   -85.8) win 26.7%
