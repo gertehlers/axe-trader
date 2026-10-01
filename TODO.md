@@ -7,6 +7,24 @@ North star (see `CLAUDE.md` → Trading Goals): net expectancy after costs; **no
 (owner, 2026-09-29: more candidates filtered by logic beats rules that miss everything), reproducible via 5-pillar confluence, with each instrument tuned as its own
 "personality" rather than one shared config.
 
+## ⭐ SESSION STATE — 2026-10-01: clean Supertrend look (owner's Capital.com indicator)
+
+The owner uses Capital.com's SuperTrend on Brent 5m (7, 3) and US100 1h (10, 3). They asked for a **clean
+look**, with none of our config mixed in. It is a separate idea from the "redo the days with 3atr" note,
+which the owner has still to explain.
+
+- **Done:**
+  - `engine.indicators.supertrend()`, matching TradingView's `ta.supertrend`, with tests.
+  - `research/review/build_supertrend.py` and `research/review/supertrend.html`, published as
+    "Supertrend Watch": https://claude.ai/artifact/QohZQ9xKqbtsMoM23MSxa4
+  - The data files `research/review/supertrend/*.js` are gitignored. Rebuild them with
+    `build_supertrend.py --epic OIL_BRENT --timeframe 5min --length 7 --factor 3 --days 14`.
+- **Match:** Brent 5m bid at 2026-10-01 06:30Z reads 96.557 on both Capital.com and ours. The four flips
+  of 30 Sep–1 Oct line up.
+- **Brent 5m 7/3, last 14 days:** 69 flips (4.9/day), with a median trend of 32 candles (~2.7 h).
+- **US100:** seeded into the local DB from 2024 (new instrument), and 1h 10/3 added to the page.
+- **Next:** the owner judges the page against Capital.com. Nothing is wired into the strategy until they ask.
+
 ## ⭐ SESSION STATE — 2026-09-29: rebound watch on the review page
 
 **Handover:** `docs/handoffs/2026-09-29-rebound-watch-and-indicator-matrix.md` holds the owner's end-of-session
