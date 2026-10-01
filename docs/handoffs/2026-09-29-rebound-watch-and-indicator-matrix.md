@@ -1,6 +1,7 @@
 ---
 date: 2026-09-29
-status: open
+status: superseded
+superseded_by: docs/handoffs/2026-10-01-supertrend-brent-sideways-losers.md
 branch: feat/confluence-exit-matrix
 head: 6774338
 next: Process the owner's verbatim notes below - redo the review days at 3 ATR, then design an indicator-knob matrix to find slow-trend patterns
