@@ -22,7 +22,13 @@ which the owner has still to explain.
 - **Match:** Brent 5m bid at 2026-10-01 06:30Z reads 96.557 on both Capital.com and ours. The four flips
   of 30 Sep–1 Oct line up.
 - **Brent 5m 7/3, last 14 days:** 69 flips (4.9/day), with a median trend of 32 candles (~2.7 h).
-- **US100:** seeded into the local DB from 2024 (new instrument), and 1h 10/3 added to the page.
+- **US100:** seeded into the local DB from 2024 (new instrument). The 1h 10/3 chart matches Capital.com
+  (30,589.5 at 2026-10-01 06:00Z).
+- **Also on the page (owner: "i think we are on to something here"):**
+  - US500 1h 10/3: 25 flips in 60 days.
+  - US500 5m 7/3: 79 flips in 14 days.
+- **Refresh:** all four charts end at 2026-10-01 ~11:35Z. Rebuild with `build_supertrend.py`, then
+  republish every `supertrend/*.js`.
 - **Next:** the owner judges the page against Capital.com. Nothing is wired into the strategy until they ask.
 
 ## ⭐ SESSION STATE — 2026-09-29: rebound watch on the review page
