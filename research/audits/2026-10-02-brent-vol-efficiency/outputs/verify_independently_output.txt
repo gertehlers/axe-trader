@@ -1,0 +1,52 @@
+raw minute rows used: 689021 (2024-01-02 01:00:00+00:00 .. 2026-01-30 21:58:00+00:00), excluded minutes removed: 0 remaining (should be 0)
+5m candles: 141587
+
+INDEPENDENT RESULTS (EARLY vs FALSE, Supertrend 7/3 flips, 6 ATR big swings)
+  [as-coded] 2024: classes {'EARLY': 484, 'FALSE': 666, 'LATE': 314, 'TURNED': 512}
+             EARLY n=484 net=+129.58 (+0.2677/trade) | FALSE n=666 net=-208.18 (-0.3126/trade)
+             AUC ATR7/ATR21 hour 0.4932 raw 0.5107 | ER21 hour 0.5303 raw 0.5168
+  [as-coded] 2025: classes {'EARLY': 449, 'FALSE': 652, 'LATE': 322, 'TURNED': 513}
+             EARLY n=449 net=+141.26 (+0.3146/trade) | FALSE n=652 net=-191.90 (-0.2943/trade)
+             AUC ATR7/ATR21 hour 0.4477 raw 0.4787 | ER21 hour 0.4771 raw 0.4707
+  [textbook] 2024: classes {'EARLY': 477, 'FALSE': 649, 'LATE': 292, 'TURNED': 558}
+             EARLY n=477 net=+129.60 (+0.2717/trade) | FALSE n=649 net=-209.02 (-0.3221/trade)
+             AUC ATR7/ATR21 hour 0.4881 raw 0.4982 | ER21 hour 0.5380 raw 0.5265
+  [textbook] 2025: classes {'EARLY': 452, 'FALSE': 638, 'LATE': 300, 'TURNED': 546}
+             EARLY n=452 net=+140.96 (+0.3118/trade) | FALSE n=638 net=-190.21 (-0.2981/trade)
+             AUC ATR7/ATR21 hour 0.4457 raw 0.4675 | ER21 hour 0.4786 raw 0.4785
+
+COMPARISON (as-coded vs ORIGINAL experiment; textbook vs audit's CORRECTED zigzag)
+  as-coded vs original  2024 n_EARLY        independent        484  reference        484  OK
+  as-coded vs original  2024 n_FALSE        independent        666  reference        666  OK
+  as-coded vs original  2024 net_EARLY      independent    129.579  reference    129.579  OK
+  as-coded vs original  2024 net_FALSE      independent   -208.181  reference   -208.181  OK
+  as-coded vs original  2024 auc_hour_r21   independent     0.4932  reference     0.4932  OK
+  as-coded vs original  2024 auc_raw_r21    independent     0.5107  reference     0.5107  OK
+  as-coded vs original  2024 auc_hour_er21  independent     0.5303  reference     0.5304  OK
+  as-coded vs original  2024 auc_raw_er21   independent     0.5168  reference     0.5168  OK
+  as-coded vs original  2025 n_EARLY        independent        449  reference        449  OK
+  as-coded vs original  2025 n_FALSE        independent        652  reference        652  OK
+  as-coded vs original  2025 net_EARLY      independent    141.264  reference    141.264  OK
+  as-coded vs original  2025 net_FALSE      independent   -191.901  reference   -191.901  OK
+  as-coded vs original  2025 auc_hour_r21   independent     0.4477  reference     0.4477  OK
+  as-coded vs original  2025 auc_raw_r21    independent     0.4787  reference     0.4787  OK
+  as-coded vs original  2025 auc_hour_er21  independent     0.4771  reference     0.4771  OK
+  as-coded vs original  2025 auc_raw_er21   independent     0.4707  reference     0.4707  OK
+  textbook vs corrected 2024 n_EARLY        independent        477  reference        477  OK
+  textbook vs corrected 2024 n_FALSE        independent        649  reference        649  OK
+  textbook vs corrected 2024 net_EARLY      independent    129.598  reference    129.598  OK
+  textbook vs corrected 2024 net_FALSE      independent   -209.023  reference   -209.023  OK
+  textbook vs corrected 2024 auc_hour_r21   independent     0.4881  reference     0.4881  OK
+  textbook vs corrected 2024 auc_raw_r21    independent     0.4982  reference     0.4982  OK
+  textbook vs corrected 2024 auc_hour_er21  independent      0.538  reference      0.538  OK
+  textbook vs corrected 2024 auc_raw_er21   independent     0.5265  reference     0.5265  OK
+  textbook vs corrected 2025 n_EARLY        independent        452  reference        452  OK
+  textbook vs corrected 2025 n_FALSE        independent        638  reference        638  OK
+  textbook vs corrected 2025 net_EARLY      independent    140.955  reference    140.955  OK
+  textbook vs corrected 2025 net_FALSE      independent   -190.205  reference   -190.205  OK
+  textbook vs corrected 2025 auc_hour_r21   independent     0.4457  reference     0.4457  OK
+  textbook vs corrected 2025 auc_raw_r21    independent     0.4675  reference     0.4675  OK
+  textbook vs corrected 2025 auc_hour_er21  independent     0.4786  reference     0.4786  OK
+  textbook vs corrected 2025 auc_raw_er21   independent     0.4785  reference     0.4785  OK
+
+ALL HEADLINE NUMBERS AGREE within tolerance {'count': 2, 'net_rel': 0.01, 'auc': 0.005}

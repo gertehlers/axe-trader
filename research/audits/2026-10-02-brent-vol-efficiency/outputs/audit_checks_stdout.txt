@@ -1,0 +1,237 @@
+====================================================================================================
+0. ORIGINAL RE-RUN
+   original printed output identical to committed 2026-10-02-brent-vol-efficiency-swings.txt: True
+====================================================================================================
+1. DATA
+   source: /Users/gertehlers/Development/projects/axe-trader/data/axe-trader.sqlite table historical_price, epic OIL_BRENT, resolution MINUTE, minus price_exclusion rows
+   DB minute rows < 2026-02-01: 689021; excluded minutes (price_exclusion) < 2026-02-01: 36
+   minutes used: 689021  first 2024-01-02 01:00:00+00:00  last 2026-01-30 21:58:00+00:00  tz UTC
+   sha256 of minute price rows used (to_csv %.6f): 58fb5bb17e89bbea28aae48e04d004ce65d0e85a36c978e4863f408909489d26
+   duplicate minute timestamps: 0; non-whole-minute stamps: 0
+   minute OHLC sanity (bid): violations 0
+   minute OHLC sanity (ask): violations 0
+   ask < bid at close: 0; close spread median 0.0320, max 0.1650
+   gaps between consecutive minutes (minutes): [1, 2): 677107, [2, 6): 10408, [6, 61): 966, [61, 180): 418, [180, 2000): 13, [2000, 10000000): 108
+   gaps > 3h: 121 (weekends ~49h); gaps > 3h that are not weekend closes: 13
+      gap ending 2024-05-28 00:00:00+00:00 lasting 0 days 06:31:00
+      gap ending 2024-06-20 00:00:00+00:00 lasting 0 days 06:31:00
+      gap ending 2024-07-05 00:00:00+00:00 lasting 0 days 06:31:00
+      gap ending 2024-09-03 00:00:00+00:00 lasting 0 days 06:31:00
+      gap ending 2024-11-29 01:00:00+00:00 lasting 0 days 06:31:00
+      gap ending 2024-12-26 01:00:00+00:00 lasting 1 days 06:31:00
+      gap ending 2025-01-02 01:00:00+00:00 lasting 1 days 05:01:00
+      gap ending 2025-05-27 00:00:00+00:00 lasting 0 days 06:31:00
+      gap ending 2025-06-20 00:00:00+00:00 lasting 0 days 06:31:00
+      gap ending 2025-09-02 00:00:00+00:00 lasting 0 days 06:31:00
+      gap ending 2025-11-28 01:00:00+00:00 lasting 0 days 06:31:00
+      gap ending 2025-12-26 01:00:00+00:00 lasting 1 days 06:31:00
+      gap ending 2026-01-02 01:00:00+00:00 lasting 1 days 05:01:00
+   5m candles total (to 2026-01-31): 141587; in scope 2024-01-11..2025-12-31: 134168 (2024: 66348, 2025: 67820)
+   5m candles with < 5 minutes present (kept by resample): 10136 (7.6%)
+   5m candle gaps > 5 min: 1137 (ATR/ER/zigzag run straight across them)
+   data before RESERVED_FROM only: max candle used 2026-01-30 21:55:00+00:00; note the cache loads all rows into memory and the script filters m.index < RESERVED_FROM before any computation
+====================================================================================================
+2. INDICATORS (independent re-derivation for sampled candles)
+   ATR7: max |implementation - re-derivation| over 25 sampled candles = 0.00e+00
+   ATR14: max |implementation - re-derivation| over 25 sampled candles = 0.00e+00
+   ATR21: max |implementation - re-derivation| over 25 sampled candles = 0.00e+00
+   ATR100: max |implementation - re-derivation| over 25 sampled candles = 2.14e-15
+   ER7: max |implementation - re-derivation| over 25 sampled candles = 0.00e+00
+   ER14: max |implementation - re-derivation| over 25 sampled candles = 0.00e+00
+   ER21: max |implementation - re-derivation| over 25 sampled candles = 0.00e+00
+   ATR: TR = max(H-L, |H-prevC|, |L-prevC|) on bid 5m candles, prevC of candle 0 = its own close; Wilder recursion ATR_t = (ATR_{t-1}(n-1) + TR_t)/n seeded ATR_0 = TR_0; current candle included
+   lookahead test: features recomputed on data truncated at the flip candle (30 sampled flips)
+   max |full-series feature - truncated-series feature| = 2.22e-16; Supertrend state/flip mismatches = 0
+====================================================================================================
+3. ZIGZAG (6 ATR) property checks
+   original: swings 1477; violations: {'alternation': 0, 'end_not_extreme': 102, 'end_not_extreme_before_tracking_start': 102, 'confirm_short': 0, 'earlier_confirm': 0}
+   original: confirmation delay (pivot -> confirming candle): median 30, p10 14, p90 64, max 185
+   corrected: swings 1593; violations: {'alternation': 0, 'end_not_extreme': 0, 'end_not_extreme_before_tracking_start': 0, 'confirm_short': 0, 'earlier_confirm': 0}
+   corrected: confirmation delay (pivot -> confirming candle): median 32, p10 15, p90 66, max 185
+   BUG (original): 'end_not_extreme' swings all have their true extreme BEFORE the candle that confirmed the swing's start, i.e. in the stretch the original never tracks. See AUDIT_REPORT.md finding B1.
+   threshold = 6 x ATR14 of the CURRENT candle being tested (it changes during a swing); close-based; a new extreme must be strictly beyond the old one; the first swing is discarded
+====================================================================================================
+4. SUPERTREND 7/3 AND TRADES
+   trades: 4078; every entry is the candle after the flip candle: True
+   every exit is the candle after the next flip candle: True
+   long: buy open_ask(entry), sell open_bid(exit); short: sell open_bid(entry), buy open_ask(exit); funding = entry price x long/short_rate% (-0.01096%) per 21:00 UTC cut-off strictly inside the hold; no extra slippage or commission
+   flips in scope with a class: 3912; classified flips without a trade row: 0
+====================================================================================================
+5. CLASSIFICATION
+   parametrised re-implementation at 6 ATR reproduces the original labels exactly: True
+   EARLY flips that came BEFORE the turn (opposite swing, turn within 12 candles): 20 of 933
+   circularity: share of each class with net P&L > 0 (labels use the same future path as the trade)
+     2024: EARLY 62% win (net/trade +0.268), LATE 27% win (net/trade -0.098), TURNED 42% win (net/trade +0.008), FALSE 1% win (net/trade -0.313)
+     2025: EARLY 66% win (net/trade +0.315), LATE 25% win (net/trade -0.096), TURNED 41% win (net/trade -0.006), FALSE 1% win (net/trade -0.294)
+   flips per big swing (classified flips): mean 2.83, max 21; swings holding >1 FALSE flip: 325
+   FALSE flips share a swing with another FALSE flip: 69%
+====================================================================================================
+6. STATISTICS: EARLY vs FALSE, hour-stratified AUC, day- and swing-block bootstrap, circular-shift null
+   done original 4 ATR
+   done original 6 ATR
+   done original 8 ATR
+   done original 10 ATR
+   done corrected 4 ATR
+   done corrected 6 ATR
+   done corrected 8 ATR
+   done corrected 10 ATR
+-- [original zigzag] 4 ATR big swings: EARLY vs FALSE, hour-stratified AUC [day-block 95% CI] null p
+   r21      2024 0.499 [0.457,0.546] p=0.968 (nE 411, nF 410) | 2025 0.412 [0.374,0.457] p=0.002 (nE 400, nF 400)
+   slope6   2024 0.476 [0.432,0.524] p=0.313 (nE 411, nF 410) | 2025 0.424 [0.374,0.470] p=0.010 (nE 400, nF 400)
+   r100     2024 0.491 [0.449,0.536] p=0.655 (nE 411, nF 410) | 2025 0.444 [0.397,0.488] p=0.010 (nE 400, nF 400)
+   release  2024 0.492 [0.446,0.535] p=0.675 (nE 411, nF 410) | 2025 0.426 [0.383,0.472] p=0.004 (nE 400, nF 400)
+   er14     2024 0.502 [0.457,0.548] p=0.948 (nE 411, nF 410) | 2025 0.489 [0.445,0.539] p=0.615 (nE 400, nF 400)
+   er21     2024 0.525 [0.474,0.565] p=0.307 (nE 411, nF 410) | 2025 0.466 [0.417,0.509] p=0.116 (nE 400, nF 400)
+   d_er14   2024 0.498 [0.453,0.545] p=0.942 (nE 411, nF 410) | 2025 0.520 [0.468,0.575] p=0.407 (nE 400, nF 400)
+   classes 2024: EARLY n=411 net/trade=+0.371, LATE n=173 net/trade=-0.135, TURNED n=982 net/trade=-0.089, FALSE n=410 net/trade=-0.359
+   classes 2025: EARLY n=400 net/trade=+0.400, LATE n=172 net/trade=-0.106, TURNED n=964 net/trade=-0.091, FALSE n=400 net/trade=-0.346
+-- [original zigzag] 6 ATR big swings: EARLY vs FALSE, hour-stratified AUC [day-block 95% CI] null p
+   r21      2024 0.493 [0.456,0.533] p=0.710 (nE 484, nF 666) | 2025 0.448 [0.412,0.484] p=0.006 (nE 449, nF 652)
+   slope6   2024 0.474 [0.434,0.511] p=0.164 (nE 484, nF 666) | 2025 0.452 [0.413,0.490] p=0.018 (nE 449, nF 652)
+   r100     2024 0.491 [0.456,0.526] p=0.610 (nE 484, nF 666) | 2025 0.451 [0.416,0.489] p=0.007 (nE 449, nF 652)
+   a21_100  2024 0.496 [0.465,0.529] p=0.777 (nE 484, nF 666) | 2025 0.474 [0.435,0.514] p=0.140 (nE 449, nF 652)
+   squeeze  2024 0.520 [0.484,0.555] p=0.245 (nE 484, nF 666) | 2025 0.491 [0.455,0.528] p=0.598 (nE 449, nF 652)
+   release  2024 0.479 [0.445,0.517] p=0.233 (nE 484, nF 666) | 2025 0.467 [0.426,0.508] p=0.069 (nE 449, nF 652)
+   er7      2024 0.508 [0.473,0.547] p=0.654 (nE 484, nF 666) | 2025 0.562 [0.522,0.598] p=0.001 (nE 449, nF 652)
+   d_er7    2024 0.509 [0.469,0.545] p=0.628 (nE 484, nF 666) | 2025 0.570 [0.527,0.609] p=0.001 (nE 449, nF 652)
+   er14     2024 0.516 [0.477,0.555] p=0.402 (nE 484, nF 666) | 2025 0.527 [0.484,0.569] p=0.159 (nE 449, nF 652)
+   d_er14   2024 0.491 [0.449,0.531] p=0.644 (nE 484, nF 666) | 2025 0.547 [0.509,0.587] p=0.015 (nE 449, nF 652)
+   er21     2024 0.530 [0.491,0.569] p=0.092 (nE 484, nF 666) | 2025 0.477 [0.440,0.519] p=0.206 (nE 449, nF 652)
+   d_er21   2024 0.517 [0.481,0.557] p=0.331 (nE 484, nF 666) | 2025 0.512 [0.474,0.552] p=0.518 (nE 449, nF 652)
+   ser7     2024 0.508 [0.472,0.545] p=0.658 (nE 484, nF 666) | 2025 0.562 [0.523,0.601] p=0.001 (nE 449, nF 652)
+   ser14    2024 0.506 [0.466,0.542] p=0.770 (nE 484, nF 666) | 2025 0.529 [0.489,0.571] p=0.127 (nE 449, nF 652)
+   ser21    2024 0.512 [0.474,0.551] p=0.497 (nE 484, nF 666) | 2025 0.527 [0.486,0.568] p=0.155 (nE 449, nF 652)
+   classes 2024: EARLY n=484 net/trade=+0.268, LATE n=314 net/trade=-0.098, TURNED n=512 net/trade=+0.008, FALSE n=666 net/trade=-0.313
+   classes 2025: EARLY n=449 net/trade=+0.315, LATE n=322 net/trade=-0.096, TURNED n=513 net/trade=-0.006, FALSE n=652 net/trade=-0.294
+-- [original zigzag] 8 ATR big swings: EARLY vs FALSE, hour-stratified AUC [day-block 95% CI] null p
+   r21      2024 0.512 [0.478,0.546] p=0.485 (nE 491, nF 784) | 2025 0.472 [0.440,0.509] p=0.114 (nE 448, nF 753)
+   slope6   2024 0.487 [0.451,0.527] p=0.425 (nE 491, nF 784) | 2025 0.456 [0.421,0.496] p=0.016 (nE 448, nF 753)
+   r100     2024 0.515 [0.481,0.549] p=0.343 (nE 491, nF 784) | 2025 0.494 [0.459,0.531] p=0.707 (nE 448, nF 753)
+   release  2024 0.496 [0.463,0.531] p=0.798 (nE 491, nF 784) | 2025 0.485 [0.449,0.523] p=0.433 (nE 448, nF 753)
+   er14     2024 0.497 [0.461,0.531] p=0.866 (nE 491, nF 784) | 2025 0.511 [0.470,0.553] p=0.545 (nE 448, nF 753)
+   er21     2024 0.509 [0.476,0.543] p=0.653 (nE 491, nF 784) | 2025 0.475 [0.437,0.511] p=0.200 (nE 448, nF 753)
+   d_er14   2024 0.498 [0.461,0.536] p=0.916 (nE 491, nF 784) | 2025 0.523 [0.484,0.564] p=0.186 (nE 448, nF 753)
+   classes 2024: EARLY n=491 net/trade=+0.233, LATE n=371 net/trade=-0.069, TURNED n=330 net/trade=+0.061, FALSE n=784 net/trade=-0.273
+   classes 2025: EARLY n=448 net/trade=+0.298, LATE n=393 net/trade=-0.067, TURNED n=342 net/trade=+0.026, FALSE n=753 net/trade=-0.267
+-- [original zigzag] 10 ATR big swings: EARLY vs FALSE, hour-stratified AUC [day-block 95% CI] null p
+   r21      2024 0.517 [0.481,0.553] p=0.343 (nE 435, nF 853) | 2025 0.462 [0.427,0.496] p=0.052 (nE 399, nF 808)
+   slope6   2024 0.472 [0.434,0.511] p=0.140 (nE 435, nF 853) | 2025 0.459 [0.421,0.497] p=0.028 (nE 399, nF 808)
+   r100     2024 0.527 [0.497,0.557] p=0.126 (nE 435, nF 853) | 2025 0.480 [0.442,0.516] p=0.224 (nE 399, nF 808)
+   release  2024 0.508 [0.473,0.545] p=0.665 (nE 435, nF 853) | 2025 0.473 [0.435,0.509] p=0.152 (nE 399, nF 808)
+   er14     2024 0.483 [0.447,0.518] p=0.385 (nE 435, nF 853) | 2025 0.526 [0.484,0.567] p=0.218 (nE 399, nF 808)
+   er21     2024 0.505 [0.467,0.538] p=0.822 (nE 435, nF 853) | 2025 0.497 [0.459,0.535] p=0.854 (nE 399, nF 808)
+   d_er14   2024 0.488 [0.451,0.530] p=0.545 (nE 435, nF 853) | 2025 0.538 [0.500,0.580] p=0.046 (nE 399, nF 808)
+   classes 2024: EARLY n=435 net/trade=+0.229, LATE n=462 net/trade=-0.045, TURNED n=226 net/trade=+0.113, FALSE n=853 net/trade=-0.246
+   classes 2025: EARLY n=399 net/trade=+0.317, LATE n=469 net/trade=-0.060, TURNED n=260 net/trade=+0.058, FALSE n=808 net/trade=-0.245
+-- [corrected zigzag] 4 ATR big swings: EARLY vs FALSE, hour-stratified AUC [day-block 95% CI] null p
+   r21      2024 0.495 [0.452,0.539] p=0.798 (nE 408, nF 424) | 2025 0.406 [0.363,0.449] p=0.002 (nE 402, nF 410)
+   slope6   2024 0.480 [0.442,0.524] p=0.345 (nE 408, nF 424) | 2025 0.425 [0.381,0.473] p=0.002 (nE 402, nF 410)
+   r100     2024 0.487 [0.446,0.532] p=0.501 (nE 408, nF 424) | 2025 0.439 [0.399,0.484] p=0.010 (nE 402, nF 410)
+   release  2024 0.489 [0.447,0.533] p=0.615 (nE 408, nF 424) | 2025 0.423 [0.379,0.464] p=0.002 (nE 402, nF 410)
+   er14     2024 0.508 [0.459,0.550] p=0.711 (nE 408, nF 424) | 2025 0.489 [0.437,0.533] p=0.611 (nE 402, nF 410)
+   er21     2024 0.528 [0.484,0.571] p=0.200 (nE 408, nF 424) | 2025 0.466 [0.423,0.510] p=0.118 (nE 402, nF 410)
+   d_er14   2024 0.503 [0.453,0.548] p=0.888 (nE 408, nF 424) | 2025 0.523 [0.475,0.571] p=0.266 (nE 402, nF 410)
+   classes 2024: EARLY n=408 net/trade=+0.373, LATE n=163 net/trade=-0.122, TURNED n=981 net/trade=-0.086, FALSE n=424 net/trade=-0.360
+   classes 2025: EARLY n=402 net/trade=+0.397, LATE n=160 net/trade=-0.088, TURNED n=964 net/trade=-0.092, FALSE n=410 net/trade=-0.346
+-- [corrected zigzag] 6 ATR big swings: EARLY vs FALSE, hour-stratified AUC [day-block 95% CI] null p
+   r21      2024 0.488 [0.453,0.526] p=0.543 (nE 477, nF 649) | 2025 0.446 [0.411,0.482] p=0.001 (nE 452, nF 638)
+   slope6   2024 0.474 [0.435,0.513] p=0.169 (nE 477, nF 649) | 2025 0.448 [0.408,0.489] p=0.012 (nE 452, nF 638)
+   r100     2024 0.488 [0.453,0.527] p=0.510 (nE 477, nF 649) | 2025 0.450 [0.418,0.483] p=0.005 (nE 452, nF 638)
+   a21_100  2024 0.497 [0.465,0.530] p=0.878 (nE 477, nF 649) | 2025 0.473 [0.435,0.511] p=0.115 (nE 452, nF 638)
+   squeeze  2024 0.523 [0.487,0.557] p=0.172 (nE 477, nF 649) | 2025 0.496 [0.460,0.535] p=0.781 (nE 452, nF 638)
+   release  2024 0.471 [0.432,0.510] p=0.107 (nE 477, nF 649) | 2025 0.465 [0.427,0.505] p=0.060 (nE 452, nF 638)
+   er7      2024 0.510 [0.471,0.549] p=0.610 (nE 477, nF 649) | 2025 0.560 [0.524,0.600] p=0.003 (nE 452, nF 638)
+   d_er7    2024 0.506 [0.464,0.543] p=0.750 (nE 477, nF 649) | 2025 0.567 [0.526,0.607] p=0.001 (nE 452, nF 638)
+   er14     2024 0.515 [0.476,0.552] p=0.429 (nE 477, nF 649) | 2025 0.527 [0.482,0.570] p=0.147 (nE 452, nF 638)
+   d_er14   2024 0.494 [0.452,0.536] p=0.756 (nE 477, nF 649) | 2025 0.549 [0.506,0.590] p=0.006 (nE 452, nF 638)
+   er21     2024 0.538 [0.500,0.576] p=0.037 (nE 477, nF 649) | 2025 0.479 [0.443,0.517] p=0.295 (nE 452, nF 638)
+   d_er21   2024 0.523 [0.488,0.562] p=0.195 (nE 477, nF 649) | 2025 0.514 [0.472,0.553] p=0.453 (nE 452, nF 638)
+   ser7     2024 0.511 [0.476,0.548] p=0.562 (nE 477, nF 649) | 2025 0.560 [0.522,0.598] p=0.002 (nE 452, nF 638)
+   ser14    2024 0.504 [0.467,0.546] p=0.829 (nE 477, nF 649) | 2025 0.530 [0.485,0.570] p=0.123 (nE 452, nF 638)
+   ser21    2024 0.515 [0.478,0.554] p=0.430 (nE 477, nF 649) | 2025 0.531 [0.491,0.573] p=0.088 (nE 452, nF 638)
+   classes 2024: EARLY n=477 net/trade=+0.272, LATE n=292 net/trade=-0.073, TURNED n=558 net/trade=-0.008, FALSE n=649 net/trade=-0.322
+   classes 2025: EARLY n=452 net/trade=+0.312, LATE n=300 net/trade=-0.081, TURNED n=546 net/trade=-0.021, FALSE n=638 net/trade=-0.298
+-- [corrected zigzag] 8 ATR big swings: EARLY vs FALSE, hour-stratified AUC [day-block 95% CI] null p
+   r21      2024 0.499 [0.465,0.532] p=0.958 (nE 486, nF 751) | 2025 0.454 [0.415,0.490] p=0.012 (nE 447, nF 729)
+   slope6   2024 0.482 [0.444,0.520] p=0.283 (nE 486, nF 751) | 2025 0.455 [0.420,0.495] p=0.018 (nE 447, nF 729)
+   r100     2024 0.507 [0.474,0.541] p=0.701 (nE 486, nF 751) | 2025 0.480 [0.448,0.516] p=0.247 (nE 447, nF 729)
+   release  2024 0.482 [0.442,0.522] p=0.351 (nE 486, nF 751) | 2025 0.477 [0.436,0.514] p=0.234 (nE 447, nF 729)
+   er14     2024 0.504 [0.465,0.541] p=0.778 (nE 486, nF 751) | 2025 0.517 [0.477,0.559] p=0.413 (nE 447, nF 729)
+   er21     2024 0.525 [0.488,0.558] p=0.168 (nE 486, nF 751) | 2025 0.477 [0.440,0.516] p=0.210 (nE 447, nF 729)
+   d_er14   2024 0.511 [0.472,0.552] p=0.557 (nE 486, nF 751) | 2025 0.523 [0.487,0.566] p=0.206 (nE 447, nF 729)
+   classes 2024: EARLY n=486 net/trade=+0.243, LATE n=342 net/trade=-0.059, TURNED n=397 net/trade=+0.028, FALSE n=751 net/trade=-0.285
+   classes 2025: EARLY n=447 net/trade=+0.301, LATE n=378 net/trade=-0.063, TURNED n=382 net/trade=+0.010, FALSE n=729 net/trade=-0.274
+-- [corrected zigzag] 10 ATR big swings: EARLY vs FALSE, hour-stratified AUC [day-block 95% CI] null p
+   r21      2024 0.529 [0.494,0.565] p=0.120 (nE 444, nF 812) | 2025 0.457 [0.421,0.493] p=0.020 (nE 420, nF 786)
+   slope6   2024 0.470 [0.433,0.507] p=0.110 (nE 444, nF 812) | 2025 0.468 [0.433,0.506] p=0.092 (nE 420, nF 786)
+   r100     2024 0.546 [0.516,0.578] p=0.006 (nE 444, nF 812) | 2025 0.479 [0.443,0.513] p=0.192 (nE 420, nF 786)
+   release  2024 0.509 [0.470,0.547] p=0.623 (nE 444, nF 812) | 2025 0.475 [0.444,0.511] p=0.144 (nE 420, nF 786)
+   er14     2024 0.493 [0.459,0.527] p=0.709 (nE 444, nF 812) | 2025 0.531 [0.487,0.572] p=0.104 (nE 420, nF 786)
+   er21     2024 0.503 [0.466,0.539] p=0.854 (nE 444, nF 812) | 2025 0.502 [0.460,0.537] p=0.938 (nE 420, nF 786)
+   d_er14   2024 0.502 [0.466,0.539] p=0.908 (nE 444, nF 812) | 2025 0.532 [0.488,0.574] p=0.064 (nE 420, nF 786)
+   classes 2024: EARLY n=444 net/trade=+0.226, LATE n=421 net/trade=-0.036, TURNED n=299 net/trade=+0.072, FALSE n=812 net/trade=-0.261
+   classes 2025: EARLY n=420 net/trade=+0.295, LATE n=433 net/trade=-0.059, TURNED n=297 net/trade=+0.050, FALSE n=786 net/trade=-0.251
+   [original] EARLY vs FALSE tests: 72; null p < 0.05: 14 (expected by chance ~3.6); p < 0.05 in BOTH years with the same direction: none
+   [corrected] EARLY vs FALSE tests: 72; null p < 0.05: 16 (expected by chance ~3.6); p < 0.05 in BOTH years with the same direction: none
+-- the original '+/-0.025' noise band (big turn vs control at t=0), checked by day-block bootstrap
+   r21 2024: AUC 0.541, day-block 95% CI half-width 0.024, i.i.d. Hanley-McNeil 1.96*SE 0.024
+   r21 2025: AUC 0.585, day-block 95% CI half-width 0.022, i.i.d. Hanley-McNeil 1.96*SE 0.024
+   er21 2024: AUC 0.751, day-block 95% CI half-width 0.018, i.i.d. Hanley-McNeil 1.96*SE 0.022
+   er21 2025: AUC 0.753, day-block 95% CI half-width 0.018, i.i.d. Hanley-McNeil 1.96*SE 0.022
+====================================================================================================
+7. EARLY vs FALSE with ATR7/ATR100 quintile + hour strata (6 ATR), and inside/outside 12-16 UTC
+   2024: r21 hour+r100q 0.492 / 12-16 0.495 / other 0.526; release hour+r100q 0.463 / 12-16 0.492 / other 0.502; er21 hour+r100q 0.535 / 12-16 0.515 / other 0.513; d_er14 hour+r100q 0.491 / 12-16 0.503 / other 0.479
+   2024: share in 12-16 UTC: EARLY 16%, FALSE 23%, all 22%
+   2025: r21 hour+r100q 0.459 / 12-16 0.501 / other 0.480; release hour+r100q 0.482 / 12-16 0.516 / other 0.480; er21 hour+r100q 0.469 / 12-16 0.433 / other 0.477; d_er14 hour+r100q 0.558 / 12-16 0.498 / other 0.543
+   2025: share in 12-16 UTC: EARLY 14%, FALSE 18%, all 19%
+====================================================================================================
+8. CROSS-YEAR LOGISTIC MODEL (original `logistic`: Newton-Raphson, 50 iterations, L2 0.01 on standardised non-intercept weights; standardise with TRAIN-year mean/sd; drop rows with any NaN; no feature selection)
+-- [original zigzag] EARLY_vs_REST (as originally reported): test AUC raw [day-block 95% CI of the test year]
+   r100                         2024->2025 0.562 [0.535,0.590] | 2025->2024 0.543 [0.516,0.569]
+   r21                          2024->2025 0.476 [0.448,0.499] | 2025->2024 0.488 [0.463,0.516]
+   slope6                       2024->2025 0.513 [0.485,0.544] | 2025->2024 0.502 [0.472,0.532]
+   release                      2024->2025 0.503 [0.472,0.529] | 2025->2024 0.479 [0.448,0.508]
+   squeeze+release              2024->2025 0.496 [0.468,0.522] | 2025->2024 0.500 [0.473,0.528]
+   er14                         2024->2025 0.521 [0.490,0.553] | 2025->2024 0.506 [0.479,0.533]
+   d_er14                       2024->2025 0.516 [0.485,0.546] | 2025->2024 0.545 [0.519,0.572]
+   r100+r21                     2024->2025 0.562 [0.528,0.593] | 2025->2024 0.566 [0.536,0.597]
+   release+d_er14               2024->2025 0.514 [0.484,0.542] | 2025->2024 0.541 [0.515,0.569]
+   r21+er14                     2024->2025 0.506 [0.476,0.534] | 2025->2024 0.495 [0.471,0.520]
+   r100+release+d_er14          2024->2025 0.555 [0.525,0.586] | 2025->2024 0.562 [0.536,0.588]
+   all features                 2024->2025 0.577 [0.547,0.608] | 2025->2024 0.600 [0.575,0.628]
+   ser14                        2024->2025 0.527 [0.497,0.559] | 2025->2024 0.515 [0.488,0.543]
+   r100+release+d_er14+ser14    2024->2025 0.556 [0.525,0.587] | 2025->2024 0.557 [0.533,0.582]
+   all + signed ER              2024->2025 0.583 [0.552,0.616] | 2025->2024 0.606 [0.582,0.633]
+-- [original zigzag] EARLY_vs_FALSE (the audited claim): test AUC raw [day-block 95% CI of the test year]
+   r100                         2024->2025 0.528 [0.499,0.556] | 2025->2024 0.512 [0.484,0.541]
+   r21                          2024->2025 0.479 [0.453,0.507] | 2025->2024 0.489 [0.463,0.516]
+   slope6                       2024->2025 0.536 [0.504,0.568] | 2025->2024 0.528 [0.495,0.561]
+   release                      2024->2025 0.486 [0.456,0.516] | 2025->2024 0.497 [0.466,0.527]
+   squeeze+release              2024->2025 0.493 [0.465,0.521] | 2025->2024 0.485 [0.457,0.513]
+   er14                         2024->2025 0.516 [0.477,0.552] | 2025->2024 0.505 [0.474,0.538]
+   d_er14                       2024->2025 0.465 [0.432,0.496] | 2025->2024 0.487 [0.452,0.521]
+   r100+r21                     2024->2025 0.507 [0.473,0.536] | 2025->2024 0.514 [0.486,0.542]
+   release+d_er14               2024->2025 0.464 [0.432,0.497] | 2025->2024 0.487 [0.453,0.521]
+   r21+er14                     2024->2025 0.493 [0.464,0.524] | 2025->2024 0.496 [0.468,0.528]
+   r100+release+d_er14          2024->2025 0.484 [0.450,0.515] | 2025->2024 0.499 [0.470,0.529]
+   all features                 2024->2025 0.523 [0.492,0.555] | 2025->2024 0.530 [0.498,0.560]
+   ser14                        2024->2025 0.488 [0.453,0.526] | 2025->2024 0.497 [0.466,0.529]
+   r100+release+d_er14+ser14    2024->2025 0.485 [0.452,0.516] | 2025->2024 0.499 [0.470,0.529]
+   all + signed ER              2024->2025 0.531 [0.496,0.563] | 2025->2024 0.536 [0.506,0.568]
+-- [corrected zigzag] EARLY_vs_FALSE (the audited claim): test AUC raw [day-block 95% CI of the test year]
+   r100                         2024->2025 0.533 [0.506,0.561] | 2025->2024 0.516 [0.488,0.545]
+   r21                          2024->2025 0.532 [0.502,0.560] | 2025->2024 0.502 [0.472,0.530]
+   slope6                       2024->2025 0.545 [0.513,0.578] | 2025->2024 0.537 [0.505,0.570]
+   release                      2024->2025 0.525 [0.493,0.557] | 2025->2024 0.511 [0.482,0.543]
+   squeeze+release              2024->2025 0.499 [0.469,0.529] | 2025->2024 0.501 [0.472,0.530]
+   er14                         2024->2025 0.519 [0.481,0.556] | 2025->2024 0.512 [0.482,0.543]
+   d_er14                       2024->2025 0.462 [0.429,0.493] | 2025->2024 0.495 [0.462,0.529]
+   r100+r21                     2024->2025 0.511 [0.482,0.540] | 2025->2024 0.510 [0.480,0.539]
+   release+d_er14               2024->2025 0.489 [0.459,0.522] | 2025->2024 0.500 [0.464,0.533]
+   r21+er14                     2024->2025 0.518 [0.479,0.555] | 2025->2024 0.505 [0.477,0.534]
+   r100+release+d_er14          2024->2025 0.508 [0.477,0.537] | 2025->2024 0.510 [0.482,0.541]
+   all features                 2024->2025 0.534 [0.498,0.565] | 2025->2024 0.538 [0.504,0.567]
+   ser14                        2024->2025 0.485 [0.449,0.522] | 2025->2024 0.504 [0.474,0.535]
+   r100+release+d_er14+ser14    2024->2025 0.508 [0.476,0.538] | 2025->2024 0.510 [0.480,0.541]
+   all + signed ER              2024->2025 0.538 [0.502,0.570] | 2025->2024 0.542 [0.509,0.575]
+wrote HEADLINE_RESULTS.csv, NULL_TESTS.csv, SAMPLE_CASES.csv, CLASSIFICATION_WALKTHROUGH.md, MANUAL_CALCULATIONS.md, ENVIRONMENT.json, expected_from_original.json, outputs/

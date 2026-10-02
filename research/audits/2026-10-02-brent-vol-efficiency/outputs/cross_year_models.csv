@@ -1,0 +1,91 @@
+zigzag,task,set,train,test,auc_test,ci_lo,ci_hi,n_test,n_test_pos
+original,EARLY_vs_REST (as originally reported),r100,2024,2025,0.5622,0.535,0.5901,1936,449
+original,EARLY_vs_REST (as originally reported),r100,2025,2024,0.5429,0.5158,0.5687,1976,484
+original,EARLY_vs_REST (as originally reported),r21,2024,2025,0.4756,0.4483,0.4994,1936,449
+original,EARLY_vs_REST (as originally reported),r21,2025,2024,0.4885,0.463,0.5158,1976,484
+original,EARLY_vs_REST (as originally reported),slope6,2024,2025,0.5129,0.4854,0.544,1936,449
+original,EARLY_vs_REST (as originally reported),slope6,2025,2024,0.5021,0.4717,0.5319,1976,484
+original,EARLY_vs_REST (as originally reported),release,2024,2025,0.5026,0.4724,0.529,1936,449
+original,EARLY_vs_REST (as originally reported),release,2025,2024,0.4785,0.4478,0.5079,1976,484
+original,EARLY_vs_REST (as originally reported),squeeze+release,2024,2025,0.4959,0.4677,0.5216,1936,449
+original,EARLY_vs_REST (as originally reported),squeeze+release,2025,2024,0.5004,0.4727,0.5281,1976,484
+original,EARLY_vs_REST (as originally reported),er14,2024,2025,0.5211,0.4895,0.553,1936,449
+original,EARLY_vs_REST (as originally reported),er14,2025,2024,0.5059,0.4794,0.5328,1976,484
+original,EARLY_vs_REST (as originally reported),d_er14,2024,2025,0.5157,0.4846,0.5461,1936,449
+original,EARLY_vs_REST (as originally reported),d_er14,2025,2024,0.5446,0.519,0.5725,1976,484
+original,EARLY_vs_REST (as originally reported),r100+r21,2024,2025,0.5621,0.5282,0.593,1936,449
+original,EARLY_vs_REST (as originally reported),r100+r21,2025,2024,0.5659,0.5356,0.5965,1976,484
+original,EARLY_vs_REST (as originally reported),release+d_er14,2024,2025,0.5139,0.4837,0.5423,1936,449
+original,EARLY_vs_REST (as originally reported),release+d_er14,2025,2024,0.5412,0.515,0.5692,1976,484
+original,EARLY_vs_REST (as originally reported),r21+er14,2024,2025,0.5058,0.4764,0.534,1936,449
+original,EARLY_vs_REST (as originally reported),r21+er14,2025,2024,0.4952,0.4712,0.5199,1976,484
+original,EARLY_vs_REST (as originally reported),r100+release+d_er14,2024,2025,0.5549,0.5246,0.5861,1936,449
+original,EARLY_vs_REST (as originally reported),r100+release+d_er14,2025,2024,0.562,0.5358,0.5885,1976,484
+original,EARLY_vs_REST (as originally reported),all features,2024,2025,0.5766,0.5468,0.6077,1936,449
+original,EARLY_vs_REST (as originally reported),all features,2025,2024,0.6002,0.5753,0.6284,1976,484
+original,EARLY_vs_REST (as originally reported),ser14,2024,2025,0.5274,0.497,0.5588,1936,449
+original,EARLY_vs_REST (as originally reported),ser14,2025,2024,0.5151,0.488,0.543,1976,484
+original,EARLY_vs_REST (as originally reported),r100+release+d_er14+ser14,2024,2025,0.5556,0.5255,0.5867,1936,449
+original,EARLY_vs_REST (as originally reported),r100+release+d_er14+ser14,2025,2024,0.5574,0.5334,0.5817,1976,484
+original,EARLY_vs_REST (as originally reported),all + signed ER,2024,2025,0.5832,0.5515,0.6157,1936,449
+original,EARLY_vs_REST (as originally reported),all + signed ER,2025,2024,0.6059,0.5816,0.6332,1976,484
+original,EARLY_vs_FALSE (the audited claim),r100,2024,2025,0.5279,0.4985,0.5555,1101,449
+original,EARLY_vs_FALSE (the audited claim),r100,2025,2024,0.5122,0.4837,0.5406,1150,484
+original,EARLY_vs_FALSE (the audited claim),r21,2024,2025,0.4787,0.453,0.5072,1101,449
+original,EARLY_vs_FALSE (the audited claim),r21,2025,2024,0.4893,0.4627,0.5163,1150,484
+original,EARLY_vs_FALSE (the audited claim),slope6,2024,2025,0.5357,0.5044,0.5683,1101,449
+original,EARLY_vs_FALSE (the audited claim),slope6,2025,2024,0.5279,0.4947,0.5608,1150,484
+original,EARLY_vs_FALSE (the audited claim),release,2024,2025,0.4862,0.4563,0.5162,1101,449
+original,EARLY_vs_FALSE (the audited claim),release,2025,2024,0.4968,0.4664,0.527,1150,484
+original,EARLY_vs_FALSE (the audited claim),squeeze+release,2024,2025,0.4934,0.4647,0.5211,1101,449
+original,EARLY_vs_FALSE (the audited claim),squeeze+release,2025,2024,0.4853,0.457,0.513,1150,484
+original,EARLY_vs_FALSE (the audited claim),er14,2024,2025,0.5164,0.4769,0.5522,1101,449
+original,EARLY_vs_FALSE (the audited claim),er14,2025,2024,0.5047,0.474,0.5383,1150,484
+original,EARLY_vs_FALSE (the audited claim),d_er14,2024,2025,0.4647,0.432,0.4964,1101,449
+original,EARLY_vs_FALSE (the audited claim),d_er14,2025,2024,0.4874,0.4519,0.5214,1150,484
+original,EARLY_vs_FALSE (the audited claim),r100+r21,2024,2025,0.5069,0.4735,0.5363,1101,449
+original,EARLY_vs_FALSE (the audited claim),r100+r21,2025,2024,0.5136,0.4855,0.5423,1150,484
+original,EARLY_vs_FALSE (the audited claim),release+d_er14,2024,2025,0.4645,0.4322,0.4965,1101,449
+original,EARLY_vs_FALSE (the audited claim),release+d_er14,2025,2024,0.4873,0.4533,0.5213,1150,484
+original,EARLY_vs_FALSE (the audited claim),r21+er14,2024,2025,0.4934,0.4641,0.5239,1101,449
+original,EARLY_vs_FALSE (the audited claim),r21+er14,2025,2024,0.4961,0.4679,0.528,1150,484
+original,EARLY_vs_FALSE (the audited claim),r100+release+d_er14,2024,2025,0.4841,0.4504,0.5148,1101,449
+original,EARLY_vs_FALSE (the audited claim),r100+release+d_er14,2025,2024,0.4992,0.4701,0.529,1150,484
+original,EARLY_vs_FALSE (the audited claim),all features,2024,2025,0.5233,0.4918,0.5551,1101,449
+original,EARLY_vs_FALSE (the audited claim),all features,2025,2024,0.5296,0.4982,0.5602,1150,484
+original,EARLY_vs_FALSE (the audited claim),ser14,2024,2025,0.4884,0.4526,0.5256,1101,449
+original,EARLY_vs_FALSE (the audited claim),ser14,2025,2024,0.4969,0.4658,0.5295,1150,484
+original,EARLY_vs_FALSE (the audited claim),r100+release+d_er14+ser14,2024,2025,0.485,0.4522,0.5161,1101,449
+original,EARLY_vs_FALSE (the audited claim),r100+release+d_er14+ser14,2025,2024,0.499,0.47,0.5295,1150,484
+original,EARLY_vs_FALSE (the audited claim),all + signed ER,2024,2025,0.531,0.4961,0.5632,1101,449
+original,EARLY_vs_FALSE (the audited claim),all + signed ER,2025,2024,0.5364,0.5062,0.5683,1150,484
+corrected,EARLY_vs_FALSE (the audited claim),r100,2024,2025,0.5334,0.5056,0.5607,1090,452
+corrected,EARLY_vs_FALSE (the audited claim),r100,2025,2024,0.5162,0.4878,0.5446,1126,477
+corrected,EARLY_vs_FALSE (the audited claim),r21,2024,2025,0.5325,0.5021,0.5597,1090,452
+corrected,EARLY_vs_FALSE (the audited claim),r21,2025,2024,0.5018,0.4717,0.5301,1126,477
+corrected,EARLY_vs_FALSE (the audited claim),slope6,2024,2025,0.5453,0.5129,0.5781,1090,452
+corrected,EARLY_vs_FALSE (the audited claim),slope6,2025,2024,0.5369,0.5052,0.5704,1126,477
+corrected,EARLY_vs_FALSE (the audited claim),release,2024,2025,0.5249,0.4926,0.5566,1090,452
+corrected,EARLY_vs_FALSE (the audited claim),release,2025,2024,0.5115,0.4815,0.5427,1126,477
+corrected,EARLY_vs_FALSE (the audited claim),squeeze+release,2024,2025,0.4986,0.4686,0.529,1090,452
+corrected,EARLY_vs_FALSE (the audited claim),squeeze+release,2025,2024,0.5007,0.4724,0.5297,1126,477
+corrected,EARLY_vs_FALSE (the audited claim),er14,2024,2025,0.5191,0.4808,0.5557,1090,452
+corrected,EARLY_vs_FALSE (the audited claim),er14,2025,2024,0.5116,0.482,0.5427,1126,477
+corrected,EARLY_vs_FALSE (the audited claim),d_er14,2024,2025,0.4618,0.4289,0.493,1090,452
+corrected,EARLY_vs_FALSE (the audited claim),d_er14,2025,2024,0.4947,0.4615,0.5285,1126,477
+corrected,EARLY_vs_FALSE (the audited claim),r100+r21,2024,2025,0.5113,0.4818,0.5402,1090,452
+corrected,EARLY_vs_FALSE (the audited claim),r100+r21,2025,2024,0.5102,0.4803,0.5395,1126,477
+corrected,EARLY_vs_FALSE (the audited claim),release+d_er14,2024,2025,0.4887,0.4589,0.5219,1090,452
+corrected,EARLY_vs_FALSE (the audited claim),release+d_er14,2025,2024,0.4998,0.464,0.5325,1126,477
+corrected,EARLY_vs_FALSE (the audited claim),r21+er14,2024,2025,0.5182,0.4794,0.5547,1090,452
+corrected,EARLY_vs_FALSE (the audited claim),r21+er14,2025,2024,0.5048,0.4768,0.5337,1126,477
+corrected,EARLY_vs_FALSE (the audited claim),r100+release+d_er14,2024,2025,0.508,0.4769,0.5369,1090,452
+corrected,EARLY_vs_FALSE (the audited claim),r100+release+d_er14,2025,2024,0.5102,0.4816,0.5411,1126,477
+corrected,EARLY_vs_FALSE (the audited claim),all features,2024,2025,0.534,0.498,0.5651,1090,452
+corrected,EARLY_vs_FALSE (the audited claim),all features,2025,2024,0.5376,0.5044,0.5674,1126,477
+corrected,EARLY_vs_FALSE (the audited claim),ser14,2024,2025,0.4849,0.4492,0.5221,1090,452
+corrected,EARLY_vs_FALSE (the audited claim),ser14,2025,2024,0.5037,0.474,0.535,1126,477
+corrected,EARLY_vs_FALSE (the audited claim),r100+release+d_er14+ser14,2024,2025,0.5076,0.4764,0.5379,1090,452
+corrected,EARLY_vs_FALSE (the audited claim),r100+release+d_er14+ser14,2025,2024,0.5098,0.4798,0.541,1126,477
+corrected,EARLY_vs_FALSE (the audited claim),all + signed ER,2024,2025,0.5384,0.5018,0.5695,1090,452
+corrected,EARLY_vs_FALSE (the audited claim),all + signed ER,2025,2024,0.5424,0.5089,0.5748,1126,477

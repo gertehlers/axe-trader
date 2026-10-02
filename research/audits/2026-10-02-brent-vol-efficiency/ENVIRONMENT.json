@@ -1,0 +1,18 @@
+{
+  "python": "3.14.7",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "numpy": "2.5.3",
+  "pandas": "3.0.6",
+  "pyarrow": "25.0.1",
+  "git_commit_at_run": "88bad425710d6cd9bd9219bdce30d667d79cede2",
+  "seed": 20261002,
+  "bootstrap_B_main": 1000,
+  "bootstrap_B_sensitivity": 500,
+  "original_experiment_seed": "numpy default_rng(7) for control sampling",
+  "data_db": "data/axe-trader.sqlite",
+  "data_minutes_sha256": "58fb5bb17e89bbea28aae48e04d004ce65d0e85a36c978e4863f408909489d26",
+  "data_minutes_rows": 689021,
+  "db_rows_before_exclusion": 689021,
+  "excluded_minutes": 36,
+  "original_output_identical_to_committed": true
+}

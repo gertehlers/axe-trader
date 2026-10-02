@@ -30,6 +30,15 @@ separately. Files are `research/experiments/2026-10-02-*`.
     inside a big swing) 34% at −0.30/trade.
   - The 7/3 flip enters a big swing a median 10 candles late, with 35% of the swing already done.
 - **Next (proposed):** information from outside the price path, starting with scheduled oil events.
+- **Self-audit for an independent Codex review:** `research/audits/2026-10-02-brent-vol-efficiency/`.
+  - Central "no" verified, and the independent re-implementation agrees exactly.
+  - Bug B1: the zigzag misplaces 6.9% of pivots. The corrected zigzag is reported alongside; conclusions unchanged.
+  - Report errata:
+    - The EARLY vs FALSE AUCs were really EARLY/FALSE vs the rest; the true range is 0.45–0.57.
+    - The cross-year 0.58/0.61 was EARLY vs rest; EARLY vs FALSE is 0.52–0.54.
+    - The class P&L is circular.
+    - 2025 has small effects that 2024 lacks.
+  - Codex prompt: `CODEX_REVIEW_PROMPT.md`.
 
 ## ⭐ SESSION STATE — 2026-10-01: clean Supertrend look (owner's Capital.com indicator)
 
