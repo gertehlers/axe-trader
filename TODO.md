@@ -7,6 +7,30 @@ North star (see `CLAUDE.md` → Trading Goals): net expectancy after costs; **no
 (owner, 2026-09-29: more candidates filtered by logic beats rules that miss everything), reproducible via 5-pillar confluence, with each instrument tuned as its own
 "personality" rather than one shared config.
 
+## ⭐ SESSION STATE — 2026-10-02: Brent personality — reversals can't be read from price-path features
+
+Owner direction: Brent's personality may be "only watch for reversals, get very good at spotting real
+ones" (other instruments can use classic TA). All runs are on the practice period, 2024 and 2025 reported
+separately. Files are `research/experiments/2026-10-02-*`.
+
+- **ST 7/1 + RSI 7 entry, exit on flip:** −0.04/trade at every RSI setting; RSI only cuts the trade count.
+- **4 "reversal signs" before a 7/1 flip** (prior leg size, RSI exhaustion, structure break, higher low):
+  best gives +3–4 pts on hit rate; the combinations collapse to a handful of trades.
+- **Within 50 candles, no stop:** +2 ATR our way 60%, 2 ATR against 73%. The 7/1 exit closed 54% of the
+  eventual +2 ATR runs early.
+- **Swing personality:** 5m ATR14 median is $0.083. At every turn size (1–12 ATR, $0.10–$2), Brent's
+  swings run like a coin-flip market's, slightly shorter. Shape alone doesn't say how far a turn goes.
+- **Volatility/efficiency study** (ATR7/21, slope, compression→release, Kaufman ER 7/14/21 and its change,
+  quadrants, ST 7/3 flip classes): **answer is no.**
+  - Volatility features show nothing before big turns (AUC ≈ 0.50).
+  - ER's high AUC at the turn is mechanical: it measures the leg that is ending.
+  - At the 7/3 flip, cross-year AUC for an EARLY flip is at most 0.58–0.61, and net/trade is flat across
+    every tercile.
+  - The flip classes replicate in both years: EARLY 24% at +0.27–0.31/trade; FALSE (a counter-wiggle
+    inside a big swing) 34% at −0.30/trade.
+  - The 7/3 flip enters a big swing a median 10 candles late, with 35% of the swing already done.
+- **Next (proposed):** information from outside the price path, starting with scheduled oil events.
+
 ## ⭐ SESSION STATE — 2026-10-01: clean Supertrend look (owner's Capital.com indicator)
 
 The owner uses Capital.com's SuperTrend on Brent 5m (7, 3) and US100 1h (10, 3). They asked for a **clean
